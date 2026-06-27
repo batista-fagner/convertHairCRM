@@ -3,6 +3,9 @@ import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateCol
 export type LeadClassification = 'otimo' | 'bom' | 'frio';
 export type LeadStatus = 'novo' | 'contatado' | 'convertido' | 'perdido';
 export type WaStage = 'aguardando_nome' | 'aguardando_faturamento' | 'abertura' | 'escuta' | 'rapport' | 'video' | 'fechamento' | 'confirmado' | 'perdido' | 'encerrado';
+export type KanbanStage = 'novo' | 'nao-qualificado' | 'qualificado' | 'ja-fez-prompt' | 'ja-apresentado' | 'em-negociacao' | 'vendeu' | 'perdido';
+export type LeadTemperature = 'quente' | 'morno' | 'frio';
+export type AgentMode = 'efraim' | 'sdr';
 
 export interface Post {
   code: string;
@@ -107,6 +110,21 @@ export class Lead {
 
   @Column({ name: 'wa_last_message_at', type: 'timestamp', nullable: true })
   waLastMessageAt?: Date;
+
+  @Column({ name: 'kanban_stage', type: 'varchar', default: 'novo' })
+  kanbanStage: KanbanStage;
+
+  @Column({ name: 'kanban_stage_manual', type: 'boolean', default: false })
+  kanbanStageManual: boolean;
+
+  @Column({ name: 'agent_mode', type: 'varchar', nullable: true })
+  agentMode?: AgentMode;
+
+  @Column({ name: 'temperature', type: 'varchar', nullable: true })
+  temperature?: LeadTemperature;
+
+  @Column({ name: 'ai_paused', type: 'boolean', default: false })
+  aiPaused: boolean;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

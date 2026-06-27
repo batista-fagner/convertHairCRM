@@ -1,12 +1,15 @@
 import { Controller, Get, Param, Query, Delete, Patch, Body } from '@nestjs/common';
 import { LeadsService } from './leads.service';
 import { FacebookService } from '../facebook/facebook.service';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { KanbanStage } from '../common/entities/lead.entity';
 
 @Controller('leads')
 export class LeadsController {
   constructor(
     private leadsService: LeadsService,
     private facebookService: FacebookService,
+    private realtime: RealtimeGateway,
   ) {}
 
   @Get()
@@ -29,6 +32,34 @@ export class LeadsController {
     return this.leadsService.getStats();
   }
 
+  @Get('kanban')
+  async kanban() {
+    return this.leadsService.findKanban();
+  }
+
+  @Patch(':id/kanban')
+  async moveKanban(@Param('id') id: string, @Body() body: { kanbanStage: KanbanStage }) {
+    const lead = await this.leadsService.moveKanban(id, body.kanbanStage);
+    this.realtime.emitLeadUpdated(lead);
+    return lead;
+  }
+
+  @Patch(':id/ai-pause')
+  async setAiPause(@Param('id') id: string, @Body() body: { paused: boolean }) {
+    const lead = await this.leadsService.update(id, { aiPaused: !!body.paused });
+    this.realtime.emitLeadUpdated(lead);
+    return lead;
+  }
+
+  @Patch(':id')
+  async edit(@Param('id') id: string, @Body() body: { name?: string }) {
+    const data: { name?: string } = {};
+    if (typeof body.name === 'string' && body.name.trim()) data.name = body.name.trim();
+    const lead = await this.leadsService.update(id, data);
+    this.realtime.emitLeadUpdated(lead);
+    return lead;
+  }
+
   @Get(':id')
   async findById(@Param('id') id: string) {
     return this.leadsService.findById(id);
@@ -44,6 +75,7 @@ export class LeadsController {
   @Delete(':id')
   async delete(@Param('id') id: string) {
     await this.leadsService.delete(id);
+    this.realtime.emitLeadDeleted(id);
     return { success: true };
   }
 

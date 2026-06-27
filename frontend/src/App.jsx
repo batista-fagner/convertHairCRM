@@ -12,6 +12,7 @@ import Settings from './pages/Settings'
 import FormPublic from './pages/FormPublic'
 import InstagramAutomation from './pages/InstagramAutomation'
 import Content from './pages/Content'
+import KanbanLeads from './pages/KanbanLeads'
 
 export default function App() {
   return (
@@ -22,6 +23,7 @@ export default function App() {
           <Route index element={<Dashboard />} />
           <Route path="/campaigns" element={<Campaigns />} />
           <Route path="/leads" element={<Leads />} />
+          <Route path="/kanban" element={<KanbanLeads />} />
           <Route path="/forms" element={<Forms />} />
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/email-sequences" element={<EmailSequences />} />

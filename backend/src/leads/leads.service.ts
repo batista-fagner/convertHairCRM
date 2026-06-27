@@ -1,7 +1,7 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Lead, LeadClassification } from '../common/entities/lead.entity';
+import { Lead, LeadClassification, KanbanStage } from '../common/entities/lead.entity';
 
 @Injectable()
 export class LeadsService {
@@ -94,6 +94,24 @@ export class LeadsService {
     const recent = all.slice(0, 5);
 
     return { total, totalMql, byStatus, byWaStage, conversionRate, recent };
+  }
+
+  async findKanban(): Promise<Record<KanbanStage, Lead[]>> {
+    const leads = await this.leadsRepo.find({
+      where: { agentMode: 'sdr' },
+      order: { updatedAt: 'DESC' },
+      take: 400,
+    });
+    const board: Record<KanbanStage, Lead[]> = { novo: [], 'nao-qualificado': [], qualificado: [], 'ja-fez-prompt': [], 'ja-apresentado': [], 'em-negociacao': [], vendeu: [], perdido: [] };
+    for (const lead of leads) {
+      const stage = (lead.kanbanStage as KanbanStage) || 'novo';
+      (board[stage] || board.novo).push(lead);
+    }
+    return board;
+  }
+
+  async moveKanban(id: string, kanbanStage: KanbanStage): Promise<Lead> {
+    return this.update(id, { kanbanStage, kanbanStageManual: true });
   }
 
   async markAsConverted(id: string): Promise<Lead> {

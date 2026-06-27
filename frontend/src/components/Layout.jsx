@@ -4,6 +4,7 @@ import {
   LayoutDashboard,
   Megaphone,
   Users,
+  KanbanSquare,
   FileText,
   BarChart3,
   Mail,
@@ -32,6 +33,7 @@ const NAV_GROUPS = [
       { icon: Megaphone, label: 'Campanhas', path: '/campaigns' },
       { icon: FileText, label: 'Formulários', path: '/forms' },
       { icon: Users, label: 'Leads', path: '/leads' },
+      { icon: KanbanSquare, label: 'Kanban', path: '/kanban' },
     ],
   },
   {
@@ -73,6 +75,7 @@ const PAGE_TITLES = {
   '/instagram': 'Instagram Leads',
   '/instagram-auto': 'IG Automação',
   '/content': 'Carrossel IG',
+  '/kanban': 'Kanban de Leads',
   '/settings': 'Configurações',
 }
 
