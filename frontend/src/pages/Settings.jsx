@@ -34,10 +34,12 @@ function ChatSimulator() {
   const [loading, setLoading] = useState(false)
   const [lastStage, setLastStage] = useState('abertura')
   const [lastTemp, setLastTemp] = useState('morno')
-  const bottomRef = useRef(null)
+  const messagesRef = useRef(null)
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (messagesRef.current) {
+      messagesRef.current.scrollTop = messagesRef.current.scrollHeight
+    }
   }, [messages])
 
   const clear = () => {
@@ -82,7 +84,7 @@ function ChatSimulator() {
   }
 
   return (
-    <div className="flex flex-col h-full bg-slate-50 rounded-xl border border-slate-200 overflow-hidden">
+    <div className="flex flex-col h-full bg-indigo-50/60 rounded-xl border border-indigo-100 overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 bg-white border-b border-slate-200">
         <div className="flex items-center gap-2">
@@ -105,7 +107,7 @@ function ChatSimulator() {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+      <div ref={messagesRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-center text-slate-400 gap-2">
             <MessageCircle className="w-8 h-8 opacity-30" />
@@ -133,7 +135,6 @@ function ChatSimulator() {
             </div>
           </div>
         )}
-        <div ref={bottomRef} />
       </div>
 
       {/* Input */}
