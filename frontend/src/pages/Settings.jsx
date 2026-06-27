@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { Settings as SettingsIcon, Key, Webhook, MessageCircle, Share2, Bot, Save, RotateCcw, Loader2, CheckCircle2 } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { Settings as SettingsIcon, Key, Webhook, MessageCircle, Share2, Bot, Save, RotateCcw, Loader2, CheckCircle2, Send, Trash2 } from 'lucide-react'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3002/api'
 
@@ -9,6 +9,154 @@ const integrations = [
   { icon: Webhook, label: 'Resend (Email)', description: 'API de email para disparo de sequências automáticas', color: 'bg-violet-50 text-violet-600', status: 'Não conectado' },
   { icon: Share2, label: 'RapidAPI (Instagram)', description: 'Enriquecimento de leads via análise de perfil Instagram', color: 'bg-orange-50 text-orange-600', status: 'Não conectado' },
 ]
+
+const STAGE_LABEL = {
+  abertura: 'Abertura',
+  qualificacao: 'Qualificação',
+  quente: 'Qualificado',
+  frio: 'Não qualificado',
+  perdido: 'Perdido',
+  encerrado: 'Encerrado',
+}
+
+const STAGE_COLOR = {
+  abertura: 'bg-slate-100 text-slate-600',
+  qualificacao: 'bg-blue-100 text-blue-700',
+  quente: 'bg-emerald-100 text-emerald-700',
+  frio: 'bg-cyan-100 text-cyan-700',
+  perdido: 'bg-red-100 text-red-700',
+  encerrado: 'bg-gray-100 text-gray-500',
+}
+
+function ChatSimulator() {
+  const [messages, setMessages] = useState([])
+  const [input, setInput] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [lastStage, setLastStage] = useState('abertura')
+  const [lastTemp, setLastTemp] = useState('morno')
+  const bottomRef = useRef(null)
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
+
+  const clear = () => {
+    setMessages([])
+    setLastStage('abertura')
+    setLastTemp('morno')
+  }
+
+  const send = async () => {
+    const text = input.trim()
+    if (!text || loading) return
+    setInput('')
+
+    const userMsg = { role: 'user', content: text }
+    const newMessages = [...messages, userMsg]
+    setMessages(newMessages)
+    setLoading(true)
+
+    try {
+      const history = newMessages.slice(0, -1).map(m => ({ role: m.role, content: m.content }))
+      const res = await fetch(`${API}/settings/sdr-simulate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text, history }),
+      })
+      const data = await res.json()
+      setMessages(prev => [...prev, { role: 'assistant', content: data.reply, stage: data.stage, temperature: data.temperature, handoff: data.handoff }])
+      setLastStage(data.stage)
+      setLastTemp(data.temperature)
+    } catch {
+      setMessages(prev => [...prev, { role: 'assistant', content: '⚠️ Erro ao chamar a IA.', stage: lastStage }])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleKey = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      send()
+    }
+  }
+
+  return (
+    <div className="flex flex-col h-full bg-slate-50 rounded-xl border border-slate-200 overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 bg-white border-b border-slate-200">
+        <div className="flex items-center gap-2">
+          <div className="w-7 h-7 rounded-full bg-violet-500 flex items-center justify-center">
+            <Bot className="w-4 h-4 text-white" />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-slate-800">Sofia</p>
+            <p className="text-[10px] text-slate-400">Simulador de conversa</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${STAGE_COLOR[lastStage] || 'bg-slate-100 text-slate-500'}`}>
+            {STAGE_LABEL[lastStage] || lastStage}
+          </span>
+          <button onClick={clear} title="Limpar conversa" className="p-1.5 text-slate-400 hover:text-red-400 transition">
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+        {messages.length === 0 && (
+          <div className="flex flex-col items-center justify-center h-full text-center text-slate-400 gap-2">
+            <MessageCircle className="w-8 h-8 opacity-30" />
+            <p className="text-sm">Mande uma mensagem para testar a Sofia</p>
+          </div>
+        )}
+        {messages.map((msg, i) => (
+          <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <div className={`max-w-[80%] px-3 py-2 rounded-2xl text-sm whitespace-pre-wrap ${
+              msg.role === 'user'
+                ? 'bg-violet-600 text-white rounded-br-sm'
+                : 'bg-white border border-slate-200 text-slate-800 rounded-bl-sm'
+            }`}>
+              {msg.content}
+              {msg.handoff && (
+                <p className="text-[10px] mt-1 text-emerald-600 font-medium">✓ Handoff — closer notificado</p>
+              )}
+            </div>
+          </div>
+        ))}
+        {loading && (
+          <div className="flex justify-start">
+            <div className="bg-white border border-slate-200 px-3 py-2 rounded-2xl rounded-bl-sm">
+              <Loader2 className="w-4 h-4 text-slate-400 animate-spin" />
+            </div>
+          </div>
+        )}
+        <div ref={bottomRef} />
+      </div>
+
+      {/* Input */}
+      <div className="p-3 bg-white border-t border-slate-200 flex items-end gap-2">
+        <textarea
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={handleKey}
+          placeholder="Digite como se fosse o lead... (Enter para enviar)"
+          rows={1}
+          className="flex-1 resize-none text-sm border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-300 max-h-24"
+        />
+        <button
+          onClick={send}
+          disabled={!input.trim() || loading}
+          className="p-2.5 bg-violet-600 hover:bg-violet-700 disabled:opacity-40 text-white rounded-xl transition shrink-0"
+        >
+          <Send className="w-4 h-4" />
+        </button>
+      </div>
+    </div>
+  )
+}
 
 function SdrPromptEditor() {
   const [value, setValue] = useState('')
@@ -54,72 +202,75 @@ function SdrPromptEditor() {
   const restoreDefault = () => setValue(defaultPrompt)
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-5 mb-6">
-      <div className="flex items-start gap-4 mb-4">
-        <div className="w-10 h-10 rounded-lg bg-violet-50 text-violet-600 flex items-center justify-center shrink-0">
-          <Bot className="w-5 h-5" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="font-medium text-slate-800 text-sm flex items-center gap-2">
-            Prompt da IA SDR (Sofia)
-            {isCustom ? (
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700 font-medium">Personalizado</span>
-            ) : (
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 font-medium">Padrão</span>
-            )}
-          </p>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Define a personalidade e o comportamento da Sofia no WhatsApp.
-            O contexto do lead e o formato de resposta são adicionados automaticamente.
-          </p>
-        </div>
+    <div className="mb-6">
+      <div className="flex items-center gap-2 mb-3">
+        <Bot className="w-4 h-4 text-violet-600" />
+        <p className="font-semibold text-slate-800 text-sm">Prompt da IA SDR (Sofia)</p>
+        {isCustom ? (
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700 font-medium">Personalizado</span>
+        ) : (
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 font-medium">Padrão</span>
+        )}
       </div>
 
-      {loading ? (
-        <div className="flex items-center justify-center py-10 text-slate-400">
-          <Loader2 className="w-5 h-5 animate-spin" />
-        </div>
-      ) : (
-        <>
-          <textarea
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            spellCheck={false}
-            className="w-full h-72 text-sm text-slate-700 border border-slate-200 rounded-lg p-3 font-mono leading-relaxed resize-y focus:outline-none focus:ring-2 focus:ring-violet-300"
-            placeholder="Escreva aqui o prompt da Sofia..."
-          />
-          <div className="flex items-center justify-between mt-3">
-            <button
-              onClick={restoreDefault}
-              className="flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-slate-700 transition"
-            >
-              <RotateCcw className="w-3.5 h-3.5" /> Restaurar padrão
-            </button>
-            <div className="flex items-center gap-3">
-              {saved && (
-                <span className="flex items-center gap-1 text-xs text-emerald-600 font-medium">
-                  <CheckCircle2 className="w-4 h-4" /> Salvo
-                </span>
-              )}
-              <button
-                onClick={save}
-                disabled={saving || !value.trim()}
-                className="flex items-center gap-1.5 text-xs font-medium text-white bg-violet-600 hover:bg-violet-700 disabled:opacity-50 px-4 py-2 rounded-lg transition"
-              >
-                {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                Salvar prompt
-              </button>
+      {/* Split layout */}
+      <div className="grid grid-cols-2 gap-4" style={{ height: '520px' }}>
+
+        {/* Editor */}
+        <div className="bg-white rounded-xl border border-slate-200 flex flex-col overflow-hidden">
+          {loading ? (
+            <div className="flex items-center justify-center flex-1 text-slate-400">
+              <Loader2 className="w-5 h-5 animate-spin" />
             </div>
-          </div>
-        </>
-      )}
+          ) : (
+            <>
+              <div className="px-3 pt-3 flex-1 flex flex-col min-h-0">
+                <p className="text-[10px] text-slate-400 mb-1.5">Edite a personalidade e as regras da Sofia</p>
+                <textarea
+                  value={value}
+                  onChange={(e) => setValue(e.target.value)}
+                  spellCheck={false}
+                  className="flex-1 text-sm text-slate-700 border border-slate-200 rounded-lg p-3 font-mono leading-relaxed resize-none focus:outline-none focus:ring-2 focus:ring-violet-300"
+                  placeholder="Escreva aqui o prompt da Sofia..."
+                />
+              </div>
+              <div className="flex items-center justify-between px-3 py-2.5 border-t border-slate-100">
+                <button
+                  onClick={restoreDefault}
+                  className="flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-slate-700 transition"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" /> Restaurar padrão
+                </button>
+                <div className="flex items-center gap-3">
+                  {saved && (
+                    <span className="flex items-center gap-1 text-xs text-emerald-600 font-medium">
+                      <CheckCircle2 className="w-4 h-4" /> Salvo
+                    </span>
+                  )}
+                  <button
+                    onClick={save}
+                    disabled={saving || !value.trim()}
+                    className="flex items-center gap-1.5 text-xs font-medium text-white bg-violet-600 hover:bg-violet-700 disabled:opacity-50 px-4 py-2 rounded-lg transition"
+                  >
+                    {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                    Salvar
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Chat */}
+        <ChatSimulator />
+      </div>
     </div>
   )
 }
 
 export default function Settings() {
   return (
-    <div className="p-6 max-w-3xl">
+    <div className="p-6 max-w-6xl">
       <div className="mb-6">
         <h2 className="text-lg font-semibold text-slate-800">Configurações</h2>
         <p className="text-sm text-slate-400 mt-0.5">Integrações e configurações da plataforma</p>
