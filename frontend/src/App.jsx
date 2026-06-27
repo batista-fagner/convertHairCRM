@@ -13,13 +13,21 @@ import FormPublic from './pages/FormPublic'
 import InstagramAutomation from './pages/InstagramAutomation'
 import Content from './pages/Content'
 import KanbanLeads from './pages/KanbanLeads'
+import Login from './pages/Login'
+
+function RequireAuth({ children }) {
+  const auth = sessionStorage.getItem('crm_auth')
+  if (!auth) return <Navigate to="/login" replace />
+  return children
+}
 
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
+        <Route path="/login" element={<Login />} />
         <Route path="/f/:id" element={<FormPublic />} />
-        <Route element={<Layout />}>
+        <Route element={<RequireAuth><Layout /></RequireAuth>}>
           <Route index element={<Dashboard />} />
           <Route path="/campaigns" element={<Campaigns />} />
           <Route path="/leads" element={<Leads />} />

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Outlet, Link, useLocation } from 'react-router-dom'
+import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard,
   Megaphone,
@@ -17,6 +17,7 @@ import {
   Zap,
   MessageCircle,
   Sparkles,
+  LogOut,
 } from 'lucide-react'
 
 const NAV_GROUPS = [
@@ -112,7 +113,13 @@ function useHeaderStats() {
 export default function Layout() {
   const [collapsed, setCollapsed] = useState(false)
   const location = useLocation()
+  const navigate = useNavigate()
   const { leadsHoje } = useHeaderStats()
+
+  function handleLogout() {
+    sessionStorage.removeItem('crm_auth')
+    navigate('/login', { replace: true })
+  }
 
   const pageTitle = PAGE_TITLES[location.pathname] || 'Funnel Platform'
   const isActive = (path) =>
@@ -191,18 +198,36 @@ export default function Layout() {
           </div>
         )}
 
-        {/* User info */}
+        {/* User info + logout */}
         {!collapsed && (
           <div className="p-3 border-t border-slate-700/50">
             <div className="flex items-center gap-2.5 px-2 py-1.5">
               <div className="w-7 h-7 rounded-full bg-violet-500 flex items-center justify-center text-white text-xs font-bold shrink-0">
                 F
               </div>
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <p className="text-xs font-semibold text-white truncate">Fagner Batista</p>
                 <p className="text-[10px] text-slate-400 truncate">Admin</p>
               </div>
+              <button
+                onClick={handleLogout}
+                title="Sair"
+                className="p-1 text-slate-400 hover:text-red-400 transition"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
             </div>
+          </div>
+        )}
+        {collapsed && (
+          <div className="p-2 border-t border-slate-700/50">
+            <button
+              onClick={handleLogout}
+              title="Sair"
+              className="w-full flex items-center justify-center p-2 text-slate-400 hover:text-red-400 hover:bg-slate-700 rounded-lg transition"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
           </div>
         )}
       </aside>
