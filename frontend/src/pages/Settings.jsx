@@ -84,7 +84,7 @@ function ChatSimulator() {
   }
 
   return (
-    <div className="flex flex-col h-full bg-indigo-50/60 rounded-xl border border-indigo-100 overflow-hidden">
+    <div className="flex flex-col h-full min-h-0 bg-indigo-50/60 rounded-xl border border-indigo-100 overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 bg-white border-b border-slate-200">
         <div className="flex items-center gap-2">
@@ -159,7 +159,7 @@ function ChatSimulator() {
   )
 }
 
-function SdrPromptEditor() {
+function SdrPromptEditor({ editorHeight }) {
   const [value, setValue] = useState('')
   const [defaultPrompt, setDefaultPrompt] = useState('')
   const [isCustom, setIsCustom] = useState(false)
@@ -203,8 +203,8 @@ function SdrPromptEditor() {
   const restoreDefault = () => setValue(defaultPrompt)
 
   return (
-    <div className="mb-6">
-      <div className="flex items-center gap-2 mb-3">
+    <div className="flex flex-col flex-1 min-h-0">
+      <div className="flex items-center gap-2 mb-3 shrink-0">
         <Bot className="w-4 h-4 text-violet-600" />
         <p className="font-semibold text-slate-800 text-sm">Prompt da IA SDR (Sofia)</p>
         {isCustom ? (
@@ -214,11 +214,11 @@ function SdrPromptEditor() {
         )}
       </div>
 
-      {/* Split layout */}
-      <div className="grid grid-cols-2 gap-4" style={{ height: '520px' }}>
+      {/* Split layout — responsivo */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 flex-1 min-h-0">
 
         {/* Editor */}
-        <div className="bg-white rounded-xl border border-slate-200 flex flex-col overflow-hidden">
+        <div className="bg-white rounded-xl border border-slate-200 flex flex-col overflow-hidden min-h-[380px] lg:min-h-0">
           {loading ? (
             <div className="flex items-center justify-center flex-1 text-slate-400">
               <Loader2 className="w-5 h-5 animate-spin" />
@@ -235,7 +235,7 @@ function SdrPromptEditor() {
                   placeholder="Escreva aqui o prompt da Sofia..."
                 />
               </div>
-              <div className="flex items-center justify-between px-3 py-2.5 border-t border-slate-100">
+              <div className="flex items-center justify-between px-3 py-2.5 border-t border-slate-100 shrink-0">
                 <button
                   onClick={restoreDefault}
                   className="flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-slate-700 transition"
@@ -263,7 +263,9 @@ function SdrPromptEditor() {
         </div>
 
         {/* Chat */}
-        <ChatSimulator />
+        <div className="min-h-[420px] lg:min-h-0 lg:h-full">
+          <ChatSimulator />
+        </div>
       </div>
     </div>
   )
@@ -271,33 +273,35 @@ function SdrPromptEditor() {
 
 export default function Settings() {
   return (
-    <div className="p-6 max-w-6xl">
-      <div className="mb-6">
+    <div className="flex flex-col h-full p-6 gap-6 overflow-y-auto">
+      <div className="shrink-0">
         <h2 className="text-lg font-semibold text-slate-800">Configurações</h2>
         <p className="text-sm text-slate-400 mt-0.5">Integrações e configurações da plataforma</p>
       </div>
 
       <SdrPromptEditor />
 
-      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Integrações</p>
-      <div className="space-y-3">
-        {integrations.map(({ icon: Icon, label, description, color, status }) => (
-          <div key={label} className="bg-white rounded-xl border border-slate-200 p-4 flex items-center gap-4">
-            <div className={`w-10 h-10 rounded-lg ${color} flex items-center justify-center shrink-0`}>
-              <Icon className="w-5 h-5" />
+      <div className="shrink-0">
+        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Integrações</p>
+        <div className="space-y-3">
+          {integrations.map(({ icon: Icon, label, description, color, status }) => (
+            <div key={label} className="bg-white rounded-xl border border-slate-200 p-4 flex items-center gap-4">
+              <div className={`w-10 h-10 rounded-lg ${color} flex items-center justify-center shrink-0`}>
+                <Icon className="w-5 h-5" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-medium text-slate-800 text-sm">{label}</p>
+                <p className="text-xs text-slate-400 mt-0.5 truncate">{description}</p>
+              </div>
+              <div className="flex items-center gap-3 shrink-0">
+                <span className="text-xs text-slate-400">{status}</span>
+                <button className="text-xs font-medium text-violet-600 hover:text-violet-700 border border-violet-200 hover:border-violet-400 px-3 py-1.5 rounded-lg transition">
+                  Conectar
+                </button>
+              </div>
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="font-medium text-slate-800 text-sm">{label}</p>
-              <p className="text-xs text-slate-400 mt-0.5 truncate">{description}</p>
-            </div>
-            <div className="flex items-center gap-3 shrink-0">
-              <span className="text-xs text-slate-400">{status}</span>
-              <button className="text-xs font-medium text-violet-600 hover:text-violet-700 border border-violet-200 hover:border-violet-400 px-3 py-1.5 rounded-lg transition">
-                Conectar
-              </button>
-            </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
     </div>
   )
