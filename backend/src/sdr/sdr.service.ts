@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import OpenAI from 'openai';
 import { Lead, KanbanStage, LeadTemperature } from '../common/entities/lead.entity';
 import { SettingsService } from '../settings/settings.service';
-import { SDR_PROMPT_KEY, DEFAULT_SDR_PROMPT, SDR_JSON_FORMAT } from './sdr.prompt';
+import { SDR_PROMPT_KEY, DEFAULT_SDR_PROMPT, SDR_JSON_FORMAT, SDR_MODEL_KEY, SDR_DEFAULT_MODEL } from './sdr.prompt';
 
 export type SdrStage = 'abertura' | 'qualificacao' | 'quente' | 'frio' | 'perdido' | 'encerrado';
 
@@ -78,8 +78,9 @@ export class SdrService {
       content: m.content ?? '',
     }));
 
-    // Carrega o prompt configurado em Configurações (fallback para o padrão)
+    // Carrega o prompt e o modelo configurados em Configurações
     const basePrompt = (await this.settings.get(SDR_PROMPT_KEY)) || DEFAULT_SDR_PROMPT;
+    const model = (await this.settings.get(SDR_MODEL_KEY)) || this.model;
 
     const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
       { role: 'system', content: buildSystemPrompt(basePrompt, lead) },
@@ -89,7 +90,7 @@ export class SdrService {
 
     try {
       const response = await this.openai.chat.completions.create({
-        model: this.model,
+        model,
         messages,
         temperature: 0.7,
         max_completion_tokens: 300,

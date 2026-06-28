@@ -159,7 +159,65 @@ function ChatSimulator() {
   )
 }
 
-function SdrPromptEditor({ editorHeight }) {
+const MODELS = [
+  { value: 'gpt-5.4-mini', label: 'GPT-5.4 Mini', description: 'Mais rápido e barato' },
+  { value: 'gpt-4.1-mini', label: 'GPT-4.1 Mini', description: 'Mais preciso e contextual' },
+]
+
+function ModelSelector() {
+  const [model, setModel] = useState('gpt-5.4-mini')
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+
+  useEffect(() => {
+    fetch(`${API}/settings/sdr-model`)
+      .then(r => r.json())
+      .then(d => setModel(d.value || 'gpt-5.4-mini'))
+      .catch(() => {})
+  }, [])
+
+  const select = async (val) => {
+    setModel(val)
+    setSaving(true)
+    setSaved(false)
+    try {
+      await fetch(`${API}/settings/sdr-model`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value: val }),
+      })
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+    } catch {}
+    finally { setSaving(false) }
+  }
+
+  return (
+    <div className="flex items-center gap-3 mb-4">
+      <span className="text-xs text-slate-500 font-medium shrink-0">Modelo de IA:</span>
+      <div className="flex gap-2">
+        {MODELS.map(m => (
+          <button
+            key={m.value}
+            onClick={() => select(m.value)}
+            disabled={saving}
+            title={m.description}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition ${
+              model === m.value
+                ? 'bg-violet-600 text-white border-violet-600'
+                : 'bg-white text-slate-600 border-slate-200 hover:border-violet-400 hover:text-violet-600'
+            }`}
+          >
+            {m.label}
+          </button>
+        ))}
+      </div>
+      {saved && <span className="flex items-center gap-1 text-xs text-emerald-600 font-medium"><CheckCircle2 className="w-3.5 h-3.5" /> Salvo</span>}
+    </div>
+  )
+}
+
+function SdrPromptEditor() {
   const [value, setValue] = useState('')
   const [defaultPrompt, setDefaultPrompt] = useState('')
   const [isCustom, setIsCustom] = useState(false)
@@ -204,14 +262,17 @@ function SdrPromptEditor({ editorHeight }) {
 
   return (
     <div className="mb-6">
-      <div className="flex items-center gap-2 mb-3 shrink-0">
-        <Bot className="w-4 h-4 text-violet-600" />
-        <p className="font-semibold text-slate-800 text-sm">Prompt da IA SDR (Sofia)</p>
-        {isCustom ? (
-          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700 font-medium">Personalizado</span>
-        ) : (
-          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 font-medium">Padrão</span>
-        )}
+      <div className="flex items-center justify-between mb-3 shrink-0">
+        <div className="flex items-center gap-2">
+          <Bot className="w-4 h-4 text-violet-600" />
+          <p className="font-semibold text-slate-800 text-sm">Prompt da IA SDR (Sofia)</p>
+          {isCustom ? (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700 font-medium">Personalizado</span>
+          ) : (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 font-medium">Padrão</span>
+          )}
+        </div>
+        <ModelSelector />
       </div>
 
       {/* Split layout — responsivo */}

@@ -4,7 +4,7 @@ import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import OpenAI from 'openai';
 import { Setting } from './setting.entity';
-import { SDR_PROMPT_KEY, DEFAULT_SDR_PROMPT, SDR_JSON_FORMAT } from '../sdr/sdr.prompt';
+import { SDR_PROMPT_KEY, DEFAULT_SDR_PROMPT, SDR_JSON_FORMAT, SDR_MODEL_KEY, SDR_DEFAULT_MODEL } from '../sdr/sdr.prompt';
 
 @Injectable()
 export class SettingsService {
@@ -32,6 +32,7 @@ export class SettingsService {
 
   async simulate(message: string, history: { role: 'user' | 'assistant'; content: string }[]) {
     const basePrompt = (await this.get(SDR_PROMPT_KEY)) || DEFAULT_SDR_PROMPT;
+    const model = (await this.get(SDR_MODEL_KEY)) || this.model;
     const systemPrompt = `${basePrompt}\n\n${SDR_JSON_FORMAT}`;
 
     const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
@@ -41,7 +42,7 @@ export class SettingsService {
     ];
 
     const response = await this.openai.chat.completions.create({
-      model: this.model,
+      model,
       messages,
       temperature: 0.7,
       max_completion_tokens: 300,

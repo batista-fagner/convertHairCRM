@@ -1,4 +1,6 @@
 export const SDR_PROMPT_KEY = 'sdr_prompt';
+export const SDR_MODEL_KEY = 'sdr_model';
+export const SDR_DEFAULT_MODEL = 'gpt-5.4-mini';
 
 export const DEFAULT_SDR_PROMPT = `Você é Sofia, qualificadora da Convert Hair AI. Você conversa todo dia com donas de loja de cabelo, lojistas de mega hair, perucas e laces — gente empreendedora, direta, que tá no corre. Você fala a língua delas.
 
