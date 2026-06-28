@@ -203,7 +203,7 @@ function SdrPromptEditor({ editorHeight }) {
   const restoreDefault = () => setValue(defaultPrompt)
 
   return (
-    <div className="flex flex-col flex-1 min-h-0">
+    <div className="mb-6">
       <div className="flex items-center gap-2 mb-3 shrink-0">
         <Bot className="w-4 h-4 text-violet-600" />
         <p className="font-semibold text-slate-800 text-sm">Prompt da IA SDR (Sofia)</p>
@@ -215,10 +215,10 @@ function SdrPromptEditor({ editorHeight }) {
       </div>
 
       {/* Split layout — responsivo */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 flex-1 min-h-0">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4" style={{ height: '680px' }}>
 
         {/* Editor */}
-        <div className="bg-white rounded-xl border border-slate-200 flex flex-col overflow-hidden min-h-[380px] lg:min-h-0">
+        <div className="bg-white rounded-xl border border-slate-200 flex flex-col overflow-hidden h-full">
           {loading ? (
             <div className="flex items-center justify-center flex-1 text-slate-400">
               <Loader2 className="w-5 h-5 animate-spin" />
@@ -263,7 +263,7 @@ function SdrPromptEditor({ editorHeight }) {
         </div>
 
         {/* Chat */}
-        <div className="min-h-[420px] lg:min-h-0 lg:h-full">
+        <div className="h-full">
           <ChatSimulator />
         </div>
       </div>
@@ -273,15 +273,15 @@ function SdrPromptEditor({ editorHeight }) {
 
 export default function Settings() {
   return (
-    <div className="flex flex-col h-full p-6 gap-6 overflow-y-auto">
-      <div className="shrink-0">
+    <div className="p-6 overflow-y-auto">
+      <div className="mb-6">
         <h2 className="text-lg font-semibold text-slate-800">Configurações</h2>
         <p className="text-sm text-slate-400 mt-0.5">Integrações e configurações da plataforma</p>
       </div>
 
       <SdrPromptEditor />
 
-      <div className="shrink-0">
+      <div>
         <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Integrações</p>
         <div className="space-y-3">
           {integrations.map(({ icon: Icon, label, description, color, status }) => (
