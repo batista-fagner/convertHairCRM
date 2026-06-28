@@ -126,6 +126,9 @@ export class Lead {
   @Column({ name: 'ai_paused', type: 'boolean', default: false })
   aiPaused: boolean;
 
+  @Column({ name: 'followup_sent_at', type: 'timestamp', nullable: true })
+  followupSentAt?: Date | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Settings as SettingsIcon, Key, Webhook, MessageCircle, Share2, Bot, Save, RotateCcw, Loader2, CheckCircle2, Send, Trash2 } from 'lucide-react'
+import { Settings as SettingsIcon, Key, Webhook, MessageCircle, Share2, Bot, Save, RotateCcw, Loader2, CheckCircle2, Send, Trash2, Clock, Sparkles, ToggleLeft, ToggleRight } from 'lucide-react'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3002/api'
 
@@ -332,6 +332,168 @@ function SdrPromptEditor() {
   )
 }
 
+function FollowupConfig() {
+  const [config, setConfig] = useState({ enabled: false, delayMinutes: 60, mode: 'manual', text: '' })
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+
+  useEffect(() => {
+    fetch(`${API}/settings/sdr-followup`)
+      .then(r => r.json())
+      .then(d => setConfig(d))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
+
+  const save = async () => {
+    setSaving(true)
+    setSaved(false)
+    try {
+      await fetch(`${API}/settings/sdr-followup`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config),
+      })
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2500)
+    } catch {}
+    finally { setSaving(false) }
+  }
+
+  const hoursDisplay = config.delayMinutes >= 60
+    ? `${(config.delayMinutes / 60).toFixed(config.delayMinutes % 60 === 0 ? 0 : 1)}h`
+    : `${config.delayMinutes}min`
+
+  if (loading) return (
+    <div className="bg-white rounded-xl border border-slate-200 p-4 mb-6 flex items-center gap-2 text-slate-400">
+      <Loader2 className="w-4 h-4 animate-spin" /> Carregando...
+    </div>
+  )
+
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 p-5 mb-6">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <Clock className="w-4 h-4 text-violet-600" />
+          <p className="font-semibold text-slate-800 text-sm">Follow-up Automático</p>
+          <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${config.enabled ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+            {config.enabled ? 'Ativo' : 'Inativo'}
+          </span>
+        </div>
+        <button
+          onClick={() => setConfig(c => ({ ...c, enabled: !c.enabled }))}
+          className="transition"
+          title={config.enabled ? 'Desativar' : 'Ativar'}
+        >
+          {config.enabled
+            ? <ToggleRight className="w-8 h-8 text-violet-600" />
+            : <ToggleLeft className="w-8 h-8 text-slate-300" />}
+        </button>
+      </div>
+
+      <p className="text-xs text-slate-400 mb-4">
+        Se a IA enviou a última mensagem e o lead não responder no prazo configurado, um follow-up é disparado automaticamente (1x por ciclo). Quando o lead responde, o ciclo reinicia.
+      </p>
+
+      {/* Delay */}
+      <div className="mb-4">
+        <label className="block text-xs font-medium text-slate-600 mb-1.5">Tempo de inatividade</label>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min={1}
+              max={9999}
+              value={config.delayMinutes}
+              onChange={e => setConfig(c => ({ ...c, delayMinutes: Math.max(1, parseInt(e.target.value) || 1) }))}
+              className="w-20 text-sm border border-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-violet-300 text-center"
+            />
+            <span className="text-xs text-slate-500">minutos</span>
+          </div>
+          <span className="text-xs text-slate-400">= {hoursDisplay}</span>
+          <div className="flex gap-1 ml-auto">
+            {[30, 60, 120, 360, 720].map(m => (
+              <button
+                key={m}
+                onClick={() => setConfig(c => ({ ...c, delayMinutes: m }))}
+                className={`text-[10px] px-2 py-1 rounded-md border transition ${config.delayMinutes === m ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-slate-500 border-slate-200 hover:border-violet-300'}`}
+              >
+                {m >= 60 ? `${m / 60}h` : `${m}min`}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Mode */}
+      <div className="mb-4">
+        <label className="block text-xs font-medium text-slate-600 mb-1.5">Tipo de mensagem</label>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setConfig(c => ({ ...c, mode: 'manual' }))}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition ${config.mode === 'manual' ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-slate-600 border-slate-200 hover:border-violet-300'}`}
+          >
+            Texto fixo
+          </button>
+          <button
+            onClick={() => setConfig(c => ({ ...c, mode: 'ai' }))}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition ${config.mode === 'ai' ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-slate-600 border-slate-200 hover:border-violet-300'}`}
+          >
+            <Sparkles className="w-3 h-3" /> IA gera automaticamente
+          </button>
+        </div>
+      </div>
+
+      {/* Message text (only if manual) */}
+      {config.mode === 'manual' && (
+        <div className="mb-4">
+          <label className="block text-xs font-medium text-slate-600 mb-1.5">
+            Mensagem de follow-up
+          </label>
+          <textarea
+            value={config.text}
+            onChange={e => setConfig(c => ({ ...c, text: e.target.value }))}
+            rows={4}
+            placeholder="Ex: Oi! Vi que você não respondeu ainda. Ainda tem interesse em conhecer a Convert Hair AI? 😊"
+            className="w-full text-sm border border-slate-200 rounded-lg p-3 resize-none focus:outline-none focus:ring-2 focus:ring-violet-300"
+          />
+        </div>
+      )}
+
+      {config.mode === 'ai' && (
+        <div className="mb-4 bg-violet-50 rounded-lg p-3 border border-violet-100">
+          <div className="flex items-center gap-1.5 mb-1">
+            <Sparkles className="w-3.5 h-3.5 text-violet-500" />
+            <p className="text-xs font-medium text-violet-700">A Sofia vai gerar</p>
+          </div>
+          <p className="text-xs text-violet-600">
+            A IA analisa toda a conversa até aquele ponto e cria uma mensagem personalizada para reativar o interesse do lead, sem pressão e de forma natural.
+          </p>
+        </div>
+      )}
+
+      {/* Save */}
+      <div className="flex items-center justify-end gap-3">
+        {saved && (
+          <span className="flex items-center gap-1 text-xs text-emerald-600 font-medium">
+            <CheckCircle2 className="w-3.5 h-3.5" /> Salvo
+          </span>
+        )}
+        <button
+          onClick={save}
+          disabled={saving || (config.mode === 'manual' && !config.text.trim() && config.enabled)}
+          className="flex items-center gap-1.5 text-xs font-medium text-white bg-violet-600 hover:bg-violet-700 disabled:opacity-50 px-4 py-2 rounded-lg transition"
+        >
+          {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+          Salvar
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export default function Settings() {
   return (
     <div className="p-6 overflow-y-auto">
@@ -341,6 +503,8 @@ export default function Settings() {
       </div>
 
       <SdrPromptEditor />
+
+      <FollowupConfig />
 
       <div>
         <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Integrações</p>

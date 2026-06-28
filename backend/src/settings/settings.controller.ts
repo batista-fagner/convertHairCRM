@@ -1,6 +1,7 @@
 import { Controller, Get, Put, Post, Body } from '@nestjs/common';
 import { SettingsService } from './settings.service';
 import { SDR_PROMPT_KEY, DEFAULT_SDR_PROMPT, SDR_MODEL_KEY, SDR_DEFAULT_MODEL } from '../sdr/sdr.prompt';
+import { FOLLOWUP_ENABLED_KEY, FOLLOWUP_DELAY_KEY, FOLLOWUP_MODE_KEY, FOLLOWUP_TEXT_KEY } from '../sdr/sdr-followup.service';
 
 @Controller('settings')
 export class SettingsController {
@@ -36,5 +37,32 @@ export class SettingsController {
   @Post('sdr-simulate')
   async simulate(@Body() body: { message: string; history: { role: 'user' | 'assistant'; content: string }[] }) {
     return this.settingsService.simulate(body.message ?? '', body.history ?? []);
+  }
+
+  @Get('sdr-followup')
+  async getFollowup() {
+    const [enabled, delayMinutes, mode, text] = await Promise.all([
+      this.settingsService.get(FOLLOWUP_ENABLED_KEY),
+      this.settingsService.get(FOLLOWUP_DELAY_KEY),
+      this.settingsService.get(FOLLOWUP_MODE_KEY),
+      this.settingsService.get(FOLLOWUP_TEXT_KEY),
+    ]);
+    return {
+      enabled: enabled === 'true',
+      delayMinutes: parseInt(delayMinutes || '60', 10),
+      mode: mode || 'manual',
+      text: text || '',
+    };
+  }
+
+  @Put('sdr-followup')
+  async setFollowup(@Body() body: { enabled: boolean; delayMinutes: number; mode: string; text: string }) {
+    await Promise.all([
+      this.settingsService.set(FOLLOWUP_ENABLED_KEY, body.enabled ? 'true' : 'false'),
+      this.settingsService.set(FOLLOWUP_DELAY_KEY, String(Math.max(1, body.delayMinutes || 60))),
+      this.settingsService.set(FOLLOWUP_MODE_KEY, body.mode === 'ai' ? 'ai' : 'manual'),
+      this.settingsService.set(FOLLOWUP_TEXT_KEY, body.text || ''),
+    ]);
+    return { ok: true };
   }
 }

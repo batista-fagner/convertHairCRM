@@ -181,6 +181,7 @@ export class SdrController {
       waStage: newStage as any,
       temperature: ai.temperature,
       waLastMessageAt: new Date(),
+      followupSentAt: null, // lead respondeu → reseta o ciclo de follow-up
     };
 
     // No handoff, a IA é desativada (switch desliga) — operador assume a conversa
