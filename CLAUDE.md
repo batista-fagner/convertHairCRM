@@ -109,15 +109,82 @@ VITE_WA_URL=https://chat.whatsapp.com/<link-do-grupo>
 
 ---
 
-## 🤖 Sofia — Agente WhatsApp
+## 🤖 Sofia — Agente SDR WhatsApp
 
-**Equivalente ao Efraim** no funnel-platform. Prompt e nome a adaptar em:
-- `backend/src/efraim/efraim.service.ts` — prompt principal
-- `backend/src/efraim/group-join.service.ts` — mensagem de abertura
+**Agente IA de qualificação** via WhatsApp. Conversa natural, coleta dados, qualifica leads e encaminha ao especialista.
 
-**Stages:** `aguardando_nome` → `aguardando_faturamento` → `abertura` → `escuta` → `rapport` → `video` → `fechamento` → `confirmado/perdido` → `encerrado`
+**Webhook:** `POST /api/webhooks/sdr` (instância uazapi separada do Efraim)
 
-**MQL_REVENUES:** `30k-100k`, `100k-300k`, `acima-300k`
+**Stages (Kanban):**
+1. `novo` — lead acabou de chegar, IA faz 1ª pergunta
+2. `atendimento` — lead respondeu (stage=qualificacao), conversa em andamento
+3. `nao-qualificado` — IA determinou fora do perfil (stage=frio)
+4. `qualificado` — lead passou nos critérios (stage=quente), pronto para especialista (MQL marcado)
+5. `ja-fez-prompt`, `ja-apresentado`, `em-negociacao`, `vendeu`, `perdido` — raias do operador
+
+**Fluxo de qualificação (5 perguntas):**
+1. O que a empresa vende (tipo de cabelo)
+2. Tem time de vendas ou é o próprio dono que vende?
+3. Quem toma as decisões (é proprietário/decisor)?
+4. Já usou ou usa alguma IA?
+5. O Instagram da empresa
+
+**Critério de QUALIFICADO:**
+- ✔ Atua no mercado de cabelo
+- ✔ É proprietário ou decisor
+- ✔ Informou o Instagram da empresa
+- ✔ Respondeu **no mínimo 3 das 5 perguntas**
+
+Quando qualificado → `stage=quente` + `handoff=true` → notificação ao operador + MQL event ao Meta
+
+**Prompt:** `backend/src/sdr/sdr.prompt.ts` — `DEFAULT_SDR_PROMPT` (editável em Settings, com chat simulador)
+
+**Modelo de IA:** configurável em Settings (GPT-5.4-mini ou GPT-4.1-mini)
+
+**Desqualificação automática:** stage=frio → `aiPaused=true` (IA para de responder)
+
+**Extração de dados:** IA retorna `instagram` no JSON → salvo no lead, exibido na notificação ao operador
+
+---
+
+## ⏰ Follow-up Automático
+
+**O que faz:** Cron a cada 5 min verifica leads SDR com IA ativada que não responderam há X minutos (configurável).
+
+**Regras:**
+- IA enviou a última mensagem + lead não respondeu há X minutos → dispara 1x
+- Lead responde → `followupSentAt=null` (ciclo reinicia)
+- IA desativada (`aiPaused=true`) → não envia follow-up
+- Stage = encerrado → pula (operador assumiu)
+
+**Modos:**
+- **Texto fixo:** você define a mensagem em Configurações
+- **IA gera:** Sofia analisa histórico e cria mensagem personalizada
+
+**Configurável em Settings → Follow-up Automático:**
+- Toggle ativar/desativar
+- Tempo de inatividade (minutos) — atalhos: 30min, 1h, 2h, 6h, 12h
+- Modo: Texto fixo ou IA gera
+- Textarea pra editar mensagem (se modo fixo)
+
+---
+
+## ⚙️ Settings — Configurações da Sofia
+
+**Página de Configurações** (`/settings` no CRM):
+
+**1. Prompt da IA SDR**
+- Editor de texto grande (680px altura) com textarea
+- Simulador ao lado: chat WhatsApp-style pra testar o prompt em tempo real
+- Botão "Restaurar padrão" → refill textarea com DEFAULT_SDR_PROMPT
+- Botão "Salvar" → persiste no banco
+- Badge "Personalizado" / "Padrão" mostra status
+
+**2. Seletor de Modelo**
+- Dois botões: GPT-5.4 Mini (padrão) | GPT-4.1 Mini
+- Salva automaticamente em Settings
+
+**3. Follow-up Automático** (veja seção acima)
 
 ---
 
@@ -130,17 +197,43 @@ VITE_WA_URL=https://chat.whatsapp.com/<link-do-grupo>
 
 ---
 
-## ⚠️ Pendências
+## ✅ Features Implementadas (2026-06-29)
 
-- [ ] Criar banco Supabase do sócio e preencher `SUPABASE_DATABASE_URL`
-- [ ] Instância uazapi do sócio → preencher `UAZAPI_TOKEN`
-- [ ] Preencher `MQL_NOTIFICATION_PHONE`
-- [ ] Adaptar prompt do Efraim → Sofia (`efraim.service.ts`)
-- [ ] Adaptar nome "Efraim" → "Sofia" nas mensagens (`group-join.service.ts`, `efraim.controller.ts`)
-- [ ] Adaptar `ConvertHairPage` — remover formulário, adicionar redirect automático pro WhatsApp
-- [ ] Deploy Railway — configurar root directory = `backend/`
-- [ ] Deploy Vercel — `ConvertHairPage` com `VITE_API_URL` apontando pro Railway
+**Kanban SDR com 9 raias:**
+- ✅ Novo Lead → Atendimento → Não qualificado / Qualificado → raias do operador
+- ✅ Socket.IO em tempo real (lead:created, lead:updated, lead:handoff)
+- ✅ Drag & drop entre raias (operador move manualmente)
+- ✅ Modal de conversa com histórico + switch pausar IA
+
+**Sofia — Agente de Qualificação:**
+- ✅ 5 perguntas obrigatórias antes de encaminhar
+- ✅ Prompt customizável em Settings + chat simulador
+- ✅ Seletor de modelo (GPT-5.4 Mini / GPT-4.1 Mini)
+- ✅ Extração de Instagram durante conversa
+- ✅ Desqualificação automática (stage=frio → IA desliga)
+- ✅ Handoff com notificação WhatsApp ao operador
+
+**Follow-up Automático:**
+- ✅ Cron a cada 5 min
+- ✅ Modos: texto fixo ou IA gera personalizado
+- ✅ Tempo configurável + atalhos rápidos
+- ✅ Respeita IA desativada (`aiPaused=true`)
+
+**Frontend:**
+- ✅ Login seguro (SHA-256 + sessionStorage)
+- ✅ Settings preenche tela toda + responsivo
+- ✅ Chat simulador com scroll interno
+- ✅ `vercel.json` para SPA routing (F5 funciona)
 
 ---
 
-**Última atualização:** 2026-06-21
+## ⚠️ Pendências
+
+- [ ] Configurar instância uazapi separada do SDR (`SDR_UAZAPI_TOKEN`, `SDR_UAZAPI_BASE_URL`)
+- [ ] Preencher `SDR_OPERATOR_PHONE` (número do sócio para notificações)
+- [ ] Definir prompt final da Sofia em Settings (baseado no padrão fornecido)
+- [ ] Testar end-to-end: lead entra → fluxo completo → MQL
+
+---
+
+**Última atualização:** 2026-06-29
