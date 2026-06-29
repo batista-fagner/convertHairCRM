@@ -3,7 +3,7 @@ import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateCol
 export type LeadClassification = 'otimo' | 'bom' | 'frio';
 export type LeadStatus = 'novo' | 'contatado' | 'convertido' | 'perdido';
 export type WaStage = 'aguardando_nome' | 'aguardando_faturamento' | 'abertura' | 'escuta' | 'rapport' | 'video' | 'fechamento' | 'confirmado' | 'perdido' | 'encerrado';
-export type KanbanStage = 'novo' | 'nao-qualificado' | 'qualificado' | 'ja-fez-prompt' | 'ja-apresentado' | 'em-negociacao' | 'vendeu' | 'perdido';
+export type KanbanStage = 'novo' | 'atendimento' | 'nao-qualificado' | 'qualificado' | 'ja-fez-prompt' | 'ja-apresentado' | 'em-negociacao' | 'vendeu' | 'perdido';
 export type LeadTemperature = 'quente' | 'morno' | 'frio';
 export type AgentMode = 'efraim' | 'sdr';
 

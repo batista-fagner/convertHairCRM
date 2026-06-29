@@ -1,24 +1,26 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { DndContext, DragOverlay, useDraggable, useDroppable, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { io } from 'socket.io-client'
-import { Flame, Snowflake, UserPlus, XCircle, Phone, Mail, UserCheck, Loader2, X, MessageCircle, PauseCircle, Bot, MoreVertical, Pencil, Trash2, Play, Eye, Handshake, Trophy } from 'lucide-react'
+import { Flame, Snowflake, UserPlus, XCircle, Phone, Mail, UserCheck, Loader2, X, MessageCircle, PauseCircle, Bot, MoreVertical, Pencil, Trash2, Play, Eye, Handshake, Trophy, HeadphonesIcon } from 'lucide-react'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3002/api'
 const SOCKET_URL = API.replace(/\/api\/?$/, '') || 'http://localhost:3002'
 
 const COLUMNS = [
-  { id: 'novo',            title: 'Novo Lead',       icon: UserPlus,   accent: 'slate',   dot: 'bg-slate-400' },
-  { id: 'nao-qualificado', title: 'Não qualificado', icon: Snowflake,  accent: 'cyan',    dot: 'bg-cyan-400' },
-  { id: 'qualificado',     title: 'Qualificado',     icon: Flame,      accent: 'rose',    dot: 'bg-rose-500' },
-  { id: 'ja-fez-prompt',   title: 'Já fez prompt',   icon: Play,       accent: 'violet',  dot: 'bg-violet-400' },
-  { id: 'ja-apresentado',  title: 'Já apresentado',  icon: Eye,        accent: 'blue',    dot: 'bg-blue-400' },
-  { id: 'em-negociacao',   title: 'Em negociação',   icon: Handshake,  accent: 'amber',   dot: 'bg-amber-400' },
-  { id: 'vendeu',          title: 'Vendeu',          icon: Trophy,     accent: 'emerald', dot: 'bg-emerald-500' },
-  { id: 'perdido',         title: 'Lead perdido',    icon: XCircle,    accent: 'red',     dot: 'bg-red-400' },
+  { id: 'novo',            title: 'Novo Lead',       icon: UserPlus,        accent: 'slate',   dot: 'bg-slate-400' },
+  { id: 'atendimento',     title: 'Atendimento',     icon: HeadphonesIcon,  accent: 'indigo',  dot: 'bg-indigo-400' },
+  { id: 'nao-qualificado', title: 'Não qualificado', icon: Snowflake,       accent: 'cyan',    dot: 'bg-cyan-400' },
+  { id: 'qualificado',     title: 'Qualificado',     icon: Flame,           accent: 'rose',    dot: 'bg-rose-500' },
+  { id: 'ja-fez-prompt',   title: 'Já fez prompt',   icon: Play,            accent: 'violet',  dot: 'bg-violet-400' },
+  { id: 'ja-apresentado',  title: 'Já apresentado',  icon: Eye,             accent: 'blue',    dot: 'bg-blue-400' },
+  { id: 'em-negociacao',   title: 'Em negociação',   icon: Handshake,       accent: 'amber',   dot: 'bg-amber-400' },
+  { id: 'vendeu',          title: 'Vendeu',           icon: Trophy,          accent: 'emerald', dot: 'bg-emerald-500' },
+  { id: 'perdido',         title: 'Lead perdido',    icon: XCircle,         accent: 'red',     dot: 'bg-red-400' },
 ]
 
 const COLUMN_STYLES = {
   slate:   'bg-slate-50 border-slate-200',
+  indigo:  'bg-indigo-50/60 border-indigo-200',
   cyan:    'bg-cyan-50/60 border-cyan-200',
   rose:    'bg-rose-50/60 border-rose-200',
   violet:  'bg-violet-50/60 border-violet-200',
@@ -414,7 +416,7 @@ function ConfirmDeleteModal({ lead, onClose, onConfirm }) {
 }
 
 export default function KanbanLeads() {
-  const [board, setBoard] = useState({ novo: [], 'nao-qualificado': [], qualificado: [], 'ja-fez-prompt': [], 'ja-apresentado': [], 'em-negociacao': [], vendeu: [], perdido: [] })
+  const [board, setBoard] = useState({ novo: [], atendimento: [], 'nao-qualificado': [], qualificado: [], 'ja-fez-prompt': [], 'ja-apresentado': [], 'em-negociacao': [], vendeu: [], perdido: [] })
   const [loading, setLoading] = useState(true)
   const [connected, setConnected] = useState(false)
   const [activeId, setActiveId] = useState(null)
@@ -518,6 +520,7 @@ export default function KanbanLeads() {
         if (!active) return
         setBoard({
           novo: data.novo || [],
+          atendimento: data.atendimento || [],
           'nao-qualificado': data['nao-qualificado'] || [],
           qualificado: data.qualificado || [],
           'ja-fez-prompt': data['ja-fez-prompt'] || [],

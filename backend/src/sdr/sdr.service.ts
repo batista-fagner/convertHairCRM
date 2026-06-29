@@ -52,7 +52,8 @@ export function deriveKanbanStage(
   if (status === 'perdido' || stage === 'perdido') return 'perdido';
   if (stage === 'abertura') return 'novo';
   if (stage === 'quente' || temperature === 'quente' || isMql) return 'qualificado';
-  if (stage === 'frio' || temperature === 'frio' || temperature === 'morno') return 'nao-qualificado';
+  if (stage === 'frio') return 'nao-qualificado';
+  if (stage === 'qualificacao') return 'atendimento';
   return current || 'novo';
 }
 
