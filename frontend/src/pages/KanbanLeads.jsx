@@ -11,6 +11,7 @@ const COLUMNS = [
   { id: 'atendimento',     title: 'Atendimento',     icon: HeadphonesIcon,  accent: 'indigo',  dot: 'bg-indigo-400' },
   { id: 'nao-qualificado', title: 'Não qualificado', icon: Snowflake,       accent: 'cyan',    dot: 'bg-cyan-400' },
   { id: 'qualificado',     title: 'Qualificado',     icon: Flame,           accent: 'rose',    dot: 'bg-rose-500' },
+  { id: 'contactado',      title: 'Contactado',      icon: Phone,           accent: 'teal',    dot: 'bg-teal-400' },
   { id: 'ja-fez-prompt',   title: 'Já fez prompt',   icon: Play,            accent: 'violet',  dot: 'bg-violet-400' },
   { id: 'ja-apresentado',  title: 'Já apresentado',  icon: Eye,             accent: 'blue',    dot: 'bg-blue-400' },
   { id: 'em-negociacao',   title: 'Em negociação',   icon: Handshake,       accent: 'amber',   dot: 'bg-amber-400' },
@@ -26,6 +27,7 @@ const COLUMN_STYLES = {
   violet:  'bg-violet-50/60 border-violet-200',
   blue:    'bg-blue-50/60 border-blue-200',
   amber:   'bg-amber-50/60 border-amber-200',
+  teal:    'bg-teal-50/60 border-teal-200',
   emerald: 'bg-emerald-50/60 border-emerald-200',
   red:     'bg-red-50/60 border-red-200',
 }
@@ -416,7 +418,7 @@ function ConfirmDeleteModal({ lead, onClose, onConfirm }) {
 }
 
 export default function KanbanLeads() {
-  const [board, setBoard] = useState({ novo: [], atendimento: [], 'nao-qualificado': [], qualificado: [], 'ja-fez-prompt': [], 'ja-apresentado': [], 'em-negociacao': [], vendeu: [], perdido: [] })
+  const [board, setBoard] = useState({ novo: [], atendimento: [], 'nao-qualificado': [], qualificado: [], contactado: [], 'ja-fez-prompt': [], 'ja-apresentado': [], 'em-negociacao': [], vendeu: [], perdido: [] })
   const [loading, setLoading] = useState(true)
   const [connected, setConnected] = useState(false)
   const [activeId, setActiveId] = useState(null)
@@ -523,6 +525,7 @@ export default function KanbanLeads() {
           atendimento: data.atendimento || [],
           'nao-qualificado': data['nao-qualificado'] || [],
           qualificado: data.qualificado || [],
+          contactado: data.contactado || [],
           'ja-fez-prompt': data['ja-fez-prompt'] || [],
           'ja-apresentado': data['ja-apresentado'] || [],
           'em-negociacao': data['em-negociacao'] || [],
