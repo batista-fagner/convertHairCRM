@@ -52,12 +52,12 @@ export class SdrFollowupService {
 
     const cutoff = new Date(Date.now() - delayMinutes * 60 * 1000);
 
-    // Leads SDR ativos, com última atividade antes do cutoff
+    // Leads SDR: IA ativada + última atividade antes do cutoff
     const candidates = await this.leadsRepo
       .createQueryBuilder('lead')
       .where('lead.agent_mode = :mode', { mode: 'sdr' })
       .andWhere('lead.ai_paused = false')
-      .andWhere("lead.wa_stage != 'encerrado' OR lead.wa_stage IS NULL")
+      .andWhere('lead.wa_stage != :encerrado', { encerrado: 'encerrado' })
       .andWhere('lead.wa_last_message_at IS NOT NULL')
       .andWhere('lead.wa_last_message_at < :cutoff', { cutoff })
       .andWhere('(lead.followup_sent_at IS NULL OR lead.followup_sent_at < :cutoff)', { cutoff })
