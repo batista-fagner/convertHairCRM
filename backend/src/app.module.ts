@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { ScheduleModule } from '@nestjs/schedule';
 import { Lead } from './common/entities/lead.entity';
 import { Campaign } from './common/entities/campaign.entity';
 import { Form } from './common/entities/form.entity';
@@ -24,6 +25,7 @@ import { SettingsModule } from './settings/settings.module';
       isGlobal: true,
       envFilePath: '.env',
     }),
+    ScheduleModule.forRoot(),
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
@@ -33,6 +35,7 @@ import { SettingsModule } from './settings/settings.module';
         entities: [Lead, Campaign, Form, InstagramAutomation, IgConversation, Setting],
         synchronize: true,
         logging: false,
+        timezone: 'Z',
       }),
     }),
     LeadsModule,

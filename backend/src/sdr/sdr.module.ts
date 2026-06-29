@@ -1,6 +1,5 @@
 import { Module } from '@nestjs/common';
 import { HttpModule } from '@nestjs/axios';
-import { ScheduleModule } from '@nestjs/schedule';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { SdrController } from './sdr.controller';
 import { SdrService } from './sdr.service';
@@ -14,7 +13,6 @@ import { SettingsModule } from '../settings/settings.module';
 @Module({
   imports: [
     HttpModule,
-    ScheduleModule.forRoot(),
     TypeOrmModule.forFeature([Lead]),
     LeadsModule,
     FacebookModule,
