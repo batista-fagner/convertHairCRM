@@ -58,7 +58,9 @@ export class SdrFollowupService {
 
     const cutoff = new Date(Date.now() - delayMinutes * 60 * 1000);
 
-    // Leads SDR: IA ativada + última atividade antes do cutoff
+    // Leads SDR: IA ativada + última atividade antes do cutoff + NUNCA recebeu follow-up
+    // (followup_sent_at IS NULL garante 1x; o reset acontece quando o lead responde
+    //  ou quando o operador reconfigura o follow-up)
     const candidates = await this.leadsRepo
       .createQueryBuilder('lead')
       .where('lead.agent_mode = :mode', { mode: 'sdr' })
@@ -66,7 +68,7 @@ export class SdrFollowupService {
       .andWhere('lead.wa_stage != :encerrado', { encerrado: 'encerrado' })
       .andWhere('lead.wa_last_message_at IS NOT NULL')
       .andWhere('lead.wa_last_message_at < :cutoff', { cutoff })
-      .andWhere('(lead.followup_sent_at IS NULL OR lead.followup_sent_at < :cutoff)', { cutoff })
+      .andWhere('lead.followup_sent_at IS NULL')
       .getMany();
 
     let sent = 0;
@@ -94,7 +96,6 @@ export class SdrFollowupService {
     const delayMinutes = parseInt((await this.settings.get(FOLLOWUP_DELAY_KEY)) || '60', 10);
     const mode = (await this.settings.get(FOLLOWUP_MODE_KEY)) || 'manual';
     const delayMs = delayMinutes * 60 * 1000;
-    const cutoff = new Date(Date.now() - delayMs);
 
     // Conexão WhatsApp (instância SDR)
     let whatsappConnected: boolean | null = null;
@@ -121,14 +122,14 @@ export class SdrFollowupService {
       .take(20)
       .getMany();
 
-    // Leads aguardando follow-up (IA ativa, última msg da IA, ainda no prazo)
+    // Leads aguardando follow-up (IA ativa, última msg da IA, ainda não recebeu)
     const activeLeads = await this.leadsRepo
       .createQueryBuilder('lead')
       .where('lead.agent_mode = :mode', { mode: 'sdr' })
       .andWhere('lead.ai_paused = false')
       .andWhere('lead.wa_stage != :encerrado', { encerrado: 'encerrado' })
       .andWhere('lead.wa_last_message_at IS NOT NULL')
-      .andWhere('(lead.followup_sent_at IS NULL OR lead.followup_sent_at < :cutoff)', { cutoff })
+      .andWhere('lead.followup_sent_at IS NULL')
       .orderBy('lead.wa_last_message_at', 'ASC')
       .getMany();
 

@@ -56,13 +56,21 @@ export class SettingsController {
   }
 
   @Put('sdr-followup')
-  async setFollowup(@Body() body: { enabled: boolean; delayMinutes: number; mode: string; text: string }) {
+  async setFollowup(
+    @Body() body: { enabled: boolean; delayMinutes: number; mode: string; text: string; resetCycle?: boolean },
+  ) {
     await Promise.all([
       this.settingsService.set(FOLLOWUP_ENABLED_KEY, body.enabled ? 'true' : 'false'),
       this.settingsService.set(FOLLOWUP_DELAY_KEY, String(Math.max(1, body.delayMinutes || 60))),
       this.settingsService.set(FOLLOWUP_MODE_KEY, body.mode === 'ai' ? 'ai' : 'manual'),
       this.settingsService.set(FOLLOWUP_TEXT_KEY, body.text || ''),
     ]);
-    return { ok: true };
+
+    // Se o operador pediu novo ciclo, libera os leads que já receberam follow-up
+    let resetCount = 0;
+    if (body.resetCycle && body.enabled) {
+      resetCount = await this.settingsService.resetFollowupFlags();
+    }
+    return { ok: true, resetCount };
   }
 }

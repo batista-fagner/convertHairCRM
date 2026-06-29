@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import OpenAI from 'openai';
 import { Setting } from './setting.entity';
+import { Lead } from '../common/entities/lead.entity';
 import { SDR_PROMPT_KEY, DEFAULT_SDR_PROMPT, SDR_JSON_FORMAT, SDR_MODEL_KEY, SDR_DEFAULT_MODEL } from '../sdr/sdr.prompt';
 
 @Injectable()
@@ -14,10 +15,30 @@ export class SettingsService {
   constructor(
     @InjectRepository(Setting)
     private settingsRepo: Repository<Setting>,
+    @InjectRepository(Lead)
+    private leadsRepo: Repository<Lead>,
     private config: ConfigService,
   ) {
     this.openai = new OpenAI({ apiKey: config.get('OPENAI_API_KEY') });
     this.model = config.get('SDR_OPENAI_MODEL') || 'gpt-5.4-mini';
+  }
+
+  /**
+   * Limpa o followup_sent_at dos leads SDR ativos para permitir um novo ciclo
+   * de follow-up. Chamado quando o operador reconfigura (ex.: muda 1h → 12h),
+   * permitindo um segundo follow-up para quem ainda não respondeu.
+   */
+  async resetFollowupFlags(): Promise<number> {
+    const res = await this.leadsRepo
+      .createQueryBuilder()
+      .update(Lead)
+      .set({ followupSentAt: null })
+      .where('agent_mode = :mode', { mode: 'sdr' })
+      .andWhere('ai_paused = false')
+      .andWhere("wa_stage != 'encerrado'")
+      .andWhere('followup_sent_at IS NOT NULL')
+      .execute();
+    return res.affected ?? 0;
   }
 
   async get(key: string): Promise<string | null> {

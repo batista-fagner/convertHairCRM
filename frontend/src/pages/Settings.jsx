@@ -334,9 +334,11 @@ function SdrPromptEditor() {
 
 function FollowupConfig() {
   const [config, setConfig] = useState({ enabled: false, delayMinutes: 60, mode: 'manual', text: '' })
+  const [resetCycle, setResetCycle] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [resetMsg, setResetMsg] = useState('')
 
   useEffect(() => {
     fetch(`${API}/settings/sdr-followup`)
@@ -349,14 +351,18 @@ function FollowupConfig() {
   const save = async () => {
     setSaving(true)
     setSaved(false)
+    setResetMsg('')
     try {
-      await fetch(`${API}/settings/sdr-followup`, {
+      const res = await fetch(`${API}/settings/sdr-followup`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(config),
+        body: JSON.stringify({ ...config, resetCycle }),
       })
+      const d = await res.json()
       setSaved(true)
-      setTimeout(() => setSaved(false), 2500)
+      if (resetCycle && d.resetCount > 0) setResetMsg(`${d.resetCount} lead(s) liberados para novo follow-up`)
+      setResetCycle(false)
+      setTimeout(() => { setSaved(false); setResetMsg('') }, 4000)
     } catch {}
     finally { setSaving(false) }
   }
@@ -474,8 +480,24 @@ function FollowupConfig() {
         </div>
       )}
 
+      {/* Novo ciclo */}
+      <label className="flex items-start gap-2 mb-3 cursor-pointer bg-amber-50/60 border border-amber-100 rounded-lg p-3">
+        <input
+          type="checkbox"
+          checked={resetCycle}
+          onChange={e => setResetCycle(e.target.checked)}
+          className="mt-0.5 accent-violet-600"
+        />
+        <span className="text-[11px] text-slate-600">
+          <span className="font-medium text-slate-700">Disparar novo ciclo</span> — reenvia para os leads que já receberam follow-up e ainda não responderam (respeitando o novo tempo). Marque ao reconfigurar para um 2º follow-up.
+        </span>
+      </label>
+
       {/* Save */}
       <div className="flex items-center justify-end gap-3">
+        {resetMsg && (
+          <span className="text-xs text-amber-600 font-medium">{resetMsg}</span>
+        )}
         {saved && (
           <span className="flex items-center gap-1 text-xs text-emerald-600 font-medium">
             <CheckCircle2 className="w-3.5 h-3.5" /> Salvo
