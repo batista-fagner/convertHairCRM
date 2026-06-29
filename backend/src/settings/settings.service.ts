@@ -25,6 +25,10 @@ export class SettingsService {
     return row?.value ?? null;
   }
 
+  async getRow(key: string): Promise<Setting | null> {
+    return this.settingsRepo.findOne({ where: { key } });
+  }
+
   async set(key: string, value: string): Promise<Setting> {
     await this.settingsRepo.upsert({ key, value }, ['key']);
     return this.settingsRepo.findOneOrFail({ where: { key } });

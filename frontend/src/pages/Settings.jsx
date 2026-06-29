@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Settings as SettingsIcon, Key, Webhook, MessageCircle, Share2, Bot, Save, RotateCcw, Loader2, CheckCircle2, Send, Trash2, Clock, Sparkles, ToggleLeft, ToggleRight } from 'lucide-react'
+import { Settings as SettingsIcon, Key, Webhook, MessageCircle, Share2, Bot, Save, RotateCcw, Loader2, CheckCircle2, Send, Trash2, Clock, Sparkles, ToggleLeft, ToggleRight, Wifi, WifiOff, Timer, RefreshCw, XCircle, Activity } from 'lucide-react'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3002/api'
 
@@ -494,6 +494,179 @@ function FollowupConfig() {
   )
 }
 
+// Helpers de tempo (timestamps vêm em UTC, JS converte pro fuso local)
+function timeAgo(date, now) {
+  if (!date) return '—'
+  const diff = Math.floor((now - new Date(date).getTime()) / 1000)
+  if (diff < 0) return 'agora'
+  if (diff < 60) return `há ${diff}s`
+  if (diff < 3600) return `há ${Math.floor(diff / 60)}min`
+  if (diff < 86400) return `há ${Math.floor(diff / 3600)}h`
+  return `há ${Math.floor(diff / 86400)}d`
+}
+
+function countdown(dueAt, now) {
+  const ms = new Date(dueAt).getTime() - now
+  if (ms <= 0) return { text: 'no próximo ciclo', overdue: true }
+  const s = Math.floor(ms / 1000)
+  if (s < 3600) {
+    const mm = String(Math.floor(s / 60)).padStart(2, '0')
+    const ss = String(s % 60).padStart(2, '0')
+    return { text: `${mm}:${ss}`, overdue: false }
+  }
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  return { text: `${h}h ${m}min`, overdue: false }
+}
+
+function fmtDateTime(date) {
+  if (!date) return '—'
+  return new Date(date).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+}
+
+function firstName(name) {
+  return (name || 'Lead').split(' ')[0]
+}
+
+function FollowupStatus() {
+  const [status, setStatus] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [now, setNow] = useState(Date.now())
+
+  const fetchStatus = () => {
+    fetch(`${API}/followup/status`)
+      .then(r => r.json())
+      .then(d => setStatus(d))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }
+
+  useEffect(() => {
+    fetchStatus()
+    const refetch = setInterval(fetchStatus, 15000) // recarrega dados do servidor
+    const tick = setInterval(() => setNow(Date.now()), 1000) // contador ao vivo
+    return () => { clearInterval(refetch); clearInterval(tick) }
+  }, [])
+
+  if (loading) return (
+    <div className="bg-white rounded-xl border border-slate-200 p-4 mb-6 flex items-center gap-2 text-slate-400">
+      <Loader2 className="w-4 h-4 animate-spin" /> Carregando status...
+    </div>
+  )
+
+  if (!status) return null
+
+  const wa = status.whatsappConnected
+
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 p-5 mb-6">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <Activity className="w-4 h-4 text-violet-600" />
+          <p className="font-semibold text-slate-800 text-sm">Status do Follow-up</p>
+        </div>
+        <button onClick={fetchStatus} className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-violet-600 transition" title="Atualizar agora">
+          <RefreshCw className="w-3.5 h-3.5" /> Atualizar
+        </button>
+      </div>
+
+      {/* Cards de resumo */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+        {/* WhatsApp */}
+        <div className={`rounded-lg p-3 border ${wa === false ? 'bg-red-50 border-red-200' : wa ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-50 border-slate-200'}`}>
+          <div className="flex items-center gap-1.5 mb-1">
+            {wa ? <Wifi className="w-3.5 h-3.5 text-emerald-600" /> : <WifiOff className="w-3.5 h-3.5 text-red-500" />}
+            <span className="text-[10px] font-medium text-slate-500 uppercase">WhatsApp</span>
+          </div>
+          <p className={`text-sm font-semibold ${wa === false ? 'text-red-600' : wa ? 'text-emerald-700' : 'text-slate-500'}`}>
+            {wa === null ? 'Sem token' : wa ? 'Conectado' : 'Desconectado'}
+          </p>
+          {status.whatsappName && <p className="text-[10px] text-slate-400 truncate">{status.whatsappName}</p>}
+        </div>
+
+        {/* Estado */}
+        <div className={`rounded-lg p-3 border ${status.enabled ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-50 border-slate-200'}`}>
+          <div className="flex items-center gap-1.5 mb-1">
+            <Clock className="w-3.5 h-3.5 text-slate-500" />
+            <span className="text-[10px] font-medium text-slate-500 uppercase">Follow-up</span>
+          </div>
+          <p className={`text-sm font-semibold ${status.enabled ? 'text-emerald-700' : 'text-slate-500'}`}>
+            {status.enabled ? 'Ativo' : 'Inativo'}
+          </p>
+          <p className="text-[10px] text-slate-400">desde {fmtDateTime(status.activatedAt)}</p>
+        </div>
+
+        {/* Última verificação */}
+        <div className="rounded-lg p-3 border bg-slate-50 border-slate-200">
+          <div className="flex items-center gap-1.5 mb-1">
+            <RefreshCw className="w-3.5 h-3.5 text-slate-500" />
+            <span className="text-[10px] font-medium text-slate-500 uppercase">Última checagem</span>
+          </div>
+          <p className="text-sm font-semibold text-slate-700">{timeAgo(status.lastRunAt, now)}</p>
+          <p className="text-[10px] text-slate-400">verifica a cada 5 min</p>
+        </div>
+
+        {/* Enviados */}
+        <div className="rounded-lg p-3 border bg-violet-50 border-violet-200">
+          <div className="flex items-center gap-1.5 mb-1">
+            <Send className="w-3.5 h-3.5 text-violet-600" />
+            <span className="text-[10px] font-medium text-slate-500 uppercase">Enviados</span>
+          </div>
+          <p className="text-sm font-semibold text-violet-700">{status.sent.length}</p>
+          <p className="text-[10px] text-slate-400">total de follow-ups</p>
+        </div>
+      </div>
+
+      {/* Aguardando — contador ao vivo */}
+      <div className="mb-4">
+        <p className="text-xs font-semibold text-slate-600 mb-2 flex items-center gap-1.5">
+          <Timer className="w-3.5 h-3.5 text-amber-500" /> Aguardando follow-up ({status.waiting.length})
+        </p>
+        {status.waiting.length === 0 ? (
+          <p className="text-[11px] text-slate-400 bg-slate-50 rounded-lg p-3 text-center">
+            Nenhum lead na fila. Quando a IA mandar a última mensagem e o lead ficar em silêncio, ele aparece aqui com o contador.
+          </p>
+        ) : (
+          <div className="space-y-1.5">
+            {status.waiting.map(l => {
+              const cd = countdown(l.dueAt, now)
+              return (
+                <div key={l.id} className="flex items-center justify-between bg-amber-50/60 border border-amber-100 rounded-lg px-3 py-2">
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium text-slate-700 truncate">{firstName(l.name)}</p>
+                    <p className="text-[10px] text-slate-400">última msg {timeAgo(l.waLastMessageAt, now)}</p>
+                  </div>
+                  <span className={`text-xs font-mono font-semibold tabular-nums px-2 py-1 rounded-md ${cd.overdue ? 'bg-violet-100 text-violet-700' : 'bg-white text-amber-700 border border-amber-200'}`}>
+                    {cd.overdue ? cd.text : `⏱ ${cd.text}`}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Enviados — lista */}
+      {status.sent.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold text-slate-600 mb-2 flex items-center gap-1.5">
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> Follow-ups enviados
+          </p>
+          <div className="space-y-1.5 max-h-48 overflow-y-auto">
+            {status.sent.map(l => (
+              <div key={l.id} className="flex items-center justify-between bg-emerald-50/50 border border-emerald-100 rounded-lg px-3 py-2">
+                <p className="text-xs font-medium text-slate-700 truncate">{firstName(l.name)}</p>
+                <span className="text-[10px] text-emerald-700 font-medium">{fmtDateTime(l.followupSentAt)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function Settings() {
   return (
     <div className="p-6 overflow-y-auto">
@@ -505,6 +678,8 @@ export default function Settings() {
       <SdrPromptEditor />
 
       <FollowupConfig />
+
+      <FollowupStatus />
 
       <div>
         <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Integrações</p>

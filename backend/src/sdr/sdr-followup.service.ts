@@ -1,10 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { Cron } from '@nestjs/schedule';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, IsNull, LessThan } from 'typeorm';
+import { Repository } from 'typeorm';
 import OpenAI from 'openai';
 import { Lead } from '../common/entities/lead.entity';
 import { SettingsService } from '../settings/settings.service';
@@ -24,6 +24,10 @@ export class SdrFollowupService {
   private readonly uazapiBaseUrl: string;
   private readonly uazapiToken: string;
 
+  // Telemetria do cron (exposta em getStatus para o painel)
+  private lastRunAt: Date | null = null;
+  private lastSentCount = 0;
+
   constructor(
     @InjectRepository(Lead)
     private leadsRepo: Repository<Lead>,
@@ -38,6 +42,8 @@ export class SdrFollowupService {
 
   @Cron('*/5 * * * *')
   async checkFollowups() {
+    this.lastRunAt = new Date();
+
     const enabled = (await this.settings.get(FOLLOWUP_ENABLED_KEY)) === 'true';
     if (!enabled) return;
 
@@ -63,6 +69,7 @@ export class SdrFollowupService {
       .andWhere('(lead.followup_sent_at IS NULL OR lead.followup_sent_at < :cutoff)', { cutoff })
       .getMany();
 
+    let sent = 0;
     for (const lead of candidates) {
       if (!this.lastMessageWasFromAI(lead)) continue;
 
@@ -75,7 +82,86 @@ export class SdrFollowupService {
       }
 
       await this.sendFollowup(lead, message);
+      sent++;
     }
+    this.lastSentCount = sent;
+  }
+
+  /** Status do follow-up para o painel de Configurações. */
+  async getStatus() {
+    const enabledRow = await this.settings.getRow(FOLLOWUP_ENABLED_KEY);
+    const enabled = enabledRow?.value === 'true';
+    const delayMinutes = parseInt((await this.settings.get(FOLLOWUP_DELAY_KEY)) || '60', 10);
+    const mode = (await this.settings.get(FOLLOWUP_MODE_KEY)) || 'manual';
+    const delayMs = delayMinutes * 60 * 1000;
+    const cutoff = new Date(Date.now() - delayMs);
+
+    // Conexão WhatsApp (instância SDR)
+    let whatsappConnected: boolean | null = null;
+    let whatsappName: string | null = null;
+    if (this.uazapiToken) {
+      try {
+        const res = await firstValueFrom(
+          this.http.get(`${this.uazapiBaseUrl}/instance/status`, { headers: { token: this.uazapiToken } }),
+        );
+        const data = res.data as any;
+        whatsappConnected = !!data?.status?.connected;
+        whatsappName = data?.instance?.name ?? null;
+      } catch {
+        whatsappConnected = false;
+      }
+    }
+
+    // Follow-ups já enviados (últimos 20)
+    const sentLeads = await this.leadsRepo
+      .createQueryBuilder('lead')
+      .where('lead.agent_mode = :mode', { mode: 'sdr' })
+      .andWhere('lead.followup_sent_at IS NOT NULL')
+      .orderBy('lead.followup_sent_at', 'DESC')
+      .take(20)
+      .getMany();
+
+    // Leads aguardando follow-up (IA ativa, última msg da IA, ainda no prazo)
+    const activeLeads = await this.leadsRepo
+      .createQueryBuilder('lead')
+      .where('lead.agent_mode = :mode', { mode: 'sdr' })
+      .andWhere('lead.ai_paused = false')
+      .andWhere('lead.wa_stage != :encerrado', { encerrado: 'encerrado' })
+      .andWhere('lead.wa_last_message_at IS NOT NULL')
+      .andWhere('(lead.followup_sent_at IS NULL OR lead.followup_sent_at < :cutoff)', { cutoff })
+      .orderBy('lead.wa_last_message_at', 'ASC')
+      .getMany();
+
+    const waiting = activeLeads
+      .filter((l) => this.lastMessageWasFromAI(l))
+      .map((l) => ({
+        id: l.id,
+        name: l.name,
+        phone: l.phone,
+        kanbanStage: l.kanbanStage,
+        waLastMessageAt: l.waLastMessageAt,
+        // Quando o follow-up deve disparar
+        dueAt: new Date(new Date(l.waLastMessageAt!).getTime() + delayMs),
+      }));
+
+    return {
+      enabled,
+      delayMinutes,
+      mode,
+      activatedAt: enabledRow?.updatedAt ?? null,
+      lastRunAt: this.lastRunAt,
+      lastSentCount: this.lastSentCount,
+      whatsappConnected,
+      whatsappName,
+      sent: sentLeads.map((l) => ({
+        id: l.id,
+        name: l.name,
+        phone: l.phone,
+        kanbanStage: l.kanbanStage,
+        followupSentAt: l.followupSentAt,
+      })),
+      waiting,
+    };
   }
 
   private lastMessageWasFromAI(lead: Lead): boolean {
