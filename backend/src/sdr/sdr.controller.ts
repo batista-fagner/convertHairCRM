@@ -184,8 +184,13 @@ export class SdrController {
       followupSentAt: null, // lead respondeu → reseta o ciclo de follow-up
     };
 
-    // No handoff, a IA é desativada (switch desliga) — operador assume a conversa
+    // Handoff → operador assume, IA desliga
     if (ai.handoff) {
+      updateData.aiPaused = true;
+    }
+
+    // Não qualificado (frio) → IA desliga automaticamente
+    if (ai.stage === 'frio') {
       updateData.aiPaused = true;
     }
 
