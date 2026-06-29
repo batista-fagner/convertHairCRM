@@ -126,6 +126,9 @@ export class Lead {
   @Column({ name: 'ai_paused', type: 'boolean', default: false })
   aiPaused: boolean;
 
+  @Column({ name: 'assigned_to', type: 'varchar', nullable: true })
+  assignedTo?: string | null;
+
   @Column({ name: 'followup_sent_at', type: 'timestamp', nullable: true })
   followupSentAt?: Date | null;
 

@@ -52,9 +52,10 @@ export class LeadsController {
   }
 
   @Patch(':id')
-  async edit(@Param('id') id: string, @Body() body: { name?: string }) {
-    const data: { name?: string } = {};
+  async edit(@Param('id') id: string, @Body() body: { name?: string; assignedTo?: string | null }) {
+    const data: { name?: string; assignedTo?: string | null } = {};
     if (typeof body.name === 'string' && body.name.trim()) data.name = body.name.trim();
+    if ('assignedTo' in body) data.assignedTo = body.assignedTo?.trim() || null;
     const lead = await this.leadsService.update(id, data);
     this.realtime.emitLeadUpdated(lead);
     return lead;

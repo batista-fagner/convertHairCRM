@@ -128,6 +128,11 @@ function CardContent({ lead, overlay = false }) {
             <UserCheck className="w-3 h-3" /> Passar pro closer
           </span>
         )}
+        {lead.assignedTo && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700 font-medium">
+            👤 {lead.assignedTo}
+          </span>
+        )}
       </div>
     </div>
   )
@@ -209,6 +214,11 @@ function LeadCard({ lead, onOpen, onEdit, onDelete }) {
             <UserCheck className="w-3 h-3" /> Passar pro closer
           </span>
         )}
+        {lead.assignedTo && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700 font-medium">
+            👤 {lead.assignedTo}
+          </span>
+        )}
       </div>
     </div>
   )
@@ -243,10 +253,16 @@ function Column({ column, leads, onOpen, onEdit, onDelete }) {
   )
 }
 
-function ConversationModal({ lead, onClose, onTogglePause }) {
+function ConversationModal({ lead, onClose, onTogglePause, onAssign }) {
   if (!lead) return null
   const ctx = Array.isArray(lead.aiContext) ? lead.aiContext : []
   const paused = !!lead.aiPaused
+  const [assignedTo, setAssignedTo] = useState(lead.assignedTo || '')
+
+  const saveAssign = () => {
+    const val = assignedTo.trim() || null
+    if (val !== (lead.assignedTo || null)) onAssign(lead.id, val)
+  }
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
       <div
@@ -276,8 +292,8 @@ function ConversationModal({ lead, onClose, onTogglePause }) {
         </div>
 
         {/* Barra de controles (crescerá com mais ações no futuro) */}
-        <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200 bg-slate-50">
-          <div className="flex items-center gap-2 text-sm">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200 bg-slate-50 gap-4">
+          <div className="flex items-center gap-2 text-sm flex-1">
             {paused ? (
               <span className="flex items-center gap-1.5 text-amber-600 font-medium">
                 <PauseCircle className="w-4 h-4" /> IA pausada — você assume a conversa
@@ -288,16 +304,27 @@ function ConversationModal({ lead, onClose, onTogglePause }) {
               </span>
             )}
           </div>
-          <button
-            onClick={() => onTogglePause(lead)}
-            className="flex items-center gap-2 text-xs font-medium text-slate-600"
-            title={paused ? 'Reativar IA' : 'Pausar IA'}
-          >
-            <span>{paused ? 'Pausada' : 'Ativa'}</span>
-            <span className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${paused ? 'bg-slate-300' : 'bg-emerald-500'}`}>
-              <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${paused ? 'translate-x-0.5' : 'translate-x-[22px]'}`} />
-            </span>
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <input
+              type="text"
+              value={assignedTo}
+              onChange={e => setAssignedTo(e.target.value)}
+              onBlur={saveAssign}
+              onKeyDown={e => e.key === 'Enter' && saveAssign()}
+              placeholder="Vendedor responsável..."
+              className="text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 w-44 focus:outline-none focus:ring-2 focus:ring-violet-300 bg-white"
+            />
+            <button
+              onClick={() => onTogglePause(lead)}
+              className="flex items-center gap-2 text-xs font-medium text-slate-600 shrink-0"
+              title={paused ? 'Reativar IA' : 'Pausar IA'}
+            >
+              <span>{paused ? 'Pausada' : 'Ativa'}</span>
+              <span className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${paused ? 'bg-slate-300' : 'bg-emerald-500'}`}>
+                <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${paused ? 'translate-x-0.5' : 'translate-x-[22px]'}`} />
+              </span>
+            </button>
+          </div>
         </div>
 
         {/* Conversa */}
@@ -497,6 +524,22 @@ export default function KanbanLeads() {
     }
   }, [removeLead])
 
+  const assignVendedor = useCallback(async (leadId, assignedTo) => {
+    updateLeadInPlace({ id: leadId, assignedTo })
+    try {
+      const res = await fetch(`${API}/leads/${leadId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assignedTo }),
+      })
+      const fresh = await res.json()
+      updateLeadInPlace(fresh)
+      setSelected(prev => prev?.id === leadId ? { ...prev, assignedTo: fresh.assignedTo } : prev)
+    } catch (e) {
+      console.error('Erro ao salvar vendedor', e)
+    }
+  }, [updateLeadInPlace])
+
   const togglePause = useCallback(async (lead) => {
     const paused = !lead.aiPaused
     updateLeadInPlace({ id: lead.id, aiPaused: paused }) // otimista
@@ -618,7 +661,7 @@ export default function KanbanLeads() {
         </DndContext>
       )}
 
-      <ConversationModal lead={selected} onClose={() => setSelected(null)} onTogglePause={togglePause} />
+      <ConversationModal lead={selected} onClose={() => setSelected(null)} onTogglePause={togglePause} onAssign={assignVendedor} />
       <EditNameModal key={editing?.id} lead={editing} onClose={() => setEditing(null)} onSave={saveName} />
       <ConfirmDeleteModal lead={deleting} onClose={() => setDeleting(null)} onConfirm={deleteLead} />
     </div>
