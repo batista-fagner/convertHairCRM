@@ -324,7 +324,7 @@ function SdrPromptEditor() {
         </div>
 
         {/* Chat */}
-        <div className="h-full">
+        <div className="overflow-hidden rounded-xl" style={{ height: '680px' }}>
           <ChatSimulator />
         </div>
       </div>
