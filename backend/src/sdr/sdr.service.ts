@@ -12,6 +12,7 @@ export interface SdrResponse {
   stage: SdrStage;
   temperature: LeadTemperature;
   handoff: boolean;
+  instagram?: string | null;
   success: boolean;
 }
 

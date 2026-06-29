@@ -181,8 +181,13 @@ export class SdrController {
       waStage: newStage as any,
       temperature: ai.temperature,
       waLastMessageAt: new Date(),
-      followupSentAt: null, // lead respondeu → reseta o ciclo de follow-up
+      followupSentAt: null,
     };
+
+    // Salva o Instagram quando a IA extrair da conversa
+    if (ai.instagram && typeof ai.instagram === 'string' && ai.instagram !== 'null') {
+      updateData.instagram = ai.instagram.replace('@', '').trim();
+    }
 
     // Handoff → operador assume, IA desliga
     if (ai.handoff) {

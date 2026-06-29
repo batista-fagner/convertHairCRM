@@ -215,4 +215,6 @@ A pessoa deve sentir que conversou com alguém que entende do mercado e se inter
 
 // Anexado SEMPRE ao final — garante que a máquina de estágios continue funcionando.
 export const SDR_JSON_FORMAT = `Responda SEMPRE em JSON puro com este formato:
-{"reply": "sua mensagem aqui", "stage": "abertura|qualificacao|quente|frio|perdido|encerrado", "temperature": "quente|morno|frio", "handoff": true|false}`;
+{"reply": "sua mensagem aqui", "stage": "abertura|qualificacao|quente|frio|perdido|encerrado", "temperature": "quente|morno|frio", "handoff": true|false, "instagram": "handle_sem_arroba_ou_null"}
+
+No campo "instagram": coloque o handle do Instagram da empresa assim que o lead informar (sem o @). Se ainda não informou, coloque null.`;
