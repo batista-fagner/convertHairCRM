@@ -8,6 +8,7 @@ import { Repository } from 'typeorm';
 import OpenAI from 'openai';
 import { Lead } from '../common/entities/lead.entity';
 import { SettingsService } from '../settings/settings.service';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { SDR_PROMPT_KEY, DEFAULT_SDR_PROMPT, SDR_MODEL_KEY } from './sdr.prompt';
 
 const FOLLOWUP_ENABLED_KEY = 'sdr_followup_enabled';
@@ -34,6 +35,7 @@ export class SdrFollowupService {
     private settings: SettingsService,
     private http: HttpService,
     private config: ConfigService,
+    private realtime: RealtimeGateway,
   ) {
     this.openai = new OpenAI({ apiKey: config.get('OPENAI_API_KEY') });
     this.uazapiBaseUrl = config.get('SDR_UAZAPI_BASE_URL') || config.get('UAZAPI_BASE_URL') || '';
@@ -203,14 +205,12 @@ export class SdrFollowupService {
   }
 
   private async sendFollowup(lead: Lead, text: string) {
+    if (!this.uazapiToken) {
+      this.logger.warn(`[Followup] Token SDR não configurado — follow-up não enviado para ${lead.phone}`);
+      return;
+    }
+
     try {
-      await this.leadsRepo.update(lead.id, { followupSentAt: new Date() });
-
-      if (!this.uazapiToken) {
-        this.logger.warn(`[Followup] Token SDR não configurado — follow-up gerado mas não enviado para ${lead.phone}`);
-        return;
-      }
-
       const phone = lead.phone.startsWith('55') ? lead.phone : `55${lead.phone}`;
       await firstValueFrom(
         this.http.post(
@@ -219,6 +219,18 @@ export class SdrFollowupService {
           { headers: { token: this.uazapiToken } },
         ),
       );
+
+      // Só marca como enviado se o WhatsApp aceitou. Registra a mensagem no
+      // histórico para aparecer na conversa e a IA manter o contexto.
+      const ctx = Array.isArray(lead.aiContext) ? lead.aiContext : [];
+      await this.leadsRepo.update(lead.id, {
+        followupSentAt: new Date(),
+        aiContext: [...ctx, { role: 'assistant', content: text }],
+        waLastMessageAt: new Date(),
+      });
+
+      const fresh = await this.leadsRepo.findOne({ where: { id: lead.id } });
+      if (fresh) this.realtime.emitLeadUpdated(fresh);
 
       this.logger.log(`[Followup] Enviado para ${lead.phone}: "${text.slice(0, 60)}..."`);
     } catch (err: any) {
