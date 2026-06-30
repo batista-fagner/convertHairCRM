@@ -689,6 +689,93 @@ function FollowupStatus() {
   )
 }
 
+function NotifyPhonesConfig() {
+  const [phone1, setPhone1] = useState('')
+  const [phone2, setPhone2] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+
+  useEffect(() => {
+    fetch(`${API}/settings/sdr-notify`)
+      .then(r => r.json())
+      .then(d => { setPhone1(d.phone1 || ''); setPhone2(d.phone2 || '') })
+      .finally(() => setLoading(false))
+  }, [])
+
+  const save = async () => {
+    setSaving(true)
+    setSaved(false)
+    try {
+      await fetch(`${API}/settings/sdr-notify`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone1, phone2 }),
+      })
+      setSaved(true)
+      setTimeout(() => setSaved(false), 3000)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 p-5 mb-4">
+      <div className="flex items-center gap-2 mb-4">
+        <MessageCircle className="w-5 h-5 text-emerald-500" />
+        <div>
+          <p className="font-semibold text-slate-800 text-sm">Notificação de Lead Qualificado</p>
+          <p className="text-xs text-slate-400 mt-0.5">Números que recebem aviso no WhatsApp quando um lead vira qualificado (MQL)</p>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center gap-2 text-slate-400 text-sm py-2">
+          <Loader2 className="w-4 h-4 animate-spin" /> Carregando...
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-1 block">Número 1 (com DDI, ex: 5571999999999)</label>
+            <input
+              type="tel"
+              value={phone1}
+              onChange={e => setPhone1(e.target.value.replace(/\D/g, ''))}
+              placeholder="5571999999999"
+              className="w-full text-sm border border-slate-200 rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-emerald-300"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-1 block">Número 2 (opcional)</label>
+            <input
+              type="tel"
+              value={phone2}
+              onChange={e => setPhone2(e.target.value.replace(/\D/g, ''))}
+              placeholder="5511999999999"
+              className="w-full text-sm border border-slate-200 rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-emerald-300"
+            />
+          </div>
+          <div className="flex items-center gap-3 pt-1">
+            <button
+              onClick={save}
+              disabled={saving}
+              className="flex items-center gap-2 text-sm font-medium bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-200 text-white px-4 py-2 rounded-xl transition"
+            >
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              {saving ? 'Salvando...' : 'Salvar'}
+            </button>
+            {saved && (
+              <span className="flex items-center gap-1.5 text-emerald-600 text-sm font-medium">
+                <CheckCircle2 className="w-4 h-4" /> Salvo!
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function Settings() {
   return (
     <div className="p-6 overflow-y-auto">
@@ -698,6 +785,8 @@ export default function Settings() {
       </div>
 
       <SdrPromptEditor />
+
+      <NotifyPhonesConfig />
 
       <FollowupConfig />
 

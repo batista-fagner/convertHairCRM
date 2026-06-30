@@ -6,7 +6,10 @@ import { SdrService, deriveKanbanStage, SdrStage } from './sdr.service';
 import { LeadsService } from '../leads/leads.service';
 import { FacebookService } from '../facebook/facebook.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { SettingsService } from '../settings/settings.service';
 import { Lead, WaStage } from '../common/entities/lead.entity';
+
+export const SDR_NOTIFY_PHONES_KEY = 'sdr_notify_phones';
 
 /**
  * Webhook do agente SDR — instância/número uazapi SEPARADO do Efraim.
@@ -28,6 +31,7 @@ export class SdrController {
     private readonly realtime: RealtimeGateway,
     private readonly http: HttpService,
     private readonly config: ConfigService,
+    private readonly settings: SettingsService,
   ) {
     this.uazapiBaseUrl = config.get('SDR_UAZAPI_BASE_URL') || config.get('UAZAPI_BASE_URL') || 'https://free.uazapi.com';
     this.uazapiToken = config.get('SDR_UAZAPI_TOKEN') || '';
@@ -228,19 +232,27 @@ export class SdrController {
   }
 
   private async notifyOperator(lead: Lead) {
-    if (!this.operatorPhone) return;
+    // Resolve phones: banco tem prioridade, env var é fallback para o primeiro
+    const stored = await this.settings.get(SDR_NOTIFY_PHONES_KEY);
+    const phones: string[] = stored
+      ? stored.split(',').map((p) => p.trim()).filter(Boolean)
+      : this.operatorPhone ? [this.operatorPhone] : [];
+
+    if (phones.length === 0) return;
+
     const msg = `🔥 Lead qualificado pelo SDR!\n\nNome: ${lead.name}\nWhatsApp: ${lead.phone}${lead.instagram ? `\nInstagram: @${lead.instagram.replace('@', '')}` : ''}${lead.revenueRange ? `\nFaturamento: ${lead.revenueRange}` : ''}\n\nAssuma a conversa.`;
-    try {
-      await firstValueFrom(
-        this.http.post(
-          `${this.uazapiBaseUrl}/send/text`,
-          { number: this.operatorPhone, text: msg },
-          { headers: { token: this.uazapiToken } },
-        ),
-      );
-    } catch (err: any) {
-      this.logger.error(`[SDR] Erro ao avisar operador: ${err.message}`);
-    }
+
+    await Promise.allSettled(
+      phones.map((phone) =>
+        firstValueFrom(
+          this.http.post(
+            `${this.uazapiBaseUrl}/send/text`,
+            { number: phone, text: msg },
+            { headers: { token: this.uazapiToken } },
+          ),
+        ).catch((err: any) => this.logger.error(`[SDR] Erro ao notificar ${phone}: ${err.message}`)),
+      ),
+    );
   }
 
   private async sendMessage(phone: string, text: string) {

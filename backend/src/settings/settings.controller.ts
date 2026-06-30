@@ -2,6 +2,7 @@ import { Controller, Get, Put, Post, Body } from '@nestjs/common';
 import { SettingsService } from './settings.service';
 import { SDR_PROMPT_KEY, DEFAULT_SDR_PROMPT, SDR_MODEL_KEY, SDR_DEFAULT_MODEL } from '../sdr/sdr.prompt';
 import { FOLLOWUP_ENABLED_KEY, FOLLOWUP_DELAY_KEY, FOLLOWUP_MODE_KEY, FOLLOWUP_TEXT_KEY } from '../sdr/sdr-followup.service';
+import { SDR_NOTIFY_PHONES_KEY } from '../sdr/sdr.controller';
 
 @Controller('settings')
 export class SettingsController {
@@ -53,6 +54,23 @@ export class SettingsController {
       mode: mode || 'manual',
       text: text || '',
     };
+  }
+
+  @Get('sdr-notify')
+  async getNotifyPhones() {
+    const value = await this.settingsService.get(SDR_NOTIFY_PHONES_KEY);
+    const phones = value ? value.split(',').map((p) => p.trim()).filter(Boolean) : [];
+    return { phone1: phones[0] ?? '', phone2: phones[1] ?? '' };
+  }
+
+  @Put('sdr-notify')
+  async setNotifyPhones(@Body() body: { phone1: string; phone2: string }) {
+    const phones = [body.phone1, body.phone2]
+      .map((p) => (p || '').replace(/\D/g, ''))
+      .filter(Boolean);
+    const value = phones.join(',');
+    await this.settingsService.set(SDR_NOTIFY_PHONES_KEY, value);
+    return { phone1: phones[0] ?? '', phone2: phones[1] ?? '' };
   }
 
   @Put('sdr-followup')
