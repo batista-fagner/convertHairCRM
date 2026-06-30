@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { DndContext, DragOverlay, useDraggable, useDroppable, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { io } from 'socket.io-client'
-import { Flame, Snowflake, UserPlus, XCircle, Phone, Mail, UserCheck, Loader2, X, MessageCircle, PauseCircle, Bot, MoreVertical, Pencil, Trash2, Play, Eye, Handshake, Trophy, HeadphonesIcon } from 'lucide-react'
+import { Flame, Snowflake, UserPlus, XCircle, Phone, Mail, UserCheck, Loader2, X, MessageCircle, PauseCircle, Bot, MoreVertical, Pencil, Trash2, Play, Eye, Handshake, Trophy, HeadphonesIcon, Paperclip, Send, FileText, Video } from 'lucide-react'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3002/api'
 const SOCKET_URL = API.replace(/\/api\/?$/, '') || 'http://localhost:3002'
@@ -253,16 +253,118 @@ function Column({ column, leads, onOpen, onEdit, onDelete }) {
   )
 }
 
+const MAX_MEDIA_BYTES = 5 * 1024 * 1024 // 5 MB
+
+function mediaIcon(type) {
+  if (type === 'image') return null // rendered as <img>
+  if (type === 'video') return <Video className="w-4 h-4" />
+  return <FileText className="w-4 h-4" />
+}
+
 function ConversationModal({ lead, onClose, onTogglePause, onAssign }) {
   if (!lead) return null
   const ctx = Array.isArray(lead.aiContext) ? lead.aiContext : []
   const paused = !!lead.aiPaused
   const [assignedTo, setAssignedTo] = useState(lead.assignedTo || '')
+  const [draft, setDraft] = useState('')
+  const [pendingMedia, setPendingMedia] = useState(null) // { type, base64, dataUrl, filename, mimeType }
+  const [sending, setSending] = useState(false)
+  const [sendError, setSendError] = useState('')
+  const chatBottomRef = useRef(null)
+  const textareaRef = useRef(null)
+  const fileInputRef = useRef(null)
+
+  // Scroll para o final sempre que chegar nova mensagem
+  useEffect(() => {
+    chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [ctx.length])
 
   const saveAssign = () => {
     const val = assignedTo.trim() || null
     if (val !== (lead.assignedTo || null)) onAssign(lead.id, val)
   }
+
+  const handleFileSelect = (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+
+    if (file.size > MAX_MEDIA_BYTES) {
+      setSendError('Arquivo muito grande (máx. 5 MB)')
+      return
+    }
+
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      const dataUrl = ev.target.result // "data:image/jpeg;base64,..."
+      const base64 = dataUrl.split(',')[1]
+      const type = file.type.startsWith('image/') ? 'image'
+        : file.type.startsWith('video/') ? 'video'
+        : file.type.startsWith('audio/') ? 'audio'
+        : 'document'
+      setPendingMedia({ type, base64, dataUrl, filename: file.name, mimeType: file.type })
+      setSendError('')
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const handleSend = async () => {
+    if (sending) return
+    const hasText = draft.trim().length > 0
+    const hasMedia = !!pendingMedia
+    if (!hasText && !hasMedia) return
+
+    setSending(true)
+    setSendError('')
+
+    try {
+      let body
+      if (hasMedia) {
+        body = {
+          type: pendingMedia.type,
+          base64: pendingMedia.base64,
+          mimeType: pendingMedia.mimeType,
+          filename: pendingMedia.filename,
+          caption: draft.trim(),
+        }
+      } else {
+        body = { type: 'text', text: draft.trim() }
+      }
+
+      const res = await fetch(`${API}/leads/${lead.id}/send-message`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.message || `Erro ${res.status}`)
+      }
+
+      setDraft('')
+      setPendingMedia(null)
+    } catch (err) {
+      setSendError(err.message || 'Falha ao enviar')
+    } finally {
+      setSending(false)
+    }
+  }
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleSend()
+    }
+  }
+
+  // Auto-height do textarea
+  const handleDraftChange = (e) => {
+    setDraft(e.target.value)
+    const ta = textareaRef.current
+    if (ta) { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 96) + 'px' }
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
       <div
@@ -291,7 +393,7 @@ function ConversationModal({ lead, onClose, onTogglePause, onAssign }) {
           </button>
         </div>
 
-        {/* Barra de controles (crescerá com mais ações no futuro) */}
+        {/* Controles */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200 bg-slate-50 gap-4">
           <div className="flex items-center gap-2 text-sm flex-1">
             {paused ? (
@@ -337,27 +439,113 @@ function ConversationModal({ lead, onClose, onTogglePause, onAssign }) {
           )}
           {ctx.map((m, i) => {
             const isLead = m.role === 'user'
+            const isOperator = m.role === 'assistant' && m.source === 'operator'
             return (
               <div key={i} className={`flex ${isLead ? 'justify-start' : 'justify-end'}`}>
                 <div
-                  className={`max-w-[70%] px-3.5 py-2 rounded-2xl text-sm whitespace-pre-wrap break-words ${
+                  className={`max-w-[72%] px-3.5 py-2 rounded-2xl text-sm break-words ${
                     isLead
                       ? 'bg-white border border-slate-200 text-slate-700 rounded-tl-sm'
+                      : isOperator
+                      ? 'bg-violet-500 text-white rounded-tr-sm'
                       : 'bg-emerald-500 text-white rounded-tr-sm'
                   }`}
                 >
-                  {m.content}
-                  <div className={`text-[9px] mt-0.5 ${isLead ? 'text-slate-400' : 'text-emerald-100'}`}>
-                    {isLead ? lead.name.split(' ')[0] : 'SDR'}
+                  {/* Mídia inline */}
+                  {m.mediaType === 'image' && m.base64 && (
+                    <img
+                      src={m.base64.startsWith('data:') ? m.base64 : `data:image/jpeg;base64,${m.base64}`}
+                      alt="imagem"
+                      className="rounded-lg mb-1.5 max-w-full max-h-48 object-cover"
+                    />
+                  )}
+                  {m.mediaType && m.mediaType !== 'image' && (
+                    <div className="flex items-center gap-1.5 mb-1 opacity-90">
+                      {mediaIcon(m.mediaType)}
+                      <span className="text-xs font-medium truncate max-w-[180px]">{m.filename || m.mediaType}</span>
+                    </div>
+                  )}
+                  {m.content && <p className="whitespace-pre-wrap">{m.content}</p>}
+                  <div className={`text-[9px] mt-0.5 ${isLead ? 'text-slate-400' : isOperator ? 'text-violet-200' : 'text-emerald-100'}`}>
+                    {isLead ? lead.name.split(' ')[0] : isOperator ? 'Você' : 'SDR IA'}
                   </div>
                 </div>
               </div>
             )
           })}
+          <div ref={chatBottomRef} />
         </div>
 
-        <div className="px-5 py-3 border-t border-slate-200 text-center">
-          <p className="text-[11px] text-slate-400">
+        {/* Chat Input */}
+        <div className="px-4 pt-3 pb-3 border-t border-slate-200 bg-white">
+          {/* Preview de mídia pendente */}
+          {pendingMedia && (
+            <div className="mb-2 flex items-center gap-2 p-2 bg-slate-50 border border-slate-200 rounded-xl">
+              {pendingMedia.type === 'image' ? (
+                <img src={pendingMedia.dataUrl} alt="" className="h-14 w-14 object-cover rounded-lg shrink-0" />
+              ) : (
+                <div className="flex items-center gap-1.5 text-slate-600">
+                  {mediaIcon(pendingMedia.type)}
+                  <span className="text-xs font-medium truncate max-w-[200px]">{pendingMedia.filename}</span>
+                </div>
+              )}
+              <button
+                onClick={() => setPendingMedia(null)}
+                className="ml-auto p-1 text-slate-400 hover:text-red-500 transition shrink-0"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
+          {sendError && (
+            <p className="text-xs text-red-500 mb-1.5">{sendError}</p>
+          )}
+
+          <div className="flex items-end gap-2">
+            {/* Botão de mídia */}
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="p-2 text-slate-400 hover:text-violet-500 transition shrink-0"
+              title="Enviar imagem, vídeo ou documento (máx. 5 MB)"
+            >
+              <Paperclip className="w-5 h-5" />
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              className="hidden"
+              accept="image/*,video/*,audio/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt"
+              onChange={handleFileSelect}
+            />
+
+            {/* Textarea */}
+            <textarea
+              ref={textareaRef}
+              value={draft}
+              onChange={handleDraftChange}
+              onKeyDown={handleKeyDown}
+              placeholder={pendingMedia ? 'Legenda (opcional)...' : 'Digite uma mensagem... (Enter envia, Shift+Enter quebra linha)'}
+              rows={1}
+              className="flex-1 resize-none bg-slate-100 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300 placeholder:text-slate-400"
+              style={{ minHeight: '40px', maxHeight: '96px' }}
+            />
+
+            {/* Botão enviar */}
+            <button
+              onClick={handleSend}
+              disabled={sending || (!draft.trim() && !pendingMedia)}
+              className="p-2.5 bg-violet-500 hover:bg-violet-600 disabled:bg-slate-200 disabled:cursor-not-allowed text-white rounded-xl transition shrink-0"
+              title="Enviar"
+            >
+              {sending
+                ? <Loader2 className="w-4 h-4 animate-spin" />
+                : <Send className="w-4 h-4" />
+              }
+            </button>
+          </div>
+
+          <p className="text-[10px] text-slate-400 mt-1.5 text-center">
             Estágio: <span className="font-medium text-slate-500">{lead.waStage || '—'}</span>
             {' · '}Última msg {timeAgo(lead.waLastMessageAt || lead.updatedAt)}
           </p>
