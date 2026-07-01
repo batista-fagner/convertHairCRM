@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Query, Delete, Patch, Body } from '@nestjs/common';
+import { Controller, Get, Param, Query, Delete, Patch, Post, Body, HttpException, HttpStatus } from '@nestjs/common';
 import { LeadsService } from './leads.service';
 import { FacebookService } from '../facebook/facebook.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
@@ -11,6 +11,32 @@ export class LeadsController {
     private facebookService: FacebookService,
     private realtime: RealtimeGateway,
   ) {}
+
+  @Post()
+  async createManual(@Body() body: { name: string; phone: string; instagram?: string; revenueRange?: string }) {
+    const name = (body.name || '').trim();
+    const phone = (body.phone || '').replace(/\D/g, '');
+    if (!name || !phone) {
+      throw new HttpException('Nome e telefone são obrigatórios', HttpStatus.BAD_REQUEST);
+    }
+
+    const existing = await this.leadsService.findByPhone(phone);
+    if (existing) {
+      throw new HttpException('Já existe um lead com esse telefone', HttpStatus.CONFLICT);
+    }
+
+    const lead = await this.leadsService.create({
+      name,
+      phone,
+      instagram: body.instagram?.trim() || undefined,
+      revenueRange: body.revenueRange?.trim() || undefined,
+      agentMode: 'sdr',
+      kanbanStage: 'novo',
+      kanbanStageManual: true,
+    });
+    this.realtime.emitLeadCreated(lead);
+    return lead;
+  }
 
   @Get()
   async findAll(
@@ -52,10 +78,11 @@ export class LeadsController {
   }
 
   @Patch(':id')
-  async edit(@Param('id') id: string, @Body() body: { name?: string; assignedTo?: string | null }) {
-    const data: { name?: string; assignedTo?: string | null } = {};
+  async edit(@Param('id') id: string, @Body() body: { name?: string; assignedTo?: string | null; notes?: string | null }) {
+    const data: { name?: string; assignedTo?: string | null; notes?: string | null } = {};
     if (typeof body.name === 'string' && body.name.trim()) data.name = body.name.trim();
     if ('assignedTo' in body) data.assignedTo = body.assignedTo?.trim() || null;
+    if ('notes' in body) data.notes = body.notes ?? null;
     const lead = await this.leadsService.update(id, data);
     this.realtime.emitLeadUpdated(lead);
     return lead;

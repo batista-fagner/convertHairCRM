@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { DndContext, DragOverlay, useDraggable, useDroppable, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { io } from 'socket.io-client'
-import { Flame, Snowflake, UserPlus, XCircle, Phone, Mail, UserCheck, Loader2, X, MessageCircle, PauseCircle, Bot, MoreVertical, Pencil, Trash2, Play, Eye, Handshake, Trophy, HeadphonesIcon, Paperclip, Send, FileText, Video } from 'lucide-react'
+import { Flame, Snowflake, UserPlus, XCircle, Phone, Mail, UserCheck, Loader2, X, MessageCircle, PauseCircle, Bot, MoreVertical, Pencil, Trash2, Play, Eye, Handshake, Trophy, HeadphonesIcon, Paperclip, Send, FileText, Video, StickyNote, ChevronDown, ChevronUp, Plus, CheckCircle2 } from 'lucide-react'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3002/api'
 const SOCKET_URL = API.replace(/\/api\/?$/, '') || 'http://localhost:3002'
@@ -261,11 +261,14 @@ function mediaIcon(type) {
   return <FileText className="w-4 h-4" />
 }
 
-function ConversationModal({ lead, onClose, onTogglePause, onAssign }) {
+function ConversationModal({ lead, onClose, onTogglePause, onAssign, onSaveNotes }) {
   if (!lead) return null
   const ctx = Array.isArray(lead.aiContext) ? lead.aiContext : []
   const paused = !!lead.aiPaused
   const [assignedTo, setAssignedTo] = useState(lead.assignedTo || '')
+  const [notes, setNotes] = useState(lead.notes || '')
+  const [notesOpen, setNotesOpen] = useState(!!lead.notes)
+  const [notesSaved, setNotesSaved] = useState(false)
   const [draft, setDraft] = useState('')
   const [pendingMedia, setPendingMedia] = useState(null) // { type, base64, dataUrl, filename, mimeType }
   const [sending, setSending] = useState(false)
@@ -282,6 +285,14 @@ function ConversationModal({ lead, onClose, onTogglePause, onAssign }) {
   const saveAssign = () => {
     const val = assignedTo.trim() || null
     if (val !== (lead.assignedTo || null)) onAssign(lead.id, val)
+  }
+
+  const saveNotes = () => {
+    const val = notes.trim() || null
+    if (val === (lead.notes || null)) return
+    onSaveNotes(lead.id, val)
+    setNotesSaved(true)
+    setTimeout(() => setNotesSaved(false), 2000)
   }
 
   const handleFileSelect = (e) => {
@@ -417,6 +428,19 @@ function ConversationModal({ lead, onClose, onTogglePause, onAssign }) {
               className="text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 w-44 focus:outline-none focus:ring-2 focus:ring-violet-300 bg-white"
             />
             <button
+              onClick={() => setNotesOpen(o => !o)}
+              className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg border transition ${
+                notesOpen || lead.notes
+                  ? 'bg-amber-50 border-amber-200 text-amber-700'
+                  : 'border-slate-200 text-slate-500 hover:bg-slate-100'
+              }`}
+              title="Anotações internas sobre o lead"
+            >
+              <StickyNote className="w-3.5 h-3.5" />
+              Notas
+              {notesOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+            </button>
+            <button
               onClick={() => onTogglePause(lead)}
               className="flex items-center gap-2 text-xs font-medium text-slate-600 shrink-0"
               title={paused ? 'Reativar IA' : 'Pausar IA'}
@@ -428,6 +452,25 @@ function ConversationModal({ lead, onClose, onTogglePause, onAssign }) {
             </button>
           </div>
         </div>
+
+        {/* Painel de notas internas */}
+        {notesOpen && (
+          <div className="px-5 py-3 border-b border-slate-200 bg-amber-50/50">
+            <textarea
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+              onBlur={saveNotes}
+              placeholder="Anotações internas sobre esse lead (visível só para a equipe)..."
+              rows={3}
+              className="w-full resize-none text-sm border border-amber-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-300 bg-white placeholder:text-slate-400"
+            />
+            {notesSaved && (
+              <span className="flex items-center gap-1 text-[11px] text-emerald-600 mt-1">
+                <CheckCircle2 className="w-3 h-3" /> Nota salva
+              </span>
+            )}
+          </div>
+        )}
 
         {/* Conversa */}
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3 bg-slate-50">
@@ -632,6 +675,106 @@ function ConfirmDeleteModal({ lead, onClose, onConfirm }) {
   )
 }
 
+function CreateLeadModal({ open, onClose, onCreate }) {
+  const [name, setName] = useState('')
+  const [phone, setPhone] = useState('')
+  const [instagram, setInstagram] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  if (!open) return null
+
+  const reset = () => { setName(''); setPhone(''); setInstagram(''); setError('') }
+  const close = () => { reset(); onClose() }
+
+  const submit = async () => {
+    const trimmedName = name.trim()
+    const trimmedPhone = phone.replace(/\D/g, '')
+    if (!trimmedName || !trimmedPhone) {
+      setError('Nome e WhatsApp são obrigatórios')
+      return
+    }
+    setSaving(true)
+    setError('')
+    try {
+      const res = await fetch(`${API}/leads`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: trimmedName, phone: trimmedPhone, instagram: instagram.trim() || undefined }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.message || 'Erro ao criar lead')
+      onCreate(data)
+      close()
+    } catch (e) {
+      setError(e.message || 'Erro ao criar lead')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={close}>
+      <div className="bg-white rounded-2xl w-full max-w-sm p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 rounded-full bg-violet-50 text-violet-600 flex items-center justify-center shrink-0">
+            <Plus className="w-5 h-5" />
+          </div>
+          <h3 className="font-semibold text-slate-800">Novo lead</h3>
+        </div>
+
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-1 block">Nome *</label>
+            <input
+              type="text"
+              value={name}
+              onChange={e => setName(e.target.value)}
+              placeholder="Nome do lead"
+              className="w-full text-sm border border-slate-200 rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-violet-300"
+              autoFocus
+            />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-1 block">WhatsApp * (com DDI, ex: 5571999999999)</label>
+            <input
+              type="tel"
+              value={phone}
+              onChange={e => setPhone(e.target.value.replace(/\D/g, ''))}
+              placeholder="5571999999999"
+              className="w-full text-sm border border-slate-200 rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-violet-300"
+              onKeyDown={e => e.key === 'Enter' && submit()}
+            />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-1 block">Instagram (opcional)</label>
+            <input
+              type="text"
+              value={instagram}
+              onChange={e => setInstagram(e.target.value)}
+              placeholder="@usuario"
+              className="w-full text-sm border border-slate-200 rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-violet-300"
+              onKeyDown={e => e.key === 'Enter' && submit()}
+            />
+          </div>
+          {error && <p className="text-xs text-red-500">{error}</p>}
+        </div>
+
+        <div className="flex justify-end gap-2 mt-4">
+          <button onClick={close} className="text-xs font-medium text-slate-500 hover:text-slate-700 px-3 py-2">Cancelar</button>
+          <button
+            onClick={submit}
+            disabled={saving}
+            className="flex items-center gap-1.5 text-xs font-medium text-white bg-violet-600 hover:bg-violet-700 disabled:opacity-50 px-4 py-2 rounded-lg"
+          >
+            {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />} Criar lead
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function KanbanLeads() {
   const [board, setBoard] = useState({ novo: [], atendimento: [], 'nao-qualificado': [], qualificado: [], contactado: [], 'ja-fez-prompt': [], 'ja-apresentado': [], 'em-negociacao': [], vendeu: [], perdido: [] })
   const [loading, setLoading] = useState(true)
@@ -640,6 +783,7 @@ export default function KanbanLeads() {
   const [selected, setSelected] = useState(null)
   const [editing, setEditing] = useState(null)
   const [deleting, setDeleting] = useState(null)
+  const [creating, setCreating] = useState(false)
   const boardRef = useRef(board)
   boardRef.current = board
   const selectedRef = useRef(selected)
@@ -727,6 +871,26 @@ export default function KanbanLeads() {
       console.error('Erro ao salvar vendedor', e)
     }
   }, [updateLeadInPlace])
+
+  const saveNotes = useCallback(async (leadId, notes) => {
+    updateLeadInPlace({ id: leadId, notes })
+    try {
+      const res = await fetch(`${API}/leads/${leadId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notes }),
+      })
+      const fresh = await res.json()
+      updateLeadInPlace(fresh)
+      setSelected(prev => prev?.id === leadId ? { ...prev, notes: fresh.notes } : prev)
+    } catch (e) {
+      console.error('Erro ao salvar notas', e)
+    }
+  }, [updateLeadInPlace])
+
+  const createLead = useCallback((lead) => {
+    placeLead(lead)
+  }, [placeLead])
 
   const togglePause = useCallback(async (lead) => {
     const paused = !lead.aiPaused
@@ -826,9 +990,17 @@ export default function KanbanLeads() {
           <h2 className="text-lg font-bold text-slate-800">Kanban de Leads</h2>
           <p className="text-sm text-slate-500">O agente SDR move os cards automaticamente. Você também pode arrastar.</p>
         </div>
-        <div className="flex items-center gap-1.5 text-xs">
-          <span className={`w-2 h-2 rounded-full ${connected ? 'bg-emerald-500' : 'bg-slate-300'}`} />
-          <span className="text-slate-500">{connected ? 'Tempo real' : 'Offline'}</span>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 text-xs">
+            <span className={`w-2 h-2 rounded-full ${connected ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+            <span className="text-slate-500">{connected ? 'Tempo real' : 'Offline'}</span>
+          </div>
+          <button
+            onClick={() => setCreating(true)}
+            className="flex items-center gap-1.5 text-xs font-medium text-white bg-violet-600 hover:bg-violet-700 px-3.5 py-2 rounded-lg transition"
+          >
+            <Plus className="w-4 h-4" /> Novo Lead
+          </button>
         </div>
       </div>
 
@@ -849,9 +1021,10 @@ export default function KanbanLeads() {
         </DndContext>
       )}
 
-      <ConversationModal lead={selected} onClose={() => setSelected(null)} onTogglePause={togglePause} onAssign={assignVendedor} />
+      <ConversationModal key={selected?.id} lead={selected} onClose={() => setSelected(null)} onTogglePause={togglePause} onAssign={assignVendedor} onSaveNotes={saveNotes} />
       <EditNameModal key={editing?.id} lead={editing} onClose={() => setEditing(null)} onSave={saveName} />
       <ConfirmDeleteModal lead={deleting} onClose={() => setDeleting(null)} onConfirm={deleteLead} />
+      <CreateLeadModal open={creating} onClose={() => setCreating(false)} onCreate={createLead} />
     </div>
   )
 }

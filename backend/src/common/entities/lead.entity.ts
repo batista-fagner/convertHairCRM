@@ -132,6 +132,9 @@ export class Lead {
   @Column({ name: 'followup_sent_at', type: 'timestamp', nullable: true })
   followupSentAt?: Date | null;
 
+  @Column({ name: 'notes', type: 'text', nullable: true })
+  notes?: string | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
