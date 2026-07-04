@@ -635,7 +635,7 @@ function FollowupStatus() {
             <Send className="w-3.5 h-3.5 text-violet-600" />
             <span className="text-[10px] font-medium text-slate-500 uppercase">Enviados</span>
           </div>
-          <p className="text-sm font-semibold text-violet-700">{status.sent.length}</p>
+          <p className="text-sm font-semibold text-violet-700">{status.totalSent ?? status.sent.length}</p>
           <p className="text-[10px] text-slate-400">total de follow-ups</p>
         </div>
       </div>
@@ -673,7 +673,10 @@ function FollowupStatus() {
       {status.sent.length > 0 && (
         <div>
           <p className="text-xs font-semibold text-slate-600 mb-2 flex items-center gap-1.5">
-            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> Follow-ups enviados
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> Follow-ups enviados ({status.totalSent ?? status.sent.length})
+            {(status.totalSent ?? 0) > status.sent.length && (
+              <span className="text-[10px] font-normal text-slate-400">— exibindo os 20 mais recentes</span>
+            )}
           </p>
           <div className="space-y-1.5 max-h-48 overflow-y-auto">
             {status.sent.map(l => (

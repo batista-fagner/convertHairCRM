@@ -85,10 +85,21 @@ export class SdrFollowupService {
         message = manualText!;
       }
 
+      // Espaçamento aleatório entre envios (5-10s) para reduzir risco de
+      // bloqueio do número por disparo em rajada.
+      if (sent > 0) {
+        const waitMs = 5000 + Math.random() * 5000;
+        await this.sleep(waitMs);
+      }
+
       await this.sendFollowup(lead, message);
       sent++;
     }
     this.lastSentCount = sent;
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   /** Status do follow-up para o painel de Configurações. */
@@ -115,7 +126,14 @@ export class SdrFollowupService {
       }
     }
 
-    // Follow-ups já enviados (últimos 20)
+    // Total real de follow-ups já enviados (sem limite — usado nos cards de resumo)
+    const totalSent = await this.leadsRepo
+      .createQueryBuilder('lead')
+      .where('lead.agent_mode = :mode', { mode: 'sdr' })
+      .andWhere('lead.followup_sent_at IS NOT NULL')
+      .getCount();
+
+    // Follow-ups já enviados (últimos 20, só para a lista exibida no painel)
     const sentLeads = await this.leadsRepo
       .createQueryBuilder('lead')
       .where('lead.agent_mode = :mode', { mode: 'sdr' })
@@ -156,6 +174,7 @@ export class SdrFollowupService {
       lastSentCount: this.lastSentCount,
       whatsappConnected,
       whatsappName,
+      totalSent,
       sent: sentLeads.map((l) => ({
         id: l.id,
         name: l.name,
