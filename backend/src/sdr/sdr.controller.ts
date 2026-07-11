@@ -12,6 +12,35 @@ import { Lead, WaStage } from '../common/entities/lead.entity';
 export const SDR_NOTIFY_PHONES_KEY = 'sdr_notify_phones';
 
 /**
+ * Extrai o ctwa_clid (e a URL do anúncio) de um webhook uazapi de anúncio
+ * Click-to-WhatsApp. O caminho exato do campo no payload uazapi não é
+ * documentado, então fazemos uma busca em profundidade pela chave — que é
+ * bem específica de CTWA (ctwaClid/ctwa_clid), risco de falso-positivo ~0.
+ * Só chega na PRIMEIRA mensagem do lead (o clique no anúncio).
+ */
+export function extractCtwaReferral(body: any): { clid?: string; sourceUrl?: string } {
+  const findKey = (obj: any, keys: string[], depth = 0): string | undefined => {
+    if (!obj || typeof obj !== 'object' || depth > 6) return undefined;
+    for (const [k, v] of Object.entries(obj)) {
+      const kl = k.toLowerCase();
+      if (keys.includes(kl) && typeof v === 'string' && v.trim()) return v.trim();
+    }
+    for (const v of Object.values(obj)) {
+      if (v && typeof v === 'object') {
+        const found = findKey(v, keys, depth + 1);
+        if (found) return found;
+      }
+    }
+    return undefined;
+  };
+
+  const clid = findKey(body, ['ctwaclid', 'ctwa_clid']);
+  if (!clid) return {};
+  const sourceUrl = findKey(body, ['sourceurl', 'source_url']);
+  return { clid, sourceUrl };
+}
+
+/**
  * Webhook do agente SDR — instância/número uazapi SEPARADO do Efraim.
  * Recebe mensagens de leads novos, qualifica via IA e move os cards do Kanban.
  */
@@ -19,7 +48,7 @@ export const SDR_NOTIFY_PHONES_KEY = 'sdr_notify_phones';
 export class SdrController {
   private readonly logger = new Logger(SdrController.name);
   private readonly processedIds = new Set<string>();
-  private readonly pendingBuffer = new Map<string, { timer: NodeJS.Timeout; texts: string[] }>();
+  private readonly pendingBuffer = new Map<string, { timer: NodeJS.Timeout; texts: string[]; ctwa?: { clid?: string; sourceUrl?: string } }>();
   private readonly uazapiBaseUrl: string;
   private readonly uazapiToken: string;
   private readonly operatorPhone: string;
@@ -52,6 +81,14 @@ export class SdrController {
 
     const message = body.message;
     if (!message) return { ok: true };
+
+    // Descoberta do formato CTWA: com SDR_LOG_RAW_WEBHOOK=true, loga o payload
+    // cru pra confirmar onde o uazapi coloca o ctwa_clid num clique real de
+    // anúncio. Manter desligado em operação normal (evita ruído/PII no log).
+    if (this.config.get('SDR_LOG_RAW_WEBHOOK') === 'true') {
+      this.logger.log(`[SDR][RAW] ${JSON.stringify(body).slice(0, 4000)}`);
+    }
+
     if (message.fromMe || message.isGroup || message.wasSentByApi) return { ok: true };
 
     const phone: string = (body.chat?.phone ?? '').replace(/\D/g, '');
@@ -100,14 +137,21 @@ export class SdrController {
 
     this.logger.log(`[SDR] Mensagem de ${phone}: "${text}"`);
 
+    // Referral de anúncio CTWA (só vem na 1ª mensagem do clique) — captura já
+    // aqui e preserva no buffer, mesmo que cheguem mais mensagens no debounce.
+    const ctwa = extractCtwaReferral(body);
+
     // Debounce 10s: acumula mensagens antes de processar
-    const pending = this.pendingBuffer.get(phone) ?? { timer: null as any, texts: [] as string[] };
+    const pending: { timer: NodeJS.Timeout; texts: string[]; ctwa?: { clid?: string; sourceUrl?: string } } =
+      this.pendingBuffer.get(phone) ?? { timer: null as any, texts: [] };
     pending.texts.push(text);
+    if (ctwa.clid && !pending.ctwa?.clid) pending.ctwa = ctwa;
     if (pending.timer) clearTimeout(pending.timer);
     pending.timer = setTimeout(() => {
       const combinedText = pending.texts.join('\n');
+      const capturedCtwa = pending.ctwa;
       this.pendingBuffer.delete(phone);
-      this.processMessage(phone, combinedText, pushName).catch((err) =>
+      this.processMessage(phone, combinedText, pushName, capturedCtwa).catch((err) =>
         this.logger.error(`[SDR] Erro ao processar ${phone}: ${err.message}`),
       );
     }, 10_000);
@@ -116,7 +160,7 @@ export class SdrController {
     return { ok: true };
   }
 
-  private async processMessage(phone: string, text: string, pushName: string) {
+  private async processMessage(phone: string, text: string, pushName: string, ctwa?: { clid?: string; sourceUrl?: string }) {
     // Normaliza variantes com/sem DDI 55 e com/sem o 9 extra (Brasil)
     const addNine = (n: string) => (n.length === 10 ? `${n.slice(0, 2)}9${n.slice(2)}` : n);
     const removeNine = (n: string) => (n.length === 11 && n[2] === '9' ? `${n.slice(0, 2)}${n.slice(3)}` : n);
@@ -132,16 +176,23 @@ export class SdrController {
     // Lead novo entrando pelo número do SDR → cria card "novo" no Kanban
     let isNew = false;
     if (!lead) {
+      const fromAd = Boolean(ctwa?.clid);
       lead = await this.leadsService.create({
         name: pushName || `Lead ${phone.slice(-4)}`,
         phone: phone.startsWith('55') ? phone : `55${phone}`,
         agentMode: 'sdr',
         kanbanStage: 'novo',
         waStage: 'abertura' as WaStage,
-        utmSource: 'whatsapp',
-        utmMedium: 'sdr',
+        // Origem: anúncio Click-to-WhatsApp quando veio ctwa_clid, senão WhatsApp orgânico
+        utmSource: fromAd ? 'ctwa' : 'whatsapp',
+        utmMedium: fromAd ? 'whatsapp-ad' : 'sdr',
+        ctwaClid: ctwa?.clid,
+        ctwaSourceUrl: ctwa?.sourceUrl,
       });
       isNew = true;
+      if (fromAd) {
+        this.logger.log(`[SDR] Lead ${phone} veio de anúncio CTWA (ctwa_clid=${ctwa!.clid})`);
+      }
       this.realtime.emitLeadCreated(lead);
     } else if (lead.agentMode !== 'sdr') {
       // Lead já existia (ex.: veio de outro fluxo) — passa a ser do SDR
@@ -208,8 +259,21 @@ export class SdrController {
       updateData.kanbanStage = derivedStage;
     }
 
-    // Qualificou (caiu na raia quente) → MQL: marca e dispara evento pro Meta (uma única vez)
+    // Entrou em "atendimento" (lead respondeu, conversa em andamento) → evento
+    // "Lead" pro Meta, uma única vez. Também dispara se o lead pular direto pra
+    // "qualificado" numa tacada só, garantindo que o Lead sempre preceda o MQL
+    // (senão o funil no Meta ficaria com MQL sem Lead correspondente).
+    const inService = derivedStage === 'atendimento';
     const qualified = derivedStage === 'qualificado';
+    if ((inService || qualified) && !lead.leadEventSent) {
+      updateData.leadEventSent = true;
+      this.facebookService
+        .sendLeadEvent({ ...lead, leadEventSent: true }, { fbp: lead.fbp, fbc: lead.fbc })
+        .catch((err) => this.logger.error(`[SDR] Erro ao enviar Lead ao Meta: ${err.message}`));
+      this.logger.log(`[SDR] Lead ${phone} entrou em atendimento — evento Lead enviado ao Meta`);
+    }
+
+    // Qualificou (caiu na raia quente) → MQL: marca e dispara evento pro Meta (uma única vez)
     if (qualified && !lead.isMql) {
       updateData.isMql = true;
       this.facebookService

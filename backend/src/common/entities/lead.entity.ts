@@ -57,6 +57,12 @@ export class Lead {
   @Column({ name: 'is_mql', type: 'boolean', default: false })
   isMql: boolean;
 
+  // Evento "Lead" (CAPI) já enviado ao Meta — dispara uma única vez quando o
+  // lead entra na raia "atendimento". Espelha o padrão de is_mql (que controla
+  // o disparo único do evento MQL na raia "qualificado").
+  @Column({ name: 'lead_event_sent', type: 'boolean', default: false })
+  leadEventSent: boolean;
+
   @Column({ name: 'status', type: 'varchar', default: 'novo' })
   status: LeadStatus;
 
@@ -86,6 +92,18 @@ export class Lead {
 
   @Column({ name: 'click_id', type: 'varchar', nullable: true })
   clickId?: string;
+
+  // Click ID do anúncio Click-to-WhatsApp (CTWA). Chega junto da 1ª mensagem
+  // do lead que veio de anúncio direto pro WhatsApp — é o "fbclid do WhatsApp"
+  // e a única forma de atribuir esses leads ao anúncio no CAPI (não há
+  // fbclid/fbc/fbp porque não passou por navegador/LP).
+  @Column({ name: 'ctwa_clid', type: 'varchar', nullable: true })
+  ctwaClid?: string;
+
+  // URL do anúncio de origem (source_url do referral CTWA) — usado como
+  // event_source_url no CAPI e útil pra saber qual criativo trouxe o lead.
+  @Column({ name: 'ctwa_source_url', type: 'varchar', nullable: true })
+  ctwaSourceUrl?: string;
 
   @Column({ name: 'vsl_percentage', type: 'int', default: 0 })
   vslPercentage: number;

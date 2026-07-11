@@ -25,11 +25,20 @@ export class FacebookService {
     if (lead.phone) userData['ph'] = this.sha256(`55${lead.phone.replace(/\D/g, '')}`);
     if (lead.name) userData['fn'] = this.sha256(lead.name.split(' ')[0]);
     if (lead.fbclid) userData['fbc'] = this.buildFbc(lead.fbclid);
+    // ctwa_clid: atribuição de lead vindo de anúncio Click-to-WhatsApp. Vai em
+    // texto puro (NÃO hasheado) no user_data, conforme o CAPI espera pra CTWA.
+    if (lead.ctwaClid) userData['ctwa_clid'] = lead.ctwaClid;
     if (lead.id) userData['external_id'] = lead.id;
     return userData;
   }
 
-  private async sendEvent(eventName: string, userData: Record<string, string>, customData?: Record<string, any>, eventSourceUrl?: string): Promise<void> {
+  private async sendEvent(
+    eventName: string,
+    userData: Record<string, string>,
+    customData?: Record<string, any>,
+    eventSourceUrl?: string,
+    opts?: { ctwa?: boolean },
+  ): Promise<void> {
     const pixelId = this.config.get('FB_PIXEL_ID');
     const accessToken = this.config.get('FB_ACCESS_TOKEN');
 
@@ -38,12 +47,19 @@ export class FacebookService {
       return;
     }
 
+    // Leads de anúncio Click-to-WhatsApp exigem action_source=business_messaging
+    // + messaging_channel=whatsapp pro Meta atribuir o evento ao clique no anúncio
+    // (o ctwa_clid no user_data casa com o clique). Demais fluxos (LP/form) seguem
+    // action_source=website.
+    const isCtwa = Boolean(opts?.ctwa && userData['ctwa_clid']);
+
     const payload = {
       data: [
         {
           event_name: eventName,
           event_time: Math.floor(Date.now() / 1000),
-          action_source: 'website',
+          action_source: isCtwa ? 'business_messaging' : 'website',
+          ...(isCtwa ? { messaging_channel: 'whatsapp' } : {}),
           user_data: userData,
           ...(eventSourceUrl ? { event_source_url: eventSourceUrl } : {}),
           ...(customData ? { custom_data: customData } : {}),
@@ -110,12 +126,13 @@ export class FacebookService {
     if (extra?.fbc) userData['fbc'] = extra.fbc;
     if (extra?.clientIp) userData['client_ip_address'] = extra.clientIp;
     if (extra?.userAgent) userData['client_user_agent'] = extra.userAgent;
-    await this.sendEvent('Lead', userData);
+    const ctwa = Boolean(lead.ctwaClid);
+    await this.sendEvent('Lead', userData, undefined, lead.ctwaSourceUrl, { ctwa });
   }
 
   async sendPurchaseEvent(lead: Lead, value: number): Promise<void> {
     const userData = this.buildUserData(lead);
-    await this.sendEvent('Purchase', userData, { value, currency: 'BRL' });
+    await this.sendEvent('Purchase', userData, { value, currency: 'BRL' }, lead.ctwaSourceUrl, { ctwa: Boolean(lead.ctwaClid) });
   }
 
   async sendMqlEvent(lead: Lead, extra?: { fbp?: string; fbc?: string; userAgent?: string; clientIp?: string }): Promise<void> {
@@ -124,6 +141,9 @@ export class FacebookService {
     if (extra?.fbc) userData['fbc'] = extra.fbc;
     if (extra?.clientIp) userData['client_ip_address'] = extra.clientIp;
     if (extra?.userAgent) userData['client_user_agent'] = extra.userAgent;
-    await this.sendEvent('MQL', userData, undefined, 'https://leadscomia.vercel.app/');
+    // CTWA (anúncio direto pro WhatsApp) usa business_messaging + source_url do
+    // anúncio; leads de LP/form seguem website + a URL da landing.
+    const ctwa = Boolean(lead.ctwaClid);
+    await this.sendEvent('MQL', userData, undefined, lead.ctwaSourceUrl ?? 'https://leadscomia.vercel.app/', { ctwa });
   }
 }

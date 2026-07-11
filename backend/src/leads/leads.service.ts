@@ -43,7 +43,7 @@ export class LeadsService {
       query.andWhere('lead.utm_source = :utmSource', { utmSource: 'instagram' });
       query.andWhere('lead.utm_medium = :utmMedium', { utmMedium: 'dm-automation' });
     } else if (source === 'paid') {
-      query.andWhere('(lead.fbclid IS NOT NULL OR lead.utm_source IN (:...sources))', { sources: ['facebook', 'leadscomia'] });
+      query.andWhere('(lead.fbclid IS NOT NULL OR lead.ctwa_clid IS NOT NULL OR lead.utm_source IN (:...sources))', { sources: ['facebook', 'leadscomia', 'ctwa'] });
     }
 
     const total = await query.getCount();
