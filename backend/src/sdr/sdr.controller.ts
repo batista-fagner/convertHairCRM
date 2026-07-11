@@ -114,6 +114,19 @@ export class SdrController {
       this.logger.log(`[SDR][RAW] ${JSON.stringify(body).slice(0, 4000)}`);
     }
 
+    // Mensagem enviada pelo próprio número do bot, digitada manualmente pelo
+    // operador (não veio da nossa API — wasSentByApi=false). Permite controlar
+    // a IA por palavra-chave direto na conversa do WhatsApp: "opa" pausa,
+    // "ok" reativa. O restante das mensagens fromMe é ignorado normalmente.
+    if (message.fromMe && !message.wasSentByApi && !message.isGroup) {
+      const keyword = (message.text ?? '').trim().toLowerCase();
+      if (keyword === 'opa' || keyword === 'ok') {
+        const leadPhone: string = (body.chat?.phone ?? '').replace(/\D/g, '');
+        if (leadPhone) await this.toggleAiByKeyword(leadPhone, keyword === 'opa');
+      }
+      return { ok: true };
+    }
+
     if (message.fromMe || message.isGroup || message.wasSentByApi) return { ok: true };
 
     const phone: string = (body.chat?.phone ?? '').replace(/\D/g, '');
@@ -185,18 +198,31 @@ export class SdrController {
     return { ok: true };
   }
 
-  private async processMessage(phone: string, text: string, pushName: string, ctwa?: CtwaReferral) {
-    // Normaliza variantes com/sem DDI 55 e com/sem o 9 extra (Brasil)
+  /** Encontra o lead testando as variantes com/sem DDI 55 e com/sem o 9 extra (Brasil). */
+  private async findLeadByPhoneVariants(phone: string): Promise<Lead | null> {
     const addNine = (n: string) => (n.length === 10 ? `${n.slice(0, 2)}9${n.slice(2)}` : n);
     const removeNine = (n: string) => (n.length === 11 && n[2] === '9' ? `${n.slice(0, 2)}${n.slice(3)}` : n);
     const base = phone.startsWith('55') ? phone.slice(2) : phone;
     const phoneVariants = [`55${base}`, base, `55${addNine(base)}`, addNine(base), `55${removeNine(base)}`, removeNine(base)];
 
-    let lead: Lead | null = null;
     for (const p of phoneVariants) {
-      lead = await this.leadsService.findByPhone(p);
-      if (lead) break;
+      const lead = await this.leadsService.findByPhone(p);
+      if (lead) return lead;
     }
+    return null;
+  }
+
+  /** "opa"/"ok" digitados pelo operador direto no WhatsApp pausam/reativam a IA daquele lead. */
+  private async toggleAiByKeyword(phone: string, pause: boolean) {
+    const lead = await this.findLeadByPhoneVariants(phone);
+    if (!lead) return;
+    const updated = await this.leadsService.update(lead.id, { aiPaused: pause });
+    this.realtime.emitLeadUpdated(updated);
+    this.logger.log(`[SDR] IA ${pause ? 'pausada' : 'reativada'} via palavra-chave para o lead ${updated.phone}`);
+  }
+
+  private async processMessage(phone: string, text: string, pushName: string, ctwa?: CtwaReferral) {
+    let lead: Lead | null = await this.findLeadByPhoneVariants(phone);
 
     // Lead novo entrando pelo número do SDR → cria card "novo" no Kanban
     let isNew = false;
