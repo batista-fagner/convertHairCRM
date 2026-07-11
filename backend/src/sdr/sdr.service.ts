@@ -11,6 +11,7 @@ export interface SdrResponse {
   reply: string;
   stage: SdrStage;
   temperature: LeadTemperature;
+  nome?: string | null;
   vendeCabelo?: boolean | null;
   investeAnuncio?: boolean | null;
   instagram?: string | null;

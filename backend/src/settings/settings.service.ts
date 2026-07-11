@@ -84,6 +84,7 @@ export class SettingsService {
       reply: parsed.reply ?? '',
       stage: parsed.stage ?? 'qualificacao',
       temperature: parsed.temperature ?? 'morno',
+      nome: parsed.nome ?? null,
       vendeCabelo: parsed.vendeCabelo ?? null,
       investeAnuncio: parsed.investeAnuncio ?? null,
       instagram: parsed.instagram ?? null,

@@ -205,9 +205,10 @@ A pessoa deve sentir que conversou com alguém que entende do mercado e se inter
 
 // Anexado SEMPRE ao final — garante que a máquina de estágios continue funcionando.
 export const SDR_JSON_FORMAT = `Responda SEMPRE em JSON puro com este formato:
-{"reply": "sua mensagem aqui", "stage": "abertura|qualificacao|frio|perdido", "temperature": "quente|morno|frio", "vendeCabelo": true|false|null, "investeAnuncio": true|false|null, "instagram": "handle_sem_arroba_ou_null", "semInstagram": true|false|null}
+{"reply": "sua mensagem aqui", "stage": "abertura|qualificacao|frio|perdido", "temperature": "quente|morno|frio", "nome": "nome_do_lead_ou_null", "vendeCabelo": true|false|null, "investeAnuncio": true|false|null, "instagram": "handle_sem_arroba_ou_null", "semInstagram": true|false|null}
 
 O sistema já guarda o que foi respondido antes — só preencha um campo quando o lead disser algo NOVO sobre aquele ponto específico nesta mensagem, senão deixe null:
+- "nome": o nome (ou primeiro nome) assim que o lead informar, respondendo a pergunta inicial "qual seu nome?". Se ele não disser um nome de verdade (ex.: só cumprimentou, mudou de assunto), deixe null.
 - "vendeCabelo": true assim que confirmar que vende cabelo. false assim que confirmar que NÃO vende.
 - "investeAnuncio": true ou false assim que responder se já investe em anúncio hoje. Só pergunte isso depois de "vendeCabelo" ser true.
 - "instagram": o @ da empresa sem arroba, assim que informado.

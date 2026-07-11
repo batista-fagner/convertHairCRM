@@ -290,6 +290,7 @@ export class SdrController {
     const instagramValue = ai.instagram && typeof ai.instagram === 'string' && ai.instagram !== 'null'
       ? ai.instagram.replace('@', '').trim()
       : lead.instagram;
+    const nomeValue = ai.nome && typeof ai.nome === 'string' && ai.nome !== 'null' ? ai.nome.trim() : null;
 
     // Raia calculada (a "verdade" da qualificação): vende cabelo = qualificado.
     const derivedStage = deriveKanbanStage(vendeCabelo, ai.stage, lead.status);
@@ -318,6 +319,7 @@ export class SdrController {
     };
 
     if (instagramValue) updateData.instagram = instagramValue;
+    if (nomeValue) updateData.name = nomeValue;
 
     // Handoff → operador assume, IA desliga
     if (handoff) {
