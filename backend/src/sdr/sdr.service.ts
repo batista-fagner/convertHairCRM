@@ -11,8 +11,10 @@ export interface SdrResponse {
   reply: string;
   stage: SdrStage;
   temperature: LeadTemperature;
-  handoff: boolean;
+  vendeCabelo?: boolean | null;
+  investeAnuncio?: boolean | null;
   instagram?: string | null;
+  semInstagram?: boolean | null;
   success: boolean;
 }
 
@@ -40,22 +42,21 @@ function buildSystemPrompt(basePrompt: string, lead?: Lead | null): string {
 }
 
 /**
- * Mapeia o estágio + temperatura da conversa para a raia do Kanban.
- * `current` é a raia atual (mantida em casos ambíguos).
+ * Mapeia a resposta de qualificação (vende cabelo) + estágio da conversa pra
+ * raia do Kanban. `vendeCabelo` é a "verdade" da qualificação: true → qualificado
+ * direto (MQL), false → não qualificado. Investir em anúncio NÃO muda de raia,
+ * só soma a tag "mql_premium" (ver sdr.controller.ts).
  */
 export function deriveKanbanStage(
+  vendeCabelo: boolean | null | undefined,
   stage: SdrStage,
-  temperature: LeadTemperature | undefined,
-  isMql: boolean,
   status: string | undefined,
-  current: KanbanStage,
 ): KanbanStage {
   if (status === 'perdido' || stage === 'perdido') return 'perdido';
+  if (vendeCabelo === false) return 'nao-qualificado';
+  if (vendeCabelo === true) return 'qualificado';
   if (stage === 'abertura') return 'novo';
-  if (stage === 'quente' || isMql) return 'qualificado';
-  if (stage === 'frio') return 'nao-qualificado';
-  if (stage === 'qualificacao') return 'atendimento';
-  return current || 'novo';
+  return 'atendimento';
 }
 
 @Injectable()
@@ -106,9 +107,8 @@ export class SdrService {
 
       const parsed = JSON.parse(jsonMatch[0]) as SdrResponse;
       parsed.success = true;
-      parsed.handoff = Boolean(parsed.handoff);
 
-      this.logger.log(`SDR respondeu [stage=${parsed.stage}, temp=${parsed.temperature}, handoff=${parsed.handoff}]: ${parsed.reply}`);
+      this.logger.log(`SDR respondeu [stage=${parsed.stage}, temp=${parsed.temperature}, vendeCabelo=${parsed.vendeCabelo}, investeAnuncio=${parsed.investeAnuncio}]: ${parsed.reply}`);
       return parsed;
     } catch (err: any) {
       this.logger.error(`Erro no SDR: ${err.message}`);
@@ -116,7 +116,6 @@ export class SdrService {
         reply: '',
         stage: 'qualificacao',
         temperature: 'morno',
-        handoff: false,
         success: false,
       };
     }

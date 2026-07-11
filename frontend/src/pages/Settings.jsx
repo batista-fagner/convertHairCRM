@@ -66,7 +66,16 @@ function ChatSimulator() {
         body: JSON.stringify({ message: text, history }),
       })
       const data = await res.json()
-      setMessages(prev => [...prev, { role: 'assistant', content: data.reply, stage: data.stage, temperature: data.temperature, handoff: data.handoff }])
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: data.reply,
+        stage: data.stage,
+        temperature: data.temperature,
+        vendeCabelo: data.vendeCabelo,
+        investeAnuncio: data.investeAnuncio,
+        instagram: data.instagram,
+        semInstagram: data.semInstagram,
+      }])
       setLastStage(data.stage)
       setLastTemp(data.temperature)
     } catch {
@@ -122,8 +131,21 @@ function ChatSimulator() {
                 : 'bg-white border border-slate-200 text-slate-800 rounded-bl-sm'
             }`}>
               {msg.content}
-              {msg.handoff && (
-                <p className="text-[10px] mt-1 text-emerald-600 font-medium">✓ Handoff — closer notificado</p>
+              {(msg.vendeCabelo !== undefined && msg.vendeCabelo !== null) && (
+                <p className={`text-[10px] mt-1 font-medium ${msg.vendeCabelo ? 'text-emerald-600' : 'text-red-500'}`}>
+                  {msg.vendeCabelo ? '✓ Vende cabelo' : '✗ Não vende cabelo'}
+                </p>
+              )}
+              {(msg.investeAnuncio !== undefined && msg.investeAnuncio !== null) && (
+                <p className={`text-[10px] mt-0.5 font-medium ${msg.investeAnuncio ? 'text-violet-600' : 'text-slate-500'}`}>
+                  {msg.investeAnuncio ? '✓ Investe em anúncio (MQL premium)' : '— Não investe em anúncio'}
+                </p>
+              )}
+              {msg.instagram && (
+                <p className="text-[10px] mt-0.5 font-medium text-blue-600">✓ Instagram: @{msg.instagram}</p>
+              )}
+              {msg.semInstagram && (
+                <p className="text-[10px] mt-0.5 font-medium text-slate-500">✓ Sem Instagram</p>
               )}
             </div>
           </div>

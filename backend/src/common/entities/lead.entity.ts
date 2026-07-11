@@ -63,6 +63,21 @@ export class Lead {
   @Column({ name: 'lead_event_sent', type: 'boolean', default: false })
   leadEventSent: boolean;
 
+  // Respostas da qualificação do SDR (Sofia). null = ainda não perguntado/respondido.
+  // vendeCabelo=true já move pra "qualificado" e dispara MQL; investeAnuncio=true
+  // soma a tag "mql_premium"; semInstagram cobre o caso do lead dizer que não tem.
+  @Column({ name: 'vende_cabelo', type: 'boolean', nullable: true })
+  vendeCabelo?: boolean | null;
+
+  @Column({ name: 'investe_anuncio', type: 'boolean', nullable: true })
+  investeAnuncio?: boolean | null;
+
+  @Column({ name: 'sem_instagram', type: 'boolean', nullable: true })
+  semInstagram?: boolean | null;
+
+  @Column({ name: 'tags', type: 'jsonb', nullable: true })
+  tags?: string[] | null;
+
   @Column({ name: 'status', type: 'varchar', default: 'novo' })
   status: LeadStatus;
 

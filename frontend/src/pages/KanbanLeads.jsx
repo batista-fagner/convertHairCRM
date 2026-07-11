@@ -122,6 +122,7 @@ function CardContent({ lead, overlay = false }) {
 
       <div className="flex items-center gap-1.5 mt-2 flex-wrap">
         {lead.isMql && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-medium">🎯 MQL</span>}
+        {lead.tags?.includes('mql_premium') && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">⭐ Premium</span>}
         {temp && <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${temp.className}`}>{temp.label}</span>}
         {(lead.ctwaAdTitle || lead.ctwaClid) && (
           <span
@@ -216,6 +217,7 @@ function LeadCard({ lead, onOpen, onEdit, onDelete }) {
 
       <div className="flex items-center gap-1.5 mt-2 flex-wrap">
         {lead.isMql && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-medium">🎯 MQL</span>}
+        {lead.tags?.includes('mql_premium') && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">⭐ Premium</span>}
         {temp && <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${temp.className}`}>{temp.label}</span>}
         {(lead.ctwaAdTitle || lead.ctwaClid) && (
           <span

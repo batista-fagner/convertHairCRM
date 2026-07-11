@@ -255,11 +255,30 @@ export class SdrController {
 
     const updatedContext = this.sdrService.buildUpdatedContext(lead, text, ai.reply);
 
-    // Estágio terminal quando faz handoff
-    const newStage: SdrStage = ai.handoff ? 'encerrado' : ai.stage;
+    // Os 3 sinais da qualificação são persistidos: o sistema guarda o que já foi
+    // respondido, então só sobrescreve quando a IA manda algo novo nesta mensagem
+    // (senão mantém o valor já salvo — a IA não precisa repetir a cada turno).
+    const vendeCabelo = ai.vendeCabelo === true || ai.vendeCabelo === false ? ai.vendeCabelo : lead.vendeCabelo ?? null;
+    const investeAnuncio = ai.investeAnuncio === true || ai.investeAnuncio === false ? ai.investeAnuncio : lead.investeAnuncio ?? null;
+    const semInstagram = ai.semInstagram === true ? true : lead.semInstagram ?? null;
+    const instagramValue = ai.instagram && typeof ai.instagram === 'string' && ai.instagram !== 'null'
+      ? ai.instagram.replace('@', '').trim()
+      : lead.instagram;
 
-    // Raia calculada (a "verdade" da qualificação): lead na raia quente = qualificado
-    const derivedStage = deriveKanbanStage(ai.stage, ai.temperature, lead.isMql, lead.status, lead.kanbanStage);
+    // Raia calculada (a "verdade" da qualificação): vende cabelo = qualificado.
+    const derivedStage = deriveKanbanStage(vendeCabelo, ai.stage, lead.status);
+
+    // Handoff pro especialista só acontece depois das 3 respostas completas
+    // (vende cabelo=true + investe em anúncio conhecido + instagram conhecido
+    // ou confirmado que não tem) — e só dispara uma vez.
+    const instagramKnown = Boolean(instagramValue) || semInstagram === true;
+    const investeAnuncioKnown = investeAnuncio === true || investeAnuncio === false;
+    const readyForHandoff = vendeCabelo === true && investeAnuncioKnown && instagramKnown;
+    const alreadyHandedOff = lead.waStage === 'encerrado';
+    const handoff = readyForHandoff && !alreadyHandedOff;
+
+    // Estágio terminal quando faz handoff
+    const newStage: SdrStage = handoff ? 'encerrado' : ai.stage;
 
     const updateData: any = {
       aiContext: updatedContext,
@@ -267,20 +286,20 @@ export class SdrController {
       temperature: ai.temperature,
       waLastMessageAt: new Date(),
       followupSentAt: null,
+      vendeCabelo,
+      investeAnuncio,
+      semInstagram,
     };
 
-    // Salva o Instagram quando a IA extrair da conversa
-    if (ai.instagram && typeof ai.instagram === 'string' && ai.instagram !== 'null') {
-      updateData.instagram = ai.instagram.replace('@', '').trim();
-    }
+    if (instagramValue) updateData.instagram = instagramValue;
 
     // Handoff → operador assume, IA desliga
-    if (ai.handoff) {
+    if (handoff) {
       updateData.aiPaused = true;
     }
 
-    // Não qualificado (frio) → IA desliga automaticamente
-    if (ai.stage === 'frio') {
+    // Não qualificado (não vende cabelo) → IA desliga automaticamente
+    if (vendeCabelo === false) {
       updateData.aiPaused = true;
     }
 
@@ -303,13 +322,22 @@ export class SdrController {
       this.logger.log(`[SDR] Lead ${phone} entrou em atendimento — evento Lead enviado ao Meta`);
     }
 
-    // Qualificou (caiu na raia quente) → MQL: marca e dispara evento pro Meta (uma única vez)
-    if (qualified && !lead.isMql) {
+    // Vende cabelo = sim → MQL: marca e dispara evento pro Meta (uma única vez).
+    // Independe de investir em anúncio — isso só soma a tag premium abaixo.
+    if (vendeCabelo === true && !lead.isMql) {
       updateData.isMql = true;
       this.facebookService
         .sendMqlEvent({ ...lead, isMql: true }, { fbp: lead.fbp, fbc: lead.fbc })
         .catch((err) => this.logger.error(`[SDR] Erro ao enviar MQL ao Meta: ${err.message}`));
-      this.logger.log(`[SDR] Lead ${phone} qualificado (MQL) — evento enviado ao Meta`);
+      this.logger.log(`[SDR] Lead ${phone} vende cabelo (MQL) — evento enviado ao Meta`);
+    }
+
+    // Já investe em anúncio → tag "mql_premium" (mesma raia "qualificado", sem
+    // evento novo pro Meta — só diferencia visualmente quem já tem verba).
+    const existingTags = lead.tags || [];
+    if (investeAnuncio === true && !existingTags.includes('mql_premium')) {
+      updateData.tags = [...existingTags, 'mql_premium'];
+      this.logger.log(`[SDR] Lead ${phone} investe em anúncio — tag mql_premium adicionada`);
     }
 
     lead = await this.leadsService.update(lead.id, updateData);
@@ -317,7 +345,7 @@ export class SdrController {
     if (ai.reply) await this.sendMessage(phone, ai.reply);
 
     // Handoff: avisa o closer e destaca o card
-    if (ai.handoff) {
+    if (handoff) {
       await this.notifyOperator(lead);
       this.realtime.emitLeadHandoff(lead);
     } else {
@@ -334,7 +362,8 @@ export class SdrController {
 
     if (phones.length === 0) return;
 
-    const msg = `🔥 Lead qualificado pelo SDR!\n\nNome: ${lead.name}\nWhatsApp: ${lead.phone}${lead.instagram ? `\nInstagram: @${lead.instagram.replace('@', '')}` : ''}${lead.revenueRange ? `\nFaturamento: ${lead.revenueRange}` : ''}\n\nAssuma a conversa.`;
+    const isPremium = (lead.tags || []).includes('mql_premium');
+    const msg = `${isPremium ? '🔥🔥 Lead MQL PREMIUM' : '🔥 Lead qualificado'} pelo SDR!\n\nNome: ${lead.name}\nWhatsApp: ${lead.phone}${lead.instagram ? `\nInstagram: @${lead.instagram.replace('@', '')}` : '\nInstagram: não tem'}${isPremium ? '\nJá investe em anúncio: sim' : ''}${lead.revenueRange ? `\nFaturamento: ${lead.revenueRange}` : ''}\n\nAssuma a conversa.`;
 
     await Promise.allSettled(
       phones.map((phone) =>

@@ -84,7 +84,10 @@ export class SettingsService {
       reply: parsed.reply ?? '',
       stage: parsed.stage ?? 'qualificacao',
       temperature: parsed.temperature ?? 'morno',
-      handoff: Boolean(parsed.handoff),
+      vendeCabelo: parsed.vendeCabelo ?? null,
+      investeAnuncio: parsed.investeAnuncio ?? null,
+      instagram: parsed.instagram ?? null,
+      semInstagram: parsed.semInstagram ?? null,
     };
   }
 }
