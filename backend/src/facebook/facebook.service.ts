@@ -67,7 +67,11 @@ export class FacebookService {
           action_source: isCtwa ? 'business_messaging' : 'website',
           ...(isCtwa ? { messaging_channel: 'whatsapp' } : {}),
           user_data: userData,
-          ...(eventSourceUrl ? { event_source_url: eventSourceUrl } : {}),
+          // event_source_url é rejeitado pelo Meta em eventos business_messaging
+          // (validado via teste direto na API em 2026-07-11 — erro 400 "Please
+          // remove all invalid arguments... event_source_url"). Só envia no fluxo
+          // de site (LP/form).
+          ...(!isCtwa && eventSourceUrl ? { event_source_url: eventSourceUrl } : {}),
           ...(customData ? { custom_data: customData } : {}),
         },
       ],
@@ -80,8 +84,9 @@ export class FacebookService {
         { params: { access_token: accessToken } },
       );
       this.logger.log(`Evento "${eventName}" enviado ao Facebook`);
-    } catch (err) {
-      this.logger.error(`Erro ao enviar evento "${eventName}" ao Facebook: ${err.message}`);
+    } catch (err: any) {
+      const metaError = err?.response?.data?.error?.error_user_msg || err?.response?.data?.error?.message;
+      this.logger.error(`Erro ao enviar evento "${eventName}" ao Facebook: ${err.message}${metaError ? ` — ${metaError}` : ''}`);
     }
   }
 
