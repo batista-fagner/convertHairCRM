@@ -105,6 +105,15 @@ export class Lead {
   @Column({ name: 'ctwa_source_url', type: 'varchar', nullable: true })
   ctwaSourceUrl?: string;
 
+  // ID do anúncio (source_id do referral CTWA) — identifica o anúncio exato.
+  @Column({ name: 'ctwa_source_id', type: 'varchar', nullable: true })
+  ctwaSourceId?: string;
+
+  // Título/headline do anúncio que trouxe o lead — exibido no card do Kanban
+  // pra saber a origem sem abrir o Ads Manager.
+  @Column({ name: 'ctwa_ad_title', type: 'varchar', nullable: true })
+  ctwaAdTitle?: string;
+
   @Column({ name: 'vsl_percentage', type: 'int', default: 0 })
   vslPercentage: number;
 

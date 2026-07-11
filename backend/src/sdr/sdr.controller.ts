@@ -11,33 +11,58 @@ import { Lead, WaStage } from '../common/entities/lead.entity';
 
 export const SDR_NOTIFY_PHONES_KEY = 'sdr_notify_phones';
 
+export interface CtwaReferral {
+  clid?: string;
+  sourceUrl?: string;
+  sourceId?: string;
+  adTitle?: string;
+}
+
 /**
- * Extrai o ctwa_clid (e a URL do anúncio) de um webhook uazapi de anúncio
- * Click-to-WhatsApp. O caminho exato do campo no payload uazapi não é
- * documentado, então fazemos uma busca em profundidade pela chave — que é
- * bem específica de CTWA (ctwaClid/ctwa_clid), risco de falso-positivo ~0.
- * Só chega na PRIMEIRA mensagem do lead (o clique no anúncio).
+ * Extrai os dados de anúncio Click-to-WhatsApp de um webhook uazapi. Esses
+ * campos vêm no protocolo do WhatsApp (proto ExternalAdReplyInfo: ctwaClid,
+ * sourceUrl, sourceId, title), como irmãos no mesmo objeto. O caminho exato
+ * no payload uazapi não é documentado, então localizamos o NÓ que contém o
+ * ctwaClid (chave bem específica, ~0 falso-positivo) e lemos os irmãos dali —
+ * mais preciso que busca global, já que "title" é uma chave genérica que
+ * poderia aparecer noutro ponto do payload. Só chega na 1ª mensagem (o clique).
  */
-export function extractCtwaReferral(body: any): { clid?: string; sourceUrl?: string } {
-  const findKey = (obj: any, keys: string[], depth = 0): string | undefined => {
+export function extractCtwaReferral(body: any): CtwaReferral {
+  const findNodeWithCtwa = (obj: any, depth = 0): any => {
     if (!obj || typeof obj !== 'object' || depth > 6) return undefined;
-    for (const [k, v] of Object.entries(obj)) {
+    for (const k of Object.keys(obj)) {
       const kl = k.toLowerCase();
-      if (keys.includes(kl) && typeof v === 'string' && v.trim()) return v.trim();
+      if ((kl === 'ctwaclid' || kl === 'ctwa_clid') && typeof obj[k] === 'string' && obj[k].trim()) {
+        return obj;
+      }
     }
     for (const v of Object.values(obj)) {
       if (v && typeof v === 'object') {
-        const found = findKey(v, keys, depth + 1);
+        const found = findNodeWithCtwa(v, depth + 1);
         if (found) return found;
       }
     }
     return undefined;
   };
 
-  const clid = findKey(body, ['ctwaclid', 'ctwa_clid']);
-  if (!clid) return {};
-  const sourceUrl = findKey(body, ['sourceurl', 'source_url']);
-  return { clid, sourceUrl };
+  const node = findNodeWithCtwa(body);
+  if (!node) return {};
+
+  const pick = (keys: string[]): string | undefined => {
+    for (const k of Object.keys(node)) {
+      if (keys.includes(k.toLowerCase()) && typeof node[k] === 'string' && node[k].trim()) {
+        return node[k].trim();
+      }
+    }
+    return undefined;
+  };
+
+  return {
+    clid: pick(['ctwaclid', 'ctwa_clid']),
+    sourceUrl: pick(['sourceurl', 'source_url']),
+    sourceId: pick(['sourceid', 'source_id']),
+    adTitle: pick(['title', 'headline']),
+  };
 }
 
 /**
@@ -48,7 +73,7 @@ export function extractCtwaReferral(body: any): { clid?: string; sourceUrl?: str
 export class SdrController {
   private readonly logger = new Logger(SdrController.name);
   private readonly processedIds = new Set<string>();
-  private readonly pendingBuffer = new Map<string, { timer: NodeJS.Timeout; texts: string[]; ctwa?: { clid?: string; sourceUrl?: string } }>();
+  private readonly pendingBuffer = new Map<string, { timer: NodeJS.Timeout; texts: string[]; ctwa?: CtwaReferral }>();
   private readonly uazapiBaseUrl: string;
   private readonly uazapiToken: string;
   private readonly operatorPhone: string;
@@ -142,7 +167,7 @@ export class SdrController {
     const ctwa = extractCtwaReferral(body);
 
     // Debounce 10s: acumula mensagens antes de processar
-    const pending: { timer: NodeJS.Timeout; texts: string[]; ctwa?: { clid?: string; sourceUrl?: string } } =
+    const pending: { timer: NodeJS.Timeout; texts: string[]; ctwa?: CtwaReferral } =
       this.pendingBuffer.get(phone) ?? { timer: null as any, texts: [] };
     pending.texts.push(text);
     if (ctwa.clid && !pending.ctwa?.clid) pending.ctwa = ctwa;
@@ -160,7 +185,7 @@ export class SdrController {
     return { ok: true };
   }
 
-  private async processMessage(phone: string, text: string, pushName: string, ctwa?: { clid?: string; sourceUrl?: string }) {
+  private async processMessage(phone: string, text: string, pushName: string, ctwa?: CtwaReferral) {
     // Normaliza variantes com/sem DDI 55 e com/sem o 9 extra (Brasil)
     const addNine = (n: string) => (n.length === 10 ? `${n.slice(0, 2)}9${n.slice(2)}` : n);
     const removeNine = (n: string) => (n.length === 11 && n[2] === '9' ? `${n.slice(0, 2)}${n.slice(3)}` : n);
@@ -186,12 +211,17 @@ export class SdrController {
         // Origem: anúncio Click-to-WhatsApp quando veio ctwa_clid, senão WhatsApp orgânico
         utmSource: fromAd ? 'ctwa' : 'whatsapp',
         utmMedium: fromAd ? 'whatsapp-ad' : 'sdr',
+        // Nome do anúncio vira utm_campaign quando disponível — aparece direto no
+        // Kanban/relatórios sem precisar abrir o Ads Manager.
+        utmCampaign: fromAd ? (ctwa?.adTitle ?? ctwa?.sourceId ?? undefined) : undefined,
         ctwaClid: ctwa?.clid,
         ctwaSourceUrl: ctwa?.sourceUrl,
+        ctwaSourceId: ctwa?.sourceId,
+        ctwaAdTitle: ctwa?.adTitle,
       });
       isNew = true;
       if (fromAd) {
-        this.logger.log(`[SDR] Lead ${phone} veio de anúncio CTWA (ctwa_clid=${ctwa!.clid})`);
+        this.logger.log(`[SDR] Lead ${phone} veio de anúncio CTWA (ctwa_clid=${ctwa!.clid}, ad="${ctwa?.adTitle ?? ctwa?.sourceId ?? '?'}")`);
       }
       this.realtime.emitLeadCreated(lead);
     } else if (lead.agentMode !== 'sdr') {

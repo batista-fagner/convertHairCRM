@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { DndContext, DragOverlay, useDraggable, useDroppable, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { io } from 'socket.io-client'
-import { Flame, Snowflake, UserPlus, XCircle, Phone, Mail, UserCheck, Loader2, X, MessageCircle, PauseCircle, Bot, MoreVertical, Pencil, Trash2, Play, Eye, Handshake, Trophy, HeadphonesIcon, Paperclip, Send, FileText, Video, StickyNote, ChevronDown, ChevronUp, Plus, CheckCircle2 } from 'lucide-react'
+import { Flame, Snowflake, UserPlus, XCircle, Phone, Mail, UserCheck, Loader2, X, MessageCircle, PauseCircle, Bot, MoreVertical, Pencil, Trash2, Play, Eye, Handshake, Trophy, HeadphonesIcon, Paperclip, Send, FileText, Video, StickyNote, ChevronDown, ChevronUp, Plus, CheckCircle2, Megaphone } from 'lucide-react'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3002/api'
 const SOCKET_URL = API.replace(/\/api\/?$/, '') || 'http://localhost:3002'
@@ -123,6 +123,14 @@ function CardContent({ lead, overlay = false }) {
       <div className="flex items-center gap-1.5 mt-2 flex-wrap">
         {lead.isMql && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-medium">🎯 MQL</span>}
         {temp && <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${temp.className}`}>{temp.label}</span>}
+        {(lead.ctwaAdTitle || lead.ctwaClid) && (
+          <span
+            className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium flex items-center gap-0.5 max-w-[140px]"
+            title={lead.ctwaAdTitle ? `Anúncio: ${lead.ctwaAdTitle}` : 'Veio de anúncio (Click-to-WhatsApp)'}
+          >
+            <Megaphone className="w-3 h-3 shrink-0" /> <span className="truncate">{lead.ctwaAdTitle || 'Anúncio'}</span>
+          </span>
+        )}
         {lead._handoff && (
           <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-rose-600 text-white font-medium flex items-center gap-0.5">
             <UserCheck className="w-3 h-3" /> Passar pro closer
@@ -209,6 +217,14 @@ function LeadCard({ lead, onOpen, onEdit, onDelete }) {
       <div className="flex items-center gap-1.5 mt-2 flex-wrap">
         {lead.isMql && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-medium">🎯 MQL</span>}
         {temp && <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${temp.className}`}>{temp.label}</span>}
+        {(lead.ctwaAdTitle || lead.ctwaClid) && (
+          <span
+            className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium flex items-center gap-0.5 max-w-[140px]"
+            title={lead.ctwaAdTitle ? `Anúncio: ${lead.ctwaAdTitle}` : 'Veio de anúncio (Click-to-WhatsApp)'}
+          >
+            <Megaphone className="w-3 h-3 shrink-0" /> <span className="truncate">{lead.ctwaAdTitle || 'Anúncio'}</span>
+          </span>
+        )}
         {lead._handoff && (
           <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-rose-600 text-white font-medium flex items-center gap-0.5">
             <UserCheck className="w-3 h-3" /> Passar pro closer
