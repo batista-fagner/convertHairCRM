@@ -27,7 +27,13 @@ export class FacebookService {
     if (lead.fbclid) userData['fbc'] = this.buildFbc(lead.fbclid);
     // ctwa_clid: atribuição de lead vindo de anúncio Click-to-WhatsApp. Vai em
     // texto puro (NÃO hasheado) no user_data, conforme o CAPI espera pra CTWA.
-    if (lead.ctwaClid) userData['ctwa_clid'] = lead.ctwaClid;
+    // O Meta também exige page_id nesse caso (validado via teste direto na API
+    // em 2026-07-11 — sem isso o evento de mensagens é rejeitado).
+    if (lead.ctwaClid) {
+      userData['ctwa_clid'] = lead.ctwaClid;
+      const pageId = this.config.get('FB_PAGE_ID');
+      if (pageId) userData['page_id'] = pageId;
+    }
     if (lead.id) userData['external_id'] = lead.id;
     return userData;
   }
@@ -127,7 +133,10 @@ export class FacebookService {
     if (extra?.clientIp) userData['client_ip_address'] = extra.clientIp;
     if (extra?.userAgent) userData['client_user_agent'] = extra.userAgent;
     const ctwa = Boolean(lead.ctwaClid);
-    await this.sendEvent('Lead', userData, undefined, lead.ctwaSourceUrl, { ctwa });
+    // WhatsApp CTWA (business_messaging) só aceita "LeadSubmitted"/"Purchase" como
+    // nome de evento — "Lead" customizado só é aceito no fluxo de site (LP/form).
+    const eventName = ctwa ? 'LeadSubmitted' : 'Lead';
+    await this.sendEvent(eventName, userData, undefined, lead.ctwaSourceUrl, { ctwa });
   }
 
   async sendPurchaseEvent(lead: Lead, value: number): Promise<void> {
@@ -144,6 +153,11 @@ export class FacebookService {
     // CTWA (anúncio direto pro WhatsApp) usa business_messaging + source_url do
     // anúncio; leads de LP/form seguem website + a URL da landing.
     const ctwa = Boolean(lead.ctwaClid);
-    await this.sendEvent('MQL', userData, undefined, lead.ctwaSourceUrl ?? 'https://leadscomia.vercel.app/', { ctwa });
+    // WhatsApp CTWA não aceita evento customizado "MQL" (só LeadSubmitted/Purchase
+    // são válidos pra business_messaging) — usa "Purchase" com valor simbólico
+    // como sinal de lead qualificado nesse canal. Fluxo de site continua com "MQL".
+    const eventName = ctwa ? 'Purchase' : 'MQL';
+    const customData = ctwa ? { value: 1, currency: 'BRL' } : undefined;
+    await this.sendEvent(eventName, userData, customData, lead.ctwaSourceUrl ?? 'https://leadscomia.vercel.app/', { ctwa });
   }
 }
