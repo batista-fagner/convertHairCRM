@@ -58,6 +58,19 @@ export class LeadsController {
     return this.leadsService.getStats();
   }
 
+  @Get('analytics/ads')
+  async getAdPerformance() {
+    const rows = await this.leadsService.getAdPerformance();
+    const withSpend = await Promise.all(
+      rows.map(async (row) => {
+        const spend = await this.facebookService.getAdSpend(row.adId).catch(() => 0);
+        const cpql = row.qualifiedCount > 0 ? spend / row.qualifiedCount : null;
+        return { ...row, spend, cpql };
+      }),
+    );
+    return withSpend;
+  }
+
   @Get('kanban')
   async kanban() {
     return this.leadsService.findKanban();

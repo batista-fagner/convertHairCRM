@@ -227,6 +227,9 @@ export class SdrController {
         utmMedium: details.adsetName || undefined,
         utmTerm: details.adsetId || undefined,
         utmContent: adId,
+        // Sobrescreve o título genérico do referral (ex: nome da Página) pelo
+        // nome real do anúncio no Ads Manager — mais útil pra identificar e agir.
+        ctwaAdTitle: details.adName || undefined,
       });
       this.realtime.emitLeadUpdated(updated);
       this.logger.log(`[SDR] Lead ${updated.phone} enriquecido com dados do anúncio: campanha="${details.campaignName}", conjunto="${details.adsetName}"`);
@@ -381,6 +384,7 @@ export class SdrController {
     // Independe de investir em anúncio — isso só soma a tag premium abaixo.
     if (vendeCabelo === true && !lead.isMql) {
       updateData.isMql = true;
+      updateData.qualifiedAt = new Date();
       this.facebookService
         .sendMqlEvent({ ...lead, isMql: true }, { fbp: lead.fbp, fbc: lead.fbc })
         .catch((err) => this.logger.error(`[SDR] Erro ao enviar MQL ao Meta: ${err.message}`));

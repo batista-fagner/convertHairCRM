@@ -72,6 +72,11 @@ export class Lead {
   @Column({ name: 'investe_anuncio', type: 'boolean', nullable: true })
   investeAnuncio?: boolean | null;
 
+  // Timestamp de quando o lead virou MQL (entrou em "qualificado" pela 1ª vez).
+  // Usado pra calcular tempo médio até qualificar no relatório de anúncios.
+  @Column({ name: 'qualified_at', type: 'timestamp', nullable: true })
+  qualifiedAt?: Date | null;
+
   @Column({ name: 'sem_instagram', type: 'boolean', nullable: true })
   semInstagram?: boolean | null;
 

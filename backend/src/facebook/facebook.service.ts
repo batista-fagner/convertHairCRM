@@ -154,6 +154,22 @@ export class FacebookService {
     return data;
   }
 
+  /** Gasto (spend) de um anúncio na Marketing API, usado pra calcular custo por lead qualificado. */
+  async getAdSpend(adId: string, datePreset: string = 'maximum'): Promise<number> {
+    const accessToken = this.config.get('FB_ADS_TOKEN');
+    if (!accessToken) return 0;
+    try {
+      const response = await axios.get(`https://graph.facebook.com/v21.0/${adId}/insights`, {
+        params: { fields: 'spend', date_preset: datePreset, access_token: accessToken },
+      });
+      const spend = response.data?.data?.[0]?.spend;
+      return spend ? parseFloat(spend) : 0;
+    } catch (err: any) {
+      this.logger.warn(`Erro ao buscar gasto do anúncio ${adId}: ${err.message}`);
+      return 0;
+    }
+  }
+
   /** Resolve o access token da Página (FB_PAGE_ID) a partir de um token de usuário/sistema. */
   private async getPageAccessToken(userToken: string): Promise<string | null> {
     const pageId = this.config.get('FB_PAGE_ID');

@@ -122,6 +122,44 @@ export class LeadsService {
     await this.leadsRepo.delete(id);
   }
 
+  /**
+   * Agrega leads do SDR por anúncio (utm_content = Ad ID), pra relatório de
+   * performance de campanha. Só considera leads com attribution real (já
+   * enriquecidos via Marketing API) — leads antigos sem utm_content ficam de fora.
+   */
+  async getAdPerformance(): Promise<
+    {
+      adId: string;
+      adName: string | null;
+      adsetName: string | null;
+      campaignName: string | null;
+      total: number;
+      leadEventCount: number;
+      qualifiedCount: number;
+      disqualifiedCount: number;
+      premiumCount: number;
+      avgSecondsToQualify: number | null;
+    }[]
+  > {
+    return this.leadsRepo.query(`
+      SELECT
+        utm_content AS "adId",
+        MAX(ctwa_ad_title) AS "adName",
+        MAX(utm_medium) AS "adsetName",
+        MAX(utm_campaign) AS "campaignName",
+        COUNT(*)::int AS "total",
+        COUNT(*) FILTER (WHERE lead_event_sent)::int AS "leadEventCount",
+        COUNT(*) FILTER (WHERE is_mql)::int AS "qualifiedCount",
+        COUNT(*) FILTER (WHERE vende_cabelo = false)::int AS "disqualifiedCount",
+        COUNT(*) FILTER (WHERE tags @> '["mql_premium"]'::jsonb)::int AS "premiumCount",
+        AVG(EXTRACT(EPOCH FROM (qualified_at - created_at))) FILTER (WHERE qualified_at IS NOT NULL) AS "avgSecondsToQualify"
+      FROM leads
+      WHERE agent_mode = 'sdr' AND utm_content IS NOT NULL
+      GROUP BY utm_content
+      ORDER BY total DESC
+    `);
+  }
+
   async clearAll(): Promise<{ deleted: number }> {
     const result = await this.leadsRepo.createQueryBuilder().delete().from(Lead).execute();
     this.logger.warn(`Todos os ${result.affected} leads foram deletados`);
