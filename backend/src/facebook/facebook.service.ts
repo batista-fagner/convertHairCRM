@@ -131,7 +131,38 @@ export class FacebookService {
       }
     }
 
+    // Anúncio de vídeo: busca o arquivo completo (com áudio) via token de Página
+    // — o vídeo pertence à Página, não à conta de anúncio, e precisa de
+    // pages_read_engagement (FB_ADS_TOKEN sozinho não acessa o "source" do vídeo).
+    // A URL retornada expira (assinada pelo Meta), por isso não é cacheada —
+    // buscada sob demanda toda vez que o modal "Ver criativo" abre.
+    if (data.creative?.object_type === 'VIDEO' && data.creative?.video_id) {
+      try {
+        const pageToken = await this.getPageAccessToken(accessToken);
+        if (pageToken) {
+          const videoResponse = await axios.get(`https://graph.facebook.com/v21.0/${data.creative.video_id}`, {
+            params: { fields: 'source,length', access_token: pageToken },
+          });
+          data.creative.video_url = videoResponse.data.source;
+          data.creative.video_length = videoResponse.data.length;
+        }
+      } catch (err: any) {
+        this.logger.warn(`Erro ao buscar vídeo completo do anúncio ${adId}: ${err.message}`);
+      }
+    }
+
     return data;
+  }
+
+  /** Resolve o access token da Página (FB_PAGE_ID) a partir de um token de usuário/sistema. */
+  private async getPageAccessToken(userToken: string): Promise<string | null> {
+    const pageId = this.config.get('FB_PAGE_ID');
+    if (!pageId) return null;
+    const response = await axios.get('https://graph.facebook.com/v21.0/me/accounts', {
+      params: { access_token: userToken },
+    });
+    const page = (response.data?.data || []).find((p: any) => p.id === pageId);
+    return page?.access_token ?? null;
   }
 
   /**

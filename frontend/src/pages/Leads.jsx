@@ -323,7 +323,14 @@ export default function Leads() {
               )}
               {creativeModal.data && (
                 <div className="space-y-4">
-                  {(creativeModal.data.creative?.image_url || creativeModal.data.creative?.thumbnail_url) && (
+                  {creativeModal.data.creative?.video_url ? (
+                    <video
+                      src={creativeModal.data.creative.video_url}
+                      poster={creativeModal.data.creative.thumbnail_url}
+                      controls
+                      className="w-full rounded-xl border border-slate-200 max-h-[28rem]"
+                    />
+                  ) : (creativeModal.data.creative?.image_url || creativeModal.data.creative?.thumbnail_url) && (
                     <img src={creativeModal.data.creative.image_url || creativeModal.data.creative.thumbnail_url} alt="Criativo" className="w-full rounded-xl border border-slate-200 object-contain max-h-80" />
                   )}
                   {creativeModal.data.name && (
