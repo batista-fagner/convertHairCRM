@@ -11,6 +11,8 @@ export class EnrichmentService {
   private readonly logger = new Logger(EnrichmentService.name);
   private readonly rapidapiKey: string;
   private readonly rapidapiHost: string;
+  private readonly sdrUazapiBaseUrl: string;
+  private readonly sdrUazapiToken: string;
 
   constructor(
     private config: ConfigService,
@@ -20,6 +22,12 @@ export class EnrichmentService {
   ) {
     this.rapidapiKey = config.get('RAPIDAPI_KEY') || '';
     this.rapidapiHost = config.get('RAPIDAPI_HOST') || 'instagram120.p.rapidapi.com';
+    // Follow-up de stories precisa sair pelo número que o lead já conhece. Hoje
+    // todo lead é do fluxo SDR (agentMode='sdr') — a instância do Efraim
+    // (MessagingService/UAZAPI_TOKEN) está desconectada e, mesmo se estivesse
+    // ativa, seria um número diferente do que o lead já está conversando.
+    this.sdrUazapiBaseUrl = config.get('SDR_UAZAPI_BASE_URL') || config.get('UAZAPI_BASE_URL') || '';
+    this.sdrUazapiToken = config.get('SDR_UAZAPI_TOKEN') || '';
   }
 
   async enrichLeadFromInstagram(leadId: string): Promise<Lead> {
@@ -187,7 +195,26 @@ export class EnrichmentService {
   }
 
   async sendFollowupMessage(leadId: string, message: string): Promise<{ sent: boolean }> {
-    await this.messagingService.sendMessage({ leadId, text: message });
+    const lead = await this.leadsService.findById(leadId);
+
+    if (!this.sdrUazapiToken) {
+      throw new Error('SDR_UAZAPI_TOKEN não configurado — não é possível enviar o follow-up');
+    }
+
+    const phone = lead.phone.startsWith('55') ? lead.phone : `55${lead.phone}`;
+    await axios.post(
+      `${this.sdrUazapiBaseUrl}/send/text`,
+      { number: phone, text: message },
+      { headers: { token: this.sdrUazapiToken } },
+    );
+
+    const history = Array.isArray(lead.aiContext) ? lead.aiContext : [];
+    await this.leadsService.update(leadId, {
+      aiContext: [...history, { role: 'assistant', content: message }],
+      waLastMessageAt: new Date(),
+    });
+
+    this.logger.log(`Follow-up de stories enviado para ${phone} (lead: ${lead.name})`);
     return { sent: true };
   }
 
