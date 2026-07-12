@@ -30,7 +30,7 @@ export class EnrichmentService {
     this.sdrUazapiToken = config.get('SDR_UAZAPI_TOKEN') || '';
   }
 
-  async enrichLeadFromInstagram(leadId: string): Promise<Lead> {
+  async enrichLeadFromInstagram(leadId: string, opts?: { skipMessage?: boolean }): Promise<Lead> {
     const lead = await this.leadsService.findById(leadId);
 
     if (!lead.instagram) {
@@ -65,10 +65,15 @@ export class EnrichmentService {
 
       this.logger.log(`Lead ${leadId} enriquecido: +${bonusScore}pts (total: ${newScore})`);
 
-      // Enviar mensagem enriquecida via WhatsApp
-      this.sendEnrichedMessage(updated, aiInsight).catch(err =>
-        this.logger.error(`Erro ao enviar mensagem enriquecida: ${err.message}`),
-      );
+      // Enviar mensagem enriquecida via WhatsApp — só no fluxo original (form/Efraim).
+      // Leads do SDR já têm a Sofia conversando; skipMessage evita duplicar/colidir
+      // com o fluxo dela e também evita depender do MessagingService (Efraim),
+      // que usa uma instância separada e hoje está desconectada.
+      if (!opts?.skipMessage) {
+        this.sendEnrichedMessage(updated, aiInsight).catch(err =>
+          this.logger.error(`Erro ao enviar mensagem enriquecida: ${err.message}`),
+        );
+      }
 
       return updated;
     } catch (err) {

@@ -7,6 +7,7 @@ import { LeadsService } from '../leads/leads.service';
 import { FacebookService } from '../facebook/facebook.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { SettingsService } from '../settings/settings.service';
+import { EnrichmentService } from '../enrichment/enrichment.service';
 import { Lead, WaStage } from '../common/entities/lead.entity';
 
 export const SDR_NOTIFY_PHONES_KEY = 'sdr_notify_phones';
@@ -86,6 +87,7 @@ export class SdrController {
     private readonly http: HttpService,
     private readonly config: ConfigService,
     private readonly settings: SettingsService,
+    private readonly enrichmentService: EnrichmentService,
   ) {
     this.uazapiBaseUrl = config.get('SDR_UAZAPI_BASE_URL') || config.get('UAZAPI_BASE_URL') || 'https://free.uazapi.com';
     this.uazapiToken = config.get('SDR_UAZAPI_TOKEN') || '';
@@ -350,6 +352,7 @@ export class SdrController {
 
     if (instagramValue) updateData.instagram = instagramValue;
     if (nomeValue) updateData.name = nomeValue;
+    const isNewInstagram = Boolean(instagramValue && !lead.instagram);
 
     // Handoff → operador assume, IA desliga
     if (handoff) {
@@ -400,6 +403,16 @@ export class SdrController {
     }
 
     lead = await this.leadsService.update(lead.id, updateData);
+
+    // Instagram informado pela 1ª vez → busca dados reais (RapidAPI) + análise
+    // IA em segundo plano, pra alimentar a página "Instagram Leads". skipMessage
+    // porque a Sofia já está conversando com o lead — não manda outra mensagem.
+    // Roda só depois do update acima pra evitar buscar o lead sem o Instagram salvo ainda.
+    if (isNewInstagram) {
+      this.enrichmentService.enrichLeadFromInstagram(lead.id, { skipMessage: true }).catch((err) =>
+        this.logger.warn(`[SDR] Erro ao enriquecer Instagram do lead ${phone}: ${err.message}`),
+      );
+    }
 
     if (ai.reply) await this.sendMessage(phone, ai.reply);
 

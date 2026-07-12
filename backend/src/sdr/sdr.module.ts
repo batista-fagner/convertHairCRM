@@ -11,6 +11,7 @@ import { LeadsModule } from '../leads/leads.module';
 import { FacebookModule } from '../facebook/facebook.module';
 import { RealtimeModule } from '../realtime/realtime.module';
 import { SettingsModule } from '../settings/settings.module';
+import { EnrichmentModule } from '../enrichment/enrichment.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { SettingsModule } from '../settings/settings.module';
     FacebookModule,
     RealtimeModule,
     SettingsModule,
+    EnrichmentModule,
   ],
   controllers: [SdrController, FollowupController, ManualMessageController],
   providers: [SdrService, SdrFollowupService],
