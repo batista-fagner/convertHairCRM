@@ -212,6 +212,29 @@ export class SdrController {
     return null;
   }
 
+  /**
+   * Busca nome real de campanha/conjunto/anúncio na Marketing API e atualiza o
+   * lead — roda em segundo plano (fire-and-forget), sem bloquear a resposta ao
+   * lead nem depender disso pra nada crítico. Só afeta leads de WhatsApp CTWA;
+   * o fluxo de LP/site continua resolvendo isso via UTM da própria URL.
+   */
+  private async enrichAdAttribution(leadId: string, adId: string) {
+    try {
+      const details = await this.facebookService.getAdDetails(adId);
+      if (!details) return;
+      const updated = await this.leadsService.update(leadId, {
+        utmCampaign: details.campaignName || undefined,
+        utmMedium: details.adsetName || undefined,
+        utmTerm: details.adsetId || undefined,
+        utmContent: adId,
+      });
+      this.realtime.emitLeadUpdated(updated);
+      this.logger.log(`[SDR] Lead ${updated.phone} enriquecido com dados do anúncio: campanha="${details.campaignName}", conjunto="${details.adsetName}"`);
+    } catch (err: any) {
+      this.logger.warn(`[SDR] Erro ao enriquecer attribution do lead ${leadId}: ${err.message}`);
+    }
+  }
+
   /** "opa"/"ok" digitados pelo operador direto no WhatsApp pausam/reativam a IA daquele lead. */
   private async toggleAiByKeyword(phone: string, pause: boolean) {
     const lead = await this.findLeadByPhoneVariants(phone);
@@ -248,6 +271,10 @@ export class SdrController {
       isNew = true;
       if (fromAd) {
         this.logger.log(`[SDR] Lead ${phone} veio de anúncio CTWA (ctwa_clid=${ctwa!.clid}, ad="${ctwa?.adTitle ?? ctwa?.sourceId ?? '?'}")`);
+        // Enriquece com nome real de campanha/conjunto/anúncio via Marketing API,
+        // em segundo plano — não atrasa a resposta ao lead. Só roda se tiver o
+        // Ad ID (sourceId) e o FB_ADS_TOKEN configurado.
+        if (ctwa?.sourceId) this.enrichAdAttribution(lead.id, ctwa.sourceId);
       }
       this.realtime.emitLeadCreated(lead);
     } else if (lead.agentMode !== 'sdr') {

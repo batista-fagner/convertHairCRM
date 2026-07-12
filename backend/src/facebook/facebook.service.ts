@@ -130,6 +130,35 @@ export class FacebookService {
     return data;
   }
 
+  /**
+   * Busca nome real de anúncio/conjunto/campanha via Marketing API, a partir do
+   * Ad ID (source_id do referral CTWA). Usado só pra atribuição de leads vindos
+   * de WhatsApp — não mexe no fluxo de LP/site, que já resolve isso via UTM da URL.
+   */
+  async getAdDetails(adId: string): Promise<{ adName: string; adsetName: string; adsetId: string; campaignName: string } | null> {
+    const accessToken = this.config.get('FB_ADS_TOKEN');
+    if (!accessToken) return null;
+
+    try {
+      const response = await axios.get(`https://graph.facebook.com/v21.0/${adId}`, {
+        params: {
+          fields: 'name,adset{name,id},campaign{name}',
+          access_token: accessToken,
+        },
+      });
+      const data = response.data;
+      return {
+        adName: data.name,
+        adsetName: data.adset?.name,
+        adsetId: data.adset?.id,
+        campaignName: data.campaign?.name,
+      };
+    } catch (err: any) {
+      this.logger.warn(`Erro ao buscar detalhes do anúncio ${adId}: ${err.message}`);
+      return null;
+    }
+  }
+
   async sendLeadEvent(lead: Lead, extra?: { fbp?: string; fbc?: string; userAgent?: string; clientIp?: string }): Promise<void> {
     const userData = this.buildUserData(lead);
     if (extra?.fbp) userData['fbp'] = extra.fbp;
