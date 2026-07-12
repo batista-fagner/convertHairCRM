@@ -95,10 +95,14 @@ export class FacebookService {
     const adAccountId = this.config.get('FB_AD_ACCOUNT_ID');
     if (!accessToken) throw new Error('FB_ADS_TOKEN não configurado');
 
-    // Busca o anúncio com creative e asset_feed_spec para pegar hashes de imagem
+    // Busca o anúncio com creative e asset_feed_spec para pegar hashes de imagem.
+    // thumbnail_width/height(1080) pede o thumbnail em alta resolução — sem isso
+    // o Meta devolve um recorte de 64x64 (fica borrado/pixelado ao exibir grande,
+    // principalmente em anúncios de vídeo, onde é o único preview disponível
+    // sem permissão de Página).
     const adResponse = await axios.get(`https://graph.facebook.com/v21.0/${adId}`, {
       params: {
-        fields: 'name,creative{thumbnail_url,title,body,asset_feed_spec}',
+        fields: 'name,creative.thumbnail_width(1080).thumbnail_height(1080){thumbnail_url,title,body,asset_feed_spec,video_id,object_type}',
         access_token: accessToken,
       },
     });
