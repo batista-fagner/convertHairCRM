@@ -59,16 +59,22 @@ export class LeadsController {
   }
 
   @Get('analytics/ads')
-  async getAdPerformance() {
-    const rows = await this.leadsService.getAdPerformance();
+  async getAdPerformance(@Query('from') from?: string, @Query('to') to?: string) {
+    const rows = await this.leadsService.getAdPerformance(from, to);
+    const range = from && to ? { since: from, until: to } : undefined;
     const withSpend = await Promise.all(
       rows.map(async (row) => {
-        const spend = await this.facebookService.getAdSpend(row.adId).catch(() => 0);
+        const spend = await this.facebookService.getAdSpend(row.adId, range).catch(() => 0);
         const cpql = row.qualifiedCount > 0 ? spend / row.qualifiedCount : null;
         return { ...row, spend, cpql };
       }),
     );
     return withSpend;
+  }
+
+  @Get('analytics/ads/:adId/leads')
+  async getLeadsByAd(@Param('adId') adId: string, @Query('from') from?: string, @Query('to') to?: string) {
+    return this.leadsService.getLeadsByAd(adId, from, to);
   }
 
   @Get('kanban')

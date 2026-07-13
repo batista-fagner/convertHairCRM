@@ -227,12 +227,45 @@ Quando qualificado → `stage=quente` + `handoff=true` → notificação ao oper
 
 ---
 
+## 🖥️ Monitorar logs do Railway (produção)
+
+CLI já instalado e logado nessa máquina (`~/.railway/config.json` já vinculado ao projeto
+`stellar-emotion` / serviço `convertHairCRM` — não precisa `railway login` nem `railway link`
+de novo, só rodar de dentro da pasta `convertHairCRM`).
+
+**Ver status do deploy:**
+```bash
+cd /Users/fagnerbatista/Documents/planningPsi/convertHairCRM && railway status
+```
+
+**Monitorar logs de aplicação (eventos SDR/CAPI + qualquer erro), sem duplicar histórico a cada reconexão:**
+```bash
+cd /Users/fagnerbatista/Documents/planningPsi/convertHairCRM && while true; do railway logs 2>&1; sleep 3; done | grep --line-buffered -E "\[SDR\]|LeadSubmitted|Purchase|\bMQL\b|evento.*Meta|qualificado|ERROR|Erro|Exception|Traceback" | awk '!seen[$0]++'
+```
+
+**Monitorar logs HTTP (confirma se o webhook `/webhooks/sdr` está chegando), sem duplicar:**
+```bash
+cd /Users/fagnerbatista/Documents/planningPsi/convertHairCRM && while true; do railway logs --http 2>&1; sleep 3; done | grep --line-buffered -E "webhooks/sdr" | awk '!seen[$0]++'
+```
+
+**Ver logs recentes sem ficar monitorando (janela de tempo fixa):**
+```bash
+cd /Users/fagnerbatista/Documents/planningPsi/convertHairCRM && railway logs --since 15m
+```
+
+⚠️ Os dois comandos de monitor ficam rodando indefinidamente (`while true`) — os processos morrem
+quando a sessão do Claude Code/computador fecha. Precisa rodar de novo a cada nova sessão se quiser
+acompanhar ao vivo.
+
+---
+
 ## ⚠️ Pendências
 
 - [ ] Configurar instância uazapi separada do SDR (`SDR_UAZAPI_TOKEN`, `SDR_UAZAPI_BASE_URL`)
 - [ ] Preencher `SDR_OPERATOR_PHONE` (número do sócio para notificações)
 - [ ] Definir prompt final da Sofia em Settings (baseado no padrão fornecido)
 - [ ] Testar end-to-end: lead entra → fluxo completo → MQL
+- [ ] Resolver bloqueio de IP da RapidAPI no Railway (ver memória `project_converthaircrm_rapidapi_ip_block`)
 
 ---
 

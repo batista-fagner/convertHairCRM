@@ -127,7 +127,7 @@ export class LeadsService {
    * performance de campanha. Só considera leads com attribution real (já
    * enriquecidos via Marketing API) — leads antigos sem utm_content ficam de fora.
    */
-  async getAdPerformance(): Promise<
+  async getAdPerformance(from?: string, to?: string): Promise<
     {
       adId: string;
       adName: string | null;
@@ -141,7 +141,19 @@ export class LeadsService {
       avgSecondsToQualify: number | null;
     }[]
   > {
-    return this.leadsRepo.query(`
+    const params: string[] = [];
+    let dateFilter = '';
+    if (from) {
+      params.push(from);
+      dateFilter += ` AND created_at >= $${params.length}`;
+    }
+    if (to) {
+      params.push(to);
+      dateFilter += ` AND created_at < $${params.length}`;
+    }
+
+    return this.leadsRepo.query(
+      `
       SELECT
         utm_content AS "adId",
         MAX(ctwa_ad_title) AS "adName",
@@ -154,10 +166,60 @@ export class LeadsService {
         COUNT(*) FILTER (WHERE tags @> '["mql_premium"]'::jsonb)::int AS "premiumCount",
         AVG(EXTRACT(EPOCH FROM (qualified_at - created_at))) FILTER (WHERE qualified_at IS NOT NULL) AS "avgSecondsToQualify"
       FROM leads
-      WHERE agent_mode = 'sdr' AND utm_content IS NOT NULL
+      WHERE agent_mode = 'sdr' AND utm_content IS NOT NULL${dateFilter}
       GROUP BY utm_content
       ORDER BY total DESC
-    `);
+    `,
+      params,
+    );
+  }
+
+  /**
+   * Lista individual de leads de um anúncio (drill-down do relatório de
+   * performance), com nome, status do evento Lead, qualificação e premium.
+   */
+  async getLeadsByAd(adId: string, from?: string, to?: string): Promise<
+    {
+      id: string;
+      name: string;
+      phone: string;
+      createdAt: Date;
+      leadEventSent: boolean;
+      isMql: boolean;
+      vendeCabelo: boolean | null;
+      isPremium: boolean;
+      kanbanStage: string;
+    }[]
+  > {
+    const params: (string)[] = [adId];
+    let dateFilter = '';
+    if (from) {
+      params.push(from);
+      dateFilter += ` AND created_at >= $${params.length}`;
+    }
+    if (to) {
+      params.push(to);
+      dateFilter += ` AND created_at < $${params.length}`;
+    }
+
+    return this.leadsRepo.query(
+      `
+      SELECT
+        id,
+        name,
+        phone,
+        created_at AS "createdAt",
+        lead_event_sent AS "leadEventSent",
+        is_mql AS "isMql",
+        vende_cabelo AS "vendeCabelo",
+        (tags @> '["mql_premium"]'::jsonb) AS "isPremium",
+        kanban_stage AS "kanbanStage"
+      FROM leads
+      WHERE agent_mode = 'sdr' AND utm_content = $1${dateFilter}
+      ORDER BY created_at DESC
+    `,
+      params,
+    );
   }
 
   async clearAll(): Promise<{ deleted: number }> {
