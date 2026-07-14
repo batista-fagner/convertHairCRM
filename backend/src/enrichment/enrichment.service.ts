@@ -46,6 +46,7 @@ export class EnrichmentService {
     try {
       const handle = lead.instagram.replace(/^@/, '');
       const { enrichmentData, posts } = await this.fetchInstagramProfileApify(handle);
+      enrichmentData.posts = posts;
 
       const bonusScore = enrichmentData.enrichment_bonus || 0;
       const newScore = lead.score + bonusScore;
