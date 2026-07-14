@@ -29,7 +29,7 @@ export class LeadsService {
     return this.leadsRepo.findOne({ where: { phone } });
   }
 
-  async findAll(opts?: { campaignId?: string; page?: number; limit?: number; source?: 'all' | 'ig_dm' | 'paid' }): Promise<{ data: Lead[]; total: number; page: number; totalPages: number }> {
+  async findAll(opts?: { campaignId?: string; page?: number; limit?: number; source?: 'all' | 'ig_dm' | 'paid'; search?: string }): Promise<{ data: Lead[]; total: number; page: number; totalPages: number }> {
     const page = opts?.page || 1;
     const limit = opts?.limit || 6;
     const source = opts?.source || 'all';
@@ -44,6 +44,17 @@ export class LeadsService {
       query.andWhere('lead.utm_medium = :utmMedium', { utmMedium: 'dm-automation' });
     } else if (source === 'paid') {
       query.andWhere('(lead.fbclid IS NOT NULL OR lead.ctwa_clid IS NOT NULL OR lead.utm_source IN (:...sources))', { sources: ['facebook', 'leadscomia', 'ctwa'] });
+    }
+
+    const search = opts?.search?.trim();
+    if (search) {
+      const digits = search.replace(/\D/g, '');
+      query.andWhere(
+        '(lead.name ILIKE :search OR lead.email ILIKE :search OR lead.instagram ILIKE :search' +
+          (digits ? ' OR lead.phone ILIKE :digits' : '') +
+          ')',
+        { search: `%${search}%`, ...(digits ? { digits: `%${digits}%` } : {}) },
+      );
     }
 
     const total = await query.getCount();

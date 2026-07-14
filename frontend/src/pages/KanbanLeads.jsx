@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { DndContext, DragOverlay, useDraggable, useDroppable, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { io } from 'socket.io-client'
-import { Flame, Snowflake, UserPlus, XCircle, Phone, Mail, UserCheck, Loader2, X, MessageCircle, PauseCircle, Bot, MoreVertical, Pencil, Trash2, Play, Eye, Handshake, Trophy, HeadphonesIcon, Paperclip, Send, FileText, Video, StickyNote, ChevronDown, ChevronUp, Plus, CheckCircle2, Megaphone } from 'lucide-react'
+import { Flame, Snowflake, UserPlus, XCircle, Phone, Mail, UserCheck, Loader2, X, MessageCircle, PauseCircle, Bot, MoreVertical, Pencil, Trash2, Play, Eye, Handshake, Trophy, HeadphonesIcon, Paperclip, Send, FileText, Video, StickyNote, ChevronDown, ChevronUp, Plus, CheckCircle2, Megaphone, Search } from 'lucide-react'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3002/api'
 const SOCKET_URL = API.replace(/\/api\/?$/, '') || 'http://localhost:3002'
@@ -802,6 +802,7 @@ export default function KanbanLeads() {
   const [editing, setEditing] = useState(null)
   const [deleting, setDeleting] = useState(null)
   const [creating, setCreating] = useState(false)
+  const [search, setSearch] = useState('')
   const boardRef = useRef(board)
   boardRef.current = board
   const selectedRef = useRef(selected)
@@ -1001,14 +1002,46 @@ export default function KanbanLeads() {
 
   const activeLead = activeId ? findLead(activeId) : null
 
+  const searchNorm = search.trim().toLowerCase()
+  const searchDigits = search.replace(/\D/g, '')
+  const matchesSearch = (lead) => {
+    if (!searchNorm) return true
+    if (lead.name?.toLowerCase().includes(searchNorm)) return true
+    if (lead.email?.toLowerCase().includes(searchNorm)) return true
+    if (lead.instagram?.toLowerCase().includes(searchNorm)) return true
+    if (searchDigits && lead.phone?.replace(/\D/g, '').includes(searchDigits)) return true
+    return false
+  }
+  const filteredBoard = searchNorm
+    ? Object.fromEntries(COLUMNS.map((col) => [col.id, board[col.id].filter(matchesSearch)]))
+    : board
+
   return (
     <div className="p-6 h-full flex flex-col">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 gap-4">
         <div>
           <h2 className="text-lg font-bold text-slate-800">Kanban de Leads</h2>
           <p className="text-sm text-slate-500">O agente SDR move os cards automaticamente. Você também pode arrastar.</p>
         </div>
         <div className="flex items-center gap-3">
+          <div className="relative">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Buscar lead..."
+              className="pl-9 pr-8 py-2 rounded-lg border border-slate-200 bg-white text-sm outline-none focus:ring-2 focus:ring-violet-300 w-56"
+            />
+            {search && (
+              <button
+                onClick={() => setSearch('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
           <div className="flex items-center gap-1.5 text-xs">
             <span className={`w-2 h-2 rounded-full ${connected ? 'bg-emerald-500' : 'bg-slate-300'}`} />
             <span className="text-slate-500">{connected ? 'Tempo real' : 'Offline'}</span>
@@ -1030,7 +1063,7 @@ export default function KanbanLeads() {
         <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
           <div className="flex gap-4 flex-1 overflow-x-auto pb-2">
             {COLUMNS.map((col) => (
-              <Column key={col.id} column={col} leads={board[col.id]} onOpen={openLead} onEdit={setEditing} onDelete={setDeleting} />
+              <Column key={col.id} column={col} leads={filteredBoard[col.id]} onOpen={openLead} onEdit={setEditing} onDelete={setDeleting} />
             ))}
           </div>
           <DragOverlay dropAnimation={null}>

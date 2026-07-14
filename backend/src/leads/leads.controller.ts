@@ -44,12 +44,14 @@ export class LeadsController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
     @Query('source') source?: 'all' | 'ig_dm' | 'paid',
+    @Query('search') search?: string,
   ) {
     return this.leadsService.findAll({
       campaignId,
       page: page ? parseInt(page, 10) : 1,
       limit: limit ? parseInt(limit, 10) : 6,
       source: source || 'all',
+      search,
     });
   }
 

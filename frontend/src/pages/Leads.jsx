@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import {
   Users, MessageCircle, Copy, CheckCircle2, Megaphone, X, Loader2,
   ExternalLink, Clock, MoreVertical, Send, Pencil, ChevronDown,
-  FileText, TrendingUp, User, ArrowDown, Trash2, MessageSquare, RefreshCw,
+  FileText, TrendingUp, User, ArrowDown, Trash2, MessageSquare, RefreshCw, Search,
 } from 'lucide-react'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3001/api'
@@ -82,6 +82,8 @@ export default function Leads() {
   const [totalPages, setTotalPages] = useState(1)
   const [total, setTotal] = useState(0)
   const [source, setSource] = useState('all')
+  const [search, setSearch] = useState('')
+  const [searchInput, setSearchInput] = useState('')
   const [deleteConfirm, setDeleteConfirm] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [chatOpen, setChatOpen] = useState(false)
@@ -113,16 +115,17 @@ export default function Leads() {
     if (append) setLoadingMore(true)
     else setLoading(true)
     try {
-      const res = await fetch(`${API}/leads?page=${pageNum}&limit=6&source=${source}`)
+      const res = await fetch(`${API}/leads?page=${pageNum}&limit=6&source=${source}&search=${encodeURIComponent(search)}`)
       const data = await res.json()
       const newLeads = Array.isArray(data.data) ? data.data : []
       if (append) {
         setLeads(prev => [...prev, ...newLeads])
       } else {
-        setLeads([DEMO_LEAD, ...newLeads])
+        const showDemo = !search
+        setLeads(showDemo ? [DEMO_LEAD, ...newLeads] : newLeads)
       }
       setTotalPages(data.totalPages || 1)
-      setTotal((data.total || 0) + 1)
+      setTotal((data.total || 0) + (search ? 0 : 1))
     } catch (err) {
       console.error(err)
     } finally {
@@ -132,10 +135,15 @@ export default function Leads() {
   }
 
   useEffect(() => {
+    const id = setTimeout(() => setSearch(searchInput.trim()), 350)
+    return () => clearTimeout(id)
+  }, [searchInput])
+
+  useEffect(() => {
     setPage(1)
     setSelectedLead(null)
     fetchLeads(1)
-  }, [source])
+  }, [source, search])
 
   // Enquanto o drawer de conversa está aberto, atualiza as mensagens do lead a cada 4s
   useEffect(() => {
@@ -379,6 +387,24 @@ export default function Leads() {
                 <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Atualizar
               </button>
             </div>
+            <div className="relative mt-3">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={searchInput}
+                onChange={e => setSearchInput(e.target.value)}
+                placeholder="Buscar por nome, telefone, email ou Instagram..."
+                className="w-full pl-9 pr-8 py-2 rounded-lg border border-slate-200 bg-white text-sm outline-none focus:ring-2 focus:ring-violet-300"
+              />
+              {searchInput && (
+                <button
+                  onClick={() => setSearchInput('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
             <div className="flex gap-2 mt-3">
               {[
                 { id: 'all', label: 'Todos' },
@@ -409,7 +435,7 @@ export default function Leads() {
               ) : leads.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-16 text-slate-400">
                   <Users className="w-8 h-8 mb-2 opacity-50" />
-                  <p className="text-sm">Nenhum lead ainda</p>
+                  <p className="text-sm">{search ? 'Nenhum lead encontrado' : 'Nenhum lead ainda'}</p>
                 </div>
               ) : (
                 leads.map(lead => {
