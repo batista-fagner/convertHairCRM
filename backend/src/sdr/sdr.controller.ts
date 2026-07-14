@@ -404,7 +404,7 @@ export class SdrController {
 
     lead = await this.leadsService.update(lead.id, updateData);
 
-    // Instagram informado pela 1ª vez → busca dados reais (RapidAPI) + análise
+    // Instagram informado pela 1ª vez → busca dados reais (Apify) + análise
     // IA em segundo plano, pra alimentar a página "Instagram Leads". skipMessage
     // porque a Sofia já está conversando com o lead — não manda outra mensagem.
     // Roda só depois do update acima pra evitar buscar o lead sem o Instagram salvo ainda.
