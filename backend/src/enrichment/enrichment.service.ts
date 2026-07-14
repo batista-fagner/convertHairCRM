@@ -9,6 +9,10 @@ import { Lead, EnrichmentData } from '../common/entities/lead.entity';
 @Injectable()
 export class EnrichmentService {
   private readonly logger = new Logger(EnrichmentService.name);
+  private readonly apifyToken: string;
+  // Stories (fetchInstagramStories) ainda não migrado pra Apify — segue no
+  // RapidAPI por decisão explícita (migração feita em etapas: perfil+posts
+  // primeiro, stories depois).
   private readonly rapidapiKey: string;
   private readonly rapidapiHost: string;
   private readonly sdrUazapiBaseUrl: string;
@@ -20,6 +24,7 @@ export class EnrichmentService {
     private aiAnalysisService: AiAnalysisService,
     private messagingService: MessagingService,
   ) {
+    this.apifyToken = config.get('APIFY_TOKEN') || '';
     this.rapidapiKey = config.get('RAPIDAPI_KEY') || '';
     this.rapidapiHost = config.get('RAPIDAPI_HOST') || 'instagram120.p.rapidapi.com';
     // Follow-up de stories precisa sair pelo número que o lead já conhece. Hoje
@@ -40,10 +45,7 @@ export class EnrichmentService {
 
     try {
       const handle = lead.instagram.replace(/^@/, '');
-      const enrichmentData = await this.fetchInstagramData(handle);
-      const posts = await this.fetchInstagramPosts(handle);
-
-      enrichmentData.posts = posts;
+      const { enrichmentData, posts } = await this.fetchInstagramProfileApify(handle);
 
       const bonusScore = enrichmentData.enrichment_bonus || 0;
       const newScore = lead.score + bonusScore;
@@ -82,88 +84,67 @@ export class EnrichmentService {
     }
   }
 
-  private async fetchInstagramData(handle: string): Promise<EnrichmentData> {
-    const headers = {
-      'x-rapidapi-key': this.rapidapiKey,
-      'x-rapidapi-host': this.rapidapiHost,
-      'Content-Type': 'application/json',
-    };
-
-    // Tenta endpoint principal /profile
-    try {
-      const response = await axios.post(
-        `https://${this.rapidapiHost}/api/instagram/profile`,
-        { username: handle },
-        { headers },
-      );
-      const data = response.data.result;
-      const followers = data.edge_followed_by?.count || 0;
-      const posts = data.edge_owner_to_timeline_media?.count || 0;
-      return {
-        followers,
-        engagement_rate: followers > 0 ? posts / followers : 0,
-        content_type: data.biography || '',
-        recent_stories: [],
-        enrichment_bonus: 0,
-      };
-    } catch {
-      this.logger.warn(`/profile falhou para ${handle}, tentando /userInfo`);
+  /**
+   * Busca perfil + posts recentes num único request ao actor `apify/instagram-scraper`
+   * (resultsType=details já retorna latestPosts junto, sem precisar de 2 chamadas
+   * como no RapidAPI). Não requer login e roda em infra própria da Apify — resolve
+   * o bloqueio de IP de datacenter que o RapidAPI tinha no Railway.
+   */
+  private async fetchInstagramProfileApify(handle: string): Promise<{ enrichmentData: EnrichmentData; posts: any[] }> {
+    if (!this.apifyToken) {
+      throw new Error('APIFY_TOKEN não configurado');
     }
 
-    // Fallback: /userInfo
     try {
       const response = await axios.post(
-        `https://${this.rapidapiHost}/api/instagram/userInfo`,
-        { username: handle },
-        { headers },
-      );
-      const data = response.data?.result?.[0]?.user;
-      if (!data) throw new Error('userInfo sem dados');
-      const followers = data.follower_count || 0;
-      const posts = data.media_count || 0;
-      return {
-        followers,
-        engagement_rate: followers > 0 ? posts / followers : 0,
-        content_type: data.biography || '',
-        recent_stories: [],
-        enrichment_bonus: 0,
-      };
-    } catch (err: any) {
-      this.logger.error(`RapidAPI error: ${err.message}`);
-      throw new Error('Falha ao buscar dados do Instagram');
-    }
-  }
-
-  private async fetchInstagramPosts(handle: string): Promise<any[]> {
-    try {
-      const response = await axios.post(
-        `https://${this.rapidapiHost}/api/instagram/posts`,
-        { username: handle, maxId: '' },
+        `https://api.apify.com/v2/actors/apify~instagram-scraper/run-sync-get-dataset-items`,
         {
-          headers: {
-            'x-rapidapi-key': this.rapidapiKey,
-            'x-rapidapi-host': this.rapidapiHost,
-            'Content-Type': 'application/json',
-          },
+          directUrls: [`https://www.instagram.com/${handle}/`],
+          resultsType: 'details',
+          resultsLimit: 1,
+        },
+        {
+          params: { token: this.apifyToken, timeout: 60 },
+          timeout: 65000,
         },
       );
 
-      const edges = response.data.result?.edges || [];
-      return edges.slice(0, 3).map((edge: any) => {
-        const node = edge.node;
-        const imageUrl = node.image_versions2?.candidates?.[0]?.url || '';
-        return {
-          code: node.code,
-          caption: node.caption?.text || '',
-          takenAt: node.taken_at,
-          imageUrl,
-          commentCount: node.comment_count || 0,
-          likeCount: node.like_count || 0,
-        };
-      });
+      const data = response.data?.[0];
+      if (!data || data.error) {
+        throw new Error(data?.error || 'perfil não encontrado');
+      }
+
+      const followers = data.followersCount || 0;
+      const latestPosts = Array.isArray(data.latestPosts) ? data.latestPosts : [];
+
+      const posts = latestPosts.slice(0, 3).map((p: any) => ({
+        code: p.shortCode,
+        caption: p.caption || '',
+        takenAt: p.timestamp ? Math.floor(new Date(p.timestamp).getTime() / 1000) : 0,
+        imageUrl: p.displayUrl || '',
+        commentCount: p.commentsCount || 0,
+        likeCount: p.likesCount || 0,
+      }));
+
+      // Engajamento real: média de (curtidas + comentários) dos posts recentes / seguidores.
+      const avgEngagement =
+        latestPosts.length > 0
+          ? latestPosts.reduce((sum: number, p: any) => sum + (p.likesCount || 0) + (p.commentsCount || 0), 0) / latestPosts.length
+          : 0;
+
+      return {
+        enrichmentData: {
+          followers,
+          engagement_rate: followers > 0 ? avgEngagement / followers : 0,
+          content_type: data.biography || '',
+          recent_stories: [],
+          enrichment_bonus: 0,
+        },
+        posts,
+      };
     } catch (err: any) {
-      this.logger.error(`RapidAPI posts error: ${err.message}`);
-      return [];
+      this.logger.error(`Apify error (${handle}): ${err.message}`);
+      throw new Error('Falha ao buscar dados do Instagram');
     }
   }
 
