@@ -311,6 +311,18 @@ export class SdrController {
       ai = await this.sdrService.processMessage(lead, text);
     }
 
+    // Loop: a IA respondeu a mesma coisa 3 vezes seguidas (não avança a conversa).
+    // Pausa imediatamente em vez de mandar a msg repetida de novo — evita ficar
+    // martelando o lead e avisa o operador assumir manualmente.
+    if (this.isLoopReply(lead, ai.reply)) {
+      this.logger.warn(`[SDR] Loop detectado para ${phone} — IA pausada automaticamente`);
+      const ctx = [...(Array.isArray(lead.aiContext) ? lead.aiContext : []), { role: 'user', content: text }];
+      lead = await this.leadsService.update(lead.id, { aiContext: ctx, waLastMessageAt: new Date(), aiPaused: true });
+      this.realtime.emitLeadUpdated(lead);
+      await this.notifyOperatorLoop(lead);
+      return;
+    }
+
     const updatedContext = this.sdrService.buildUpdatedContext(lead, text, ai.reply);
 
     // Os 3 sinais da qualificação são persistidos: o sistema guarda o que já foi
@@ -423,6 +435,57 @@ export class SdrController {
     } else {
       this.realtime.emitLeadUpdated(lead);
     }
+  }
+
+  /** Normaliza texto pra comparação de loop: minúsculo, sem acento/pontuação, espaços colapsados. */
+  private normalizeForLoop(text: string): string {
+    return (text || '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .replace(/[^\w\s]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  /**
+   * Detecta loop quando a nova resposta da IA repete (~igual) as 2 últimas
+   * respostas dela mesma nesse lead — sinal de conversa travada, não repetição
+   * legítima (ex.: confirmação curta tipo "certo!" só 1-2x não conta).
+   */
+  private isLoopReply(lead: Lead, newReply?: string): boolean {
+    const newNorm = this.normalizeForLoop(newReply || '');
+    if (!newNorm || newNorm.length < 8) return false;
+    const priorContext = Array.isArray(lead.aiContext) ? lead.aiContext : [];
+    const priorAssistant = priorContext
+      .filter((m: any) => m?.role === 'assistant' && m?.content)
+      .slice(-2)
+      .map((m: any) => this.normalizeForLoop(m.content));
+    return priorAssistant.length === 2 && priorAssistant.every((t) => t === newNorm);
+  }
+
+  /** Avisa o operador que a IA travou num loop e foi pausada automaticamente. */
+  private async notifyOperatorLoop(lead: Lead) {
+    const stored = await this.settings.get(SDR_NOTIFY_PHONES_KEY);
+    const phones: string[] = stored
+      ? stored.split(',').map((p) => p.trim()).filter(Boolean)
+      : this.operatorPhone ? [this.operatorPhone] : [];
+
+    if (phones.length === 0) return;
+
+    const msg = `⚠️ Loop detectado — IA pausada automaticamente!\n\nNome: ${lead.name}\nWhatsApp: ${lead.phone}\n\nA IA ficou repetindo a mesma resposta. Assuma a conversa manualmente.`;
+
+    await Promise.allSettled(
+      phones.map((phone) =>
+        firstValueFrom(
+          this.http.post(
+            `${this.uazapiBaseUrl}/send/text`,
+            { number: phone, text: msg },
+            { headers: { token: this.uazapiToken } },
+          ),
+        ).catch((err: any) => this.logger.error(`[SDR] Erro ao notificar loop ${phone}: ${err.message}`)),
+      ),
+    );
   }
 
   private async notifyOperator(lead: Lead) {
