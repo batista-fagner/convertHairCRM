@@ -131,7 +131,7 @@ function HourlyChart({ from, to }) {
   )
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-5 mb-6">
+    <div className="bg-white rounded-xl border border-slate-200 p-5 mt-6">
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <div className="flex items-center gap-2">
           <Clock className="w-4 h-4 text-violet-600" />
@@ -346,8 +346,6 @@ export default function Analytics() {
         </div>
       )}
 
-      <HourlyChart from={range.from} to={range.to} />
-
       <div className="mb-3 flex items-center gap-1 bg-slate-100 rounded-lg p-1 w-fit">
         {GROUP_OPTIONS.map((opt) => (
           <button
@@ -449,6 +447,8 @@ export default function Analytics() {
           : 'Gasto e CPQL refletem o período selecionado.'}{' '}
         Evento "Lead" mostra quantos leads realmente confirmaram o envio ao Meta — divergência da coluna "Leads" pode indicar falha no CAPI. Clique numa linha de Anúncio pra ver os leads individuais.
       </p>
+
+      <HourlyChart from={range.from} to={range.to} />
 
       {selectedAd && (
         <LeadDrillDown
