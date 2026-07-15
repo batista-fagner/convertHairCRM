@@ -164,10 +164,16 @@ function HourlyChart({ from, to }) {
             const isPeak = peak && r.hour === peak.hour && r.count > 0
             return (
               <div key={r.hour} className="flex-1 flex flex-col items-center justify-end h-full group relative">
+                {/* Tooltip customizado — aparece instantaneamente (sem o delay do title nativo) */}
+                <div className="absolute bottom-full mb-1.5 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-75 z-10 whitespace-nowrap">
+                  <div className="bg-slate-800 text-white text-[11px] font-medium rounded-md px-2 py-1 shadow-lg">
+                    {String(r.hour).padStart(2, '0')}h — {r.count} lead{r.count === 1 ? '' : 's'}
+                  </div>
+                  <div className="w-2 h-2 bg-slate-800 rotate-45 mx-auto -mt-1" />
+                </div>
                 <div
                   className={`w-full rounded-t transition-all ${isPeak ? 'bg-emerald-500' : 'bg-violet-400'} group-hover:opacity-80`}
                   style={{ height: `${Math.max(heightPct, r.count > 0 ? 3 : 0)}%` }}
-                  title={`${String(r.hour).padStart(2, '0')}h — ${r.count} lead${r.count === 1 ? '' : 's'}`}
                 />
                 <span className="text-[9px] text-slate-400 mt-1">{r.hour % 3 === 0 ? String(r.hour).padStart(2, '0') : ''}</span>
               </div>

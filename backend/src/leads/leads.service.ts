@@ -134,6 +134,28 @@ export class LeadsService {
   }
 
   /**
+   * created_at é salvo como timestamp naive em UTC (timezone: 'Z' no TypeORM),
+   * mas as datas from/to que chegam do frontend representam dias no horário de
+   * Brasília. Comparar a string de data direto (ex.: '2026-07-15') contra a
+   * coluna UTC sem ajuste faz o corte do dia ficar 3h adiantado — inclui leads
+   * das ~21h-23h59 do dia anterior (horário local) no filtro "hoje". A
+   * conversão abaixo interpreta o parâmetro como data em America/Sao_Paulo e
+   * converte pro equivalente naive-UTC antes de comparar.
+   */
+  private appendDateFilter(params: string[], from: string | undefined, to: string | undefined): string {
+    let dateFilter = '';
+    if (from) {
+      params.push(from);
+      dateFilter += ` AND created_at >= ($${params.length}::timestamp AT TIME ZONE 'America/Sao_Paulo' AT TIME ZONE 'UTC')`;
+    }
+    if (to) {
+      params.push(to);
+      dateFilter += ` AND created_at < ($${params.length}::timestamp AT TIME ZONE 'America/Sao_Paulo' AT TIME ZONE 'UTC')`;
+    }
+    return dateFilter;
+  }
+
+  /**
    * Agrega leads do SDR por anúncio (utm_content = Ad ID), pra relatório de
    * performance de campanha. Só considera leads com attribution real (já
    * enriquecidos via Marketing API) — leads antigos sem utm_content ficam de fora.
@@ -153,15 +175,7 @@ export class LeadsService {
     }[]
   > {
     const params: string[] = [];
-    let dateFilter = '';
-    if (from) {
-      params.push(from);
-      dateFilter += ` AND created_at >= $${params.length}`;
-    }
-    if (to) {
-      params.push(to);
-      dateFilter += ` AND created_at < $${params.length}`;
-    }
+    const dateFilter = this.appendDateFilter(params, from, to);
 
     return this.leadsRepo.query(
       `
@@ -203,15 +217,7 @@ export class LeadsService {
     }[]
   > {
     const params: (string)[] = [adId];
-    let dateFilter = '';
-    if (from) {
-      params.push(from);
-      dateFilter += ` AND created_at >= $${params.length}`;
-    }
-    if (to) {
-      params.push(to);
-      dateFilter += ` AND created_at < $${params.length}`;
-    }
+    const dateFilter = this.appendDateFilter(params, from, to);
 
     return this.leadsRepo.query(
       `
@@ -241,15 +247,7 @@ export class LeadsService {
    */
   async getLeadsByHour(from?: string, to?: string): Promise<{ hour: number; count: number }[]> {
     const params: string[] = [];
-    let dateFilter = '';
-    if (from) {
-      params.push(from);
-      dateFilter += ` AND created_at >= $${params.length}`;
-    }
-    if (to) {
-      params.push(to);
-      dateFilter += ` AND created_at < $${params.length}`;
-    }
+    const dateFilter = this.appendDateFilter(params, from, to);
 
     const rows = await this.leadsRepo.query(
       `
