@@ -1,5 +1,8 @@
-import { useState, useEffect, useMemo } from 'react'
-import { BarChart3, Loader2, TrendingUp, Layers, Megaphone, X, Check, XCircle, Star, Clock } from 'lucide-react'
+import { useState, useEffect, useMemo, useRef } from 'react'
+import { DayPicker } from 'react-day-picker'
+import { ptBR } from 'react-day-picker/locale'
+import 'react-day-picker/style.css'
+import { BarChart3, Loader2, TrendingUp, Layers, Megaphone, X, Check, XCircle, Star, Clock, CalendarRange } from 'lucide-react'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3002/api'
 
@@ -37,6 +40,19 @@ function periodToRange(period) {
     from.setHours(0, 0, 0, 0)
   }
   return { from: toDateInputValue(from), to: toDateInputValue(to) }
+}
+
+// Converte um range { from, to } (Date, do calendário) em from/to ISO (to exclusivo, dia seguinte)
+function customRangeToRange(customFrom, customTo) {
+  if (!customFrom) return { from: null, to: null }
+  const end = customTo || customFrom
+  const toExclusive = new Date(end)
+  toExclusive.setDate(toExclusive.getDate() + 1)
+  return { from: toDateInputValue(customFrom), to: toDateInputValue(toExclusive) }
+}
+
+function fmtShortDate(d) {
+  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
 }
 
 function fmtMoney(n) {
@@ -272,15 +288,102 @@ function LeadDrillDown({ adId, adName, from, to, onClose }) {
   )
 }
 
+// Botão + popover de calendário pra escolher um intervalo de datas customizado
+// (ontem, anteontem, ou qualquer range) além dos atalhos rápidos.
+function DateRangePicker({ active, appliedRange, onApply }) {
+  const [open, setOpen] = useState(false)
+  const [draft, setDraft] = useState(appliedRange || undefined)
+  const containerRef = useRef(null)
+
+  useEffect(() => {
+    if (open) setDraft(appliedRange || undefined)
+  }, [open, appliedRange])
+
+  useEffect(() => {
+    if (!open) return
+    const onClickOutside = (e) => {
+      if (containerRef.current && !containerRef.current.contains(e.target)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onClickOutside)
+    return () => document.removeEventListener('mousedown', onClickOutside)
+  }, [open])
+
+  const apply = () => {
+    if (!draft?.from) return
+    onApply({ from: draft.from, to: draft.to || draft.from })
+    setOpen(false)
+  }
+
+  const label = active && appliedRange
+    ? appliedRange.from.getTime() === appliedRange.to.getTime()
+      ? fmtShortDate(appliedRange.from)
+      : `${fmtShortDate(appliedRange.from)} - ${fmtShortDate(appliedRange.to)}`
+    : 'Escolher datas'
+
+  return (
+    <div className="relative" ref={containerRef}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition ${
+          active ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+        }`}
+      >
+        <CalendarRange className="w-3.5 h-3.5" />
+        {label}
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-full mt-2 z-20 bg-white rounded-xl border border-slate-200 shadow-xl p-3">
+          <DayPicker
+            mode="range"
+            locale={ptBR}
+            selected={draft}
+            onSelect={setDraft}
+            disabled={{ after: new Date() }}
+            defaultMonth={draft?.to || draft?.from || new Date()}
+            classNames={{
+              today: 'font-bold text-violet-600',
+              selected: '!bg-violet-600 !text-white',
+              range_middle: '!bg-violet-100 !text-violet-800',
+              range_start: '!bg-violet-600 !text-white',
+              range_end: '!bg-violet-600 !text-white',
+              chevron: 'fill-violet-600',
+            }}
+          />
+          <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100 mt-1">
+            <button
+              onClick={() => setOpen(false)}
+              className="px-3 py-1.5 rounded-md text-xs font-medium text-slate-500 hover:bg-slate-100 transition"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={apply}
+              disabled={!draft?.from}
+              className="px-3 py-1.5 rounded-md text-xs font-bold bg-violet-600 hover:bg-violet-700 disabled:opacity-40 text-white transition"
+            >
+              Aplicar
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function Analytics() {
   const [rows, setRows] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [groupBy, setGroupBy] = useState('ad')
   const [period, setPeriod] = useState('today')
+  const [customRange, setCustomRange] = useState(null) // { from: Date, to: Date }
   const [selectedAd, setSelectedAd] = useState(null)
 
-  const range = useMemo(() => periodToRange(period), [period])
+  const range = useMemo(
+    () => (period === 'custom' && customRange ? customRangeToRange(customRange.from, customRange.to) : periodToRange(period)),
+    [period, customRange],
+  )
 
   useEffect(() => {
     setLoading(true)
@@ -328,6 +431,11 @@ export default function Analytics() {
               {opt.label}
             </button>
           ))}
+          <DateRangePicker
+            active={period === 'custom'}
+            appliedRange={customRange}
+            onApply={(r) => { setCustomRange(r); setPeriod('custom') }}
+          />
         </div>
       </div>
 
