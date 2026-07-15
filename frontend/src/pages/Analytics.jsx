@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { BarChart3, Loader2, TrendingUp, Layers, Megaphone, X, Check, XCircle, Star } from 'lucide-react'
+import { BarChart3, Loader2, TrendingUp, Layers, Megaphone, X, Check, XCircle, Star, Clock } from 'lucide-react'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3002/api'
 
@@ -105,6 +105,78 @@ function groupRows(rows, groupBy) {
       drillAdId: g.adIds.size === 1 ? [...g.adIds][0] : null,
     }))
     .sort((a, b) => b.total - a.total)
+}
+
+function HourlyChart({ from, to }) {
+  const [data, setData] = useState(null)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    setData(null)
+    const params = new URLSearchParams()
+    if (from) params.set('from', from)
+    if (to) params.set('to', to)
+    fetch(`${API}/leads/analytics/hourly?${params.toString()}`)
+      .then((r) => r.json())
+      .then((rows) => setData(Array.isArray(rows) ? rows : []))
+      .catch(() => setError('Erro ao carregar distribuição por horário'))
+  }, [from, to])
+
+  const total = useMemo(() => (data ? data.reduce((s, r) => s + r.count, 0) : 0), [data])
+  const max = useMemo(() => (data ? Math.max(1, ...data.map((r) => r.count)) : 1), [data])
+  const peak = useMemo(() => (data && total > 0 ? data.reduce((a, b) => (b.count > a.count ? b : a)) : null), [data, total])
+  const lowest = useMemo(
+    () => (data && total > 0 ? data.filter((r) => r.count > 0).reduce((a, b) => (b.count < a.count ? b : a), data.find((r) => r.count > 0)) : null),
+    [data, total],
+  )
+
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 p-5 mb-6">
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <div className="flex items-center gap-2">
+          <Clock className="w-4 h-4 text-violet-600" />
+          <h3 className="text-sm font-semibold text-slate-800">Leads por horário do dia</h3>
+        </div>
+        {peak && lowest && (
+          <div className="flex items-center gap-4 text-xs">
+            <span className="text-emerald-700 font-medium">
+              🔥 Pico: {String(peak.hour).padStart(2, '0')}h ({peak.count} leads)
+            </span>
+            <span className="text-slate-500 font-medium">
+              🧊 Menor: {String(lowest.hour).padStart(2, '0')}h ({lowest.count} leads)
+            </span>
+          </div>
+        )}
+      </div>
+
+      {data === null && !error && (
+        <div className="py-10 text-center">
+          <Loader2 className="w-5 h-5 text-slate-300 mx-auto animate-spin" />
+        </div>
+      )}
+      {error && <p className="text-red-500 text-sm text-center py-6">{error}</p>}
+      {data && total === 0 && <p className="text-slate-400 text-sm text-center py-6">Nenhum lead no período selecionado.</p>}
+
+      {data && total > 0 && (
+        <div className="flex items-end gap-1 h-40">
+          {data.map((r) => {
+            const heightPct = (r.count / max) * 100
+            const isPeak = peak && r.hour === peak.hour && r.count > 0
+            return (
+              <div key={r.hour} className="flex-1 flex flex-col items-center justify-end h-full group relative">
+                <div
+                  className={`w-full rounded-t transition-all ${isPeak ? 'bg-emerald-500' : 'bg-violet-400'} group-hover:opacity-80`}
+                  style={{ height: `${Math.max(heightPct, r.count > 0 ? 3 : 0)}%` }}
+                  title={`${String(r.hour).padStart(2, '0')}h — ${r.count} lead${r.count === 1 ? '' : 's'}`}
+                />
+                <span className="text-[9px] text-slate-400 mt-1">{r.hour % 3 === 0 ? String(r.hour).padStart(2, '0') : ''}</span>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
 }
 
 function LeadDrillDown({ adId, adName, from, to, onClose }) {
@@ -273,6 +345,8 @@ export default function Analytics() {
           </div>
         </div>
       )}
+
+      <HourlyChart from={range.from} to={range.to} />
 
       <div className="mb-3 flex items-center gap-1 bg-slate-100 rounded-lg p-1 w-fit">
         {GROUP_OPTIONS.map((opt) => (

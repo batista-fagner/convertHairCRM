@@ -233,6 +233,41 @@ export class LeadsService {
     );
   }
 
+  /**
+   * Distribuição de leads por hora do dia (0-23, horário de Brasília), pra
+   * identificar picos de chegada e decidir em que horário aumentar o tráfego
+   * pago. created_at é salvo em UTC (naive) — converte pra America/Sao_Paulo
+   * antes de extrair a hora.
+   */
+  async getLeadsByHour(from?: string, to?: string): Promise<{ hour: number; count: number }[]> {
+    const params: string[] = [];
+    let dateFilter = '';
+    if (from) {
+      params.push(from);
+      dateFilter += ` AND created_at >= $${params.length}`;
+    }
+    if (to) {
+      params.push(to);
+      dateFilter += ` AND created_at < $${params.length}`;
+    }
+
+    const rows = await this.leadsRepo.query(
+      `
+      SELECT
+        EXTRACT(HOUR FROM (created_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Sao_Paulo'))::int AS "hour",
+        COUNT(*)::int AS "count"
+      FROM leads
+      WHERE 1=1${dateFilter}
+      GROUP BY hour
+      ORDER BY hour
+    `,
+      params,
+    );
+
+    const byHour = new Map<number, number>(rows.map((r: { hour: number; count: number }) => [r.hour, r.count]));
+    return Array.from({ length: 24 }, (_, hour) => ({ hour, count: byHour.get(hour) || 0 }));
+  }
+
   async clearAll(): Promise<{ deleted: number }> {
     const result = await this.leadsRepo.createQueryBuilder().delete().from(Lead).execute();
     this.logger.warn(`Todos os ${result.affected} leads foram deletados`);

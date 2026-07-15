@@ -74,6 +74,11 @@ export class LeadsController {
     return withSpend;
   }
 
+  @Get('analytics/hourly')
+  async getHourlyDistribution(@Query('from') from?: string, @Query('to') to?: string) {
+    return this.leadsService.getLeadsByHour(from, to);
+  }
+
   @Get('analytics/ads/:adId/leads')
   async getLeadsByAd(@Param('adId') adId: string, @Query('from') from?: string, @Query('to') to?: string) {
     return this.leadsService.getLeadsByAd(adId, from, to);
