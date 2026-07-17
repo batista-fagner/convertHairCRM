@@ -421,13 +421,21 @@ Responda APENAS com o texto da mensagem, sem JSON, sem explicações, sem aspas 
         ),
       );
 
-      // Marca como enviado só se o WhatsApp aceitou. Deixa marcador no histórico
-      // pra IA saber que um vídeo já foi enviado (evita reoferecer / repetir).
+      // Marca como enviado só se o WhatsApp aceitou. O `content` fica com um marcador
+      // (pra IA saber que já mandou vídeo e não reoferecer) e os campos mediaType/
+      // mediaUrl deixam o CRM renderizar o player de vídeo na conversa (KanbanLeads.jsx).
       const marker = `[sistema: vídeo "${videoName}" enviado no follow-up]${caption ? ` legenda: ${caption}` : ''}`;
       const ctx = Array.isArray(lead.aiContext) ? lead.aiContext : [];
       await this.leadsRepo.update(lead.id, {
         followupSentAt: new Date(),
-        aiContext: [...ctx, { role: 'assistant', content: marker }],
+        aiContext: [...ctx, {
+          role: 'assistant',
+          content: marker,
+          caption,
+          mediaType: 'video',
+          mediaUrl: videoUrl,
+          filename: videoName,
+        }],
         waLastMessageAt: new Date(),
       });
 

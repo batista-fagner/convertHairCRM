@@ -520,13 +520,25 @@ function ConversationModal({ lead, onClose, onTogglePause, onAssign, onSaveNotes
                       className="rounded-lg mb-1.5 max-w-full max-h-48 object-cover"
                     />
                   )}
-                  {m.mediaType && m.mediaType !== 'image' && (
+                  {m.mediaType === 'video' && m.mediaUrl && (
+                    <video
+                      src={m.mediaUrl}
+                      controls
+                      preload="metadata"
+                      className="rounded-lg mb-1.5 max-w-full max-h-56"
+                    />
+                  )}
+                  {m.mediaType && !(m.mediaType === 'image' && m.base64) && !(m.mediaType === 'video' && m.mediaUrl) && (
                     <div className="flex items-center gap-1.5 mb-1 opacity-90">
                       {mediaIcon(m.mediaType)}
                       <span className="text-xs font-medium truncate max-w-[180px]">{m.filename || m.mediaType}</span>
                     </div>
                   )}
-                  {m.content && <p className="whitespace-pre-wrap">{m.content}</p>}
+                  {m.mediaType === 'video' && m.mediaUrl ? (
+                    m.caption && <p className="whitespace-pre-wrap">{m.caption}</p>
+                  ) : (
+                    m.content && <p className="whitespace-pre-wrap">{m.content}</p>
+                  )}
                   <div className={`text-[9px] mt-0.5 ${isLead ? 'text-slate-400' : isOperator ? 'text-violet-200' : 'text-emerald-100'}`}>
                     {isLead ? lead.name.split(' ')[0] : isOperator ? 'Você' : 'SDR IA'}
                   </div>
