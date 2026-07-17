@@ -1,7 +1,11 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Put, Patch, Delete, Body, Param, BadRequestException, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { SdrFollowupService } from './sdr-followup.service';
+import { SdrFollowupService, VIDEO_LIMIT_KEY, DEFAULT_VIDEO_LIMIT } from './sdr-followup.service';
+import { FollowupVideoService } from './followup-video.service';
+import type { UploadedVideoFile } from './followup-video.service';
+import { SettingsService } from '../settings/settings.service';
 import { FollowupRule } from '../common/entities/followup-rule.entity';
 import { Lead } from '../common/entities/lead.entity';
 
@@ -9,6 +13,8 @@ import { Lead } from '../common/entities/lead.entity';
 export class FollowupController {
   constructor(
     private readonly followupService: SdrFollowupService,
+    private readonly videoService: FollowupVideoService,
+    private readonly settings: SettingsService,
     @InjectRepository(FollowupRule) private readonly rulesRepo: Repository<FollowupRule>,
     @InjectRepository(Lead) private readonly leadsRepo: Repository<Lead>,
   ) {}
@@ -39,7 +45,11 @@ export class FollowupController {
   @Post('rules')
   async createRule(@Body() body: Partial<FollowupRule>) {
     if (!body?.name?.trim()) throw new BadRequestException('Nome da regra é obrigatório');
-    if (body.mode === 'manual' && !body.text?.trim()) throw new BadRequestException('Texto é obrigatório no modo manual');
+    const hasVideo = Boolean(body.videoId);
+    // Regra com vídeo manda só o vídeo — modo/texto ficam irrelevantes.
+    if (!hasVideo && body.mode === 'manual' && !body.text?.trim()) {
+      throw new BadRequestException('Texto é obrigatório no modo manual');
+    }
     const rule = this.rulesRepo.create({
       name: body.name.trim(),
       enabled: body.enabled ?? true,
@@ -48,6 +58,8 @@ export class FollowupController {
       delayMinutes: Math.max(1, body.delayMinutes || 60),
       mode: body.mode === 'ai' ? 'ai' : 'manual',
       text: body.text || null,
+      videoId: body.videoId || null,
+      videoCaptionOverride: body.videoCaptionOverride || null,
       priority: body.priority ?? 0,
     });
     return this.rulesRepo.save(rule);
@@ -65,9 +77,12 @@ export class FollowupController {
     if (body.delayMinutes !== undefined) rule.delayMinutes = Math.max(1, body.delayMinutes);
     if (body.mode !== undefined) rule.mode = body.mode === 'ai' ? 'ai' : 'manual';
     if (body.text !== undefined) rule.text = body.text || null;
+    if (body.videoId !== undefined) rule.videoId = body.videoId || null;
+    if (body.videoCaptionOverride !== undefined) rule.videoCaptionOverride = body.videoCaptionOverride || null;
     if (body.priority !== undefined) rule.priority = body.priority;
 
-    if (rule.mode === 'manual' && !rule.text?.trim() && rule.enabled) {
+    // Só exige texto quando não tem vídeo (com vídeo, manda só o vídeo).
+    if (!rule.videoId && rule.mode === 'manual' && !rule.text?.trim() && rule.enabled) {
       throw new BadRequestException('Texto é obrigatório no modo manual');
     }
 
@@ -97,5 +112,48 @@ export class FollowupController {
   async deleteRule(@Param('id') id: string) {
     await this.rulesRepo.delete(id);
     return { ok: true };
+  }
+
+  // ─── Biblioteca de vídeos ───────────────────────────────────────────
+
+  @Get('videos')
+  async listVideos() {
+    return this.videoService.list();
+  }
+
+  @Post('videos')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 50 * 1024 * 1024 } }))
+  async uploadVideo(
+    @UploadedFile() file: UploadedVideoFile,
+    @Body('name') name: string,
+    @Body('caption') caption?: string,
+  ) {
+    return this.videoService.upload(file, name, caption);
+  }
+
+  @Patch('videos/:id')
+  async updateVideo(@Param('id') id: string, @Body() body: { name?: string; caption?: string }) {
+    return this.videoService.update(id, body);
+  }
+
+  @Delete('videos/:id')
+  async deleteVideo(@Param('id') id: string) {
+    await this.videoService.delete(id);
+    return { ok: true };
+  }
+
+  // ─── Teto diário de envio de vídeo ──────────────────────────────────
+
+  @Get('video-limit')
+  async getVideoLimit() {
+    const value = await this.settings.get(VIDEO_LIMIT_KEY);
+    return { limit: parseInt(value || String(DEFAULT_VIDEO_LIMIT), 10) };
+  }
+
+  @Put('video-limit')
+  async setVideoLimit(@Body() body: { limit: number }) {
+    const limit = Math.max(1, Math.floor(Number(body.limit) || DEFAULT_VIDEO_LIMIT));
+    await this.settings.set(VIDEO_LIMIT_KEY, String(limit));
+    return { limit };
   }
 }

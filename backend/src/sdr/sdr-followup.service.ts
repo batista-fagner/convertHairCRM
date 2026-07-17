@@ -8,6 +8,7 @@ import { Repository } from 'typeorm';
 import OpenAI from 'openai';
 import { Lead } from '../common/entities/lead.entity';
 import { FollowupRule } from '../common/entities/followup-rule.entity';
+import { FollowupVideo } from '../common/entities/followup-video.entity';
 import { SettingsService } from '../settings/settings.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { SDR_PROMPT_KEY, DEFAULT_SDR_PROMPT, SDR_MODEL_KEY } from './sdr.prompt';
@@ -19,7 +20,11 @@ const FOLLOWUP_DELAY_KEY = 'sdr_followup_delay_minutes';
 const FOLLOWUP_MODE_KEY = 'sdr_followup_mode';
 const FOLLOWUP_TEXT_KEY = 'sdr_followup_text';
 
-export { FOLLOWUP_ENABLED_KEY, FOLLOWUP_DELAY_KEY, FOLLOWUP_MODE_KEY, FOLLOWUP_TEXT_KEY };
+// Teto diário de envio de vídeo no follow-up (configurável na tela).
+const VIDEO_LIMIT_KEY = 'sdr_video_daily_limit';
+const DEFAULT_VIDEO_LIMIT = 15;
+
+export { FOLLOWUP_ENABLED_KEY, FOLLOWUP_DELAY_KEY, FOLLOWUP_MODE_KEY, FOLLOWUP_TEXT_KEY, VIDEO_LIMIT_KEY, DEFAULT_VIDEO_LIMIT };
 
 @Injectable()
 export class SdrFollowupService {
@@ -28,6 +33,10 @@ export class SdrFollowupService {
   private readonly uazapiBaseUrl: string;
   private readonly uazapiToken: string;
   private rulesSeeded = false;
+
+  // Teto diário de vídeo — contador em memória, reseta quando muda o dia (BRT).
+  private videoSentToday = 0;
+  private videoSentDate = '';
 
   // Telemetria do cron (exposta em getStatus para o painel)
   private lastRunAt: Date | null = null;
@@ -38,6 +47,8 @@ export class SdrFollowupService {
     private leadsRepo: Repository<Lead>,
     @InjectRepository(FollowupRule)
     private rulesRepo: Repository<FollowupRule>,
+    @InjectRepository(FollowupVideo)
+    private videoRepo: Repository<FollowupVideo>,
     private settings: SettingsService,
     private http: HttpService,
     private config: ConfigService,
@@ -122,6 +133,8 @@ export class SdrFollowupService {
       .andWhere('lead.followup_sent_at IS NULL')
       .getMany();
 
+    const videoLimit = await this.getVideoLimit();
+
     let sent = 0;
     for (const lead of candidates) {
       if (!this.lastMessageWasFromAI(lead)) continue;
@@ -131,6 +144,32 @@ export class SdrFollowupService {
 
       const cutoff = Date.now() - rule.delayMinutes * 60 * 1000;
       if (new Date(lead.waLastMessageAt!).getTime() > cutoff) continue;
+
+      // Regra com vídeo: manda o vídeo (com legenda), respeitando o teto diário.
+      if (rule.videoId) {
+        const video = await this.videoRepo.findOne({ where: { id: rule.videoId } });
+        if (!video) {
+          this.logger.warn(`[Followup] Regra ${rule.id} aponta pra vídeo inexistente (${rule.videoId}) — pulando`);
+          continue;
+        }
+        this.rollVideoDayIfNeeded();
+        if (this.videoSentToday >= videoLimit) {
+          // Estourou o teto do dia — não marca followup_sent_at, tenta amanhã.
+          this.logger.log(`[Followup] Teto diário de vídeo atingido (${videoLimit}) — ${lead.phone} fica pra amanhã`);
+          continue;
+        }
+
+        if (sent > 0) {
+          const waitMs = 5000 + Math.random() * 5000;
+          await this.sleep(waitMs);
+        }
+
+        const caption = rule.videoCaptionOverride ?? video.caption ?? '';
+        await this.sendFollowupVideo(lead, video.publicUrl, caption, video.name);
+        this.videoSentToday++;
+        sent++;
+        continue;
+      }
 
       let message: string;
       if (rule.mode === 'ai') {
@@ -152,6 +191,24 @@ export class SdrFollowupService {
       sent++;
     }
     this.lastSentCount = sent;
+  }
+
+  // Data de hoje no fuso de Brasília ('YYYY-MM-DD').
+  private brToday(): string {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
+  }
+
+  private rollVideoDayIfNeeded(): void {
+    const today = this.brToday();
+    if (this.videoSentDate !== today) {
+      this.videoSentDate = today;
+      this.videoSentToday = 0;
+    }
+  }
+
+  private async getVideoLimit(): Promise<number> {
+    const value = await this.settings.get(VIDEO_LIMIT_KEY);
+    return parseInt(value || String(DEFAULT_VIDEO_LIMIT), 10);
   }
 
   private sleep(ms: number): Promise<void> {
@@ -344,6 +401,42 @@ Responda APENAS com o texto da mensagem, sem JSON, sem explicações, sem aspas 
       this.logger.log(`[Followup] Enviado para ${lead.phone}: "${text.slice(0, 60)}..."`);
     } catch (err: any) {
       this.logger.error(`[Followup] Erro ao enviar para ${lead.phone}: ${err.message}`);
+    }
+  }
+
+  private async sendFollowupVideo(lead: Lead, videoUrl: string, caption: string, videoName: string) {
+    if (!this.uazapiToken) {
+      this.logger.warn(`[Followup] Token SDR não configurado — vídeo não enviado para ${lead.phone}`);
+      return;
+    }
+
+    try {
+      const phone = lead.phone.startsWith('55') ? lead.phone : `55${lead.phone}`;
+      // Padrão do efraim.controller: /send/media com file=URL pública, text=legenda.
+      await firstValueFrom(
+        this.http.post(
+          `${this.uazapiBaseUrl}/send/media`,
+          { number: phone, file: videoUrl, type: 'video', text: caption, delay: 1000 },
+          { headers: { token: this.uazapiToken } },
+        ),
+      );
+
+      // Marca como enviado só se o WhatsApp aceitou. Deixa marcador no histórico
+      // pra IA saber que um vídeo já foi enviado (evita reoferecer / repetir).
+      const marker = `[sistema: vídeo "${videoName}" enviado no follow-up]${caption ? ` legenda: ${caption}` : ''}`;
+      const ctx = Array.isArray(lead.aiContext) ? lead.aiContext : [];
+      await this.leadsRepo.update(lead.id, {
+        followupSentAt: new Date(),
+        aiContext: [...ctx, { role: 'assistant', content: marker }],
+        waLastMessageAt: new Date(),
+      });
+
+      const fresh = await this.leadsRepo.findOne({ where: { id: lead.id } });
+      if (fresh) this.realtime.emitLeadUpdated(fresh);
+
+      this.logger.log(`[Followup] Vídeo "${videoName}" enviado para ${lead.phone}`);
+    } catch (err: any) {
+      this.logger.error(`[Followup] Erro ao enviar vídeo para ${lead.phone}: ${err.message}`);
     }
   }
 }

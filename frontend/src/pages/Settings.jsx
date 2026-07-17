@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Settings as SettingsIcon, Key, Webhook, MessageCircle, Share2, Bot, Save, RotateCcw, Loader2, CheckCircle2, Send, Trash2, Clock, Sparkles, ToggleLeft, ToggleRight, Wifi, WifiOff, Timer, RefreshCw, XCircle, Activity, Plus, Pencil, Tag, Layers } from 'lucide-react'
+import { Settings as SettingsIcon, Key, Webhook, MessageCircle, Share2, Bot, Save, RotateCcw, Loader2, CheckCircle2, Send, Trash2, Clock, Sparkles, ToggleLeft, ToggleRight, Wifi, WifiOff, Timer, RefreshCw, XCircle, Activity, Plus, Pencil, Tag, Layers, Video } from 'lucide-react'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3002/api'
 
@@ -369,9 +369,9 @@ function SdrPromptEditor() {
   )
 }
 
-const EMPTY_RULE = { name: '', enabled: true, kanbanStage: '', utmCampaign: '', delayMinutes: 60, mode: 'manual', text: '' }
+const EMPTY_RULE = { name: '', enabled: true, kanbanStage: '', utmCampaign: '', delayMinutes: 60, mode: 'manual', text: '', videoId: '', videoCaptionOverride: '' }
 
-function FollowupRuleForm({ initial, campaignOptions, onCancel, onSaved }) {
+function FollowupRuleForm({ initial, campaignOptions, videos, onCancel, onSaved }) {
   const [rule, setRule] = useState(initial)
   const [resetCycle, setResetCycle] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -382,10 +382,13 @@ function FollowupRuleForm({ initial, campaignOptions, onCancel, onSaved }) {
     ? `${(rule.delayMinutes / 60).toFixed(rule.delayMinutes % 60 === 0 ? 0 : 1)}h`
     : `${rule.delayMinutes}min`
 
+  const hasVideo = Boolean(rule.videoId)
+  const selectedVideo = videos.find(v => v.id === rule.videoId)
+
   const save = async () => {
     setError('')
     if (!rule.name.trim()) { setError('Dê um nome pra regra'); return }
-    if (rule.mode === 'manual' && !rule.text.trim()) { setError('Texto é obrigatório no modo manual'); return }
+    if (!hasVideo && rule.mode === 'manual' && !rule.text.trim()) { setError('Texto é obrigatório no modo manual'); return }
     setSaving(true)
     try {
       const payload = {
@@ -396,6 +399,8 @@ function FollowupRuleForm({ initial, campaignOptions, onCancel, onSaved }) {
         delayMinutes: rule.delayMinutes,
         mode: rule.mode,
         text: rule.text || null,
+        videoId: rule.videoId || null,
+        videoCaptionOverride: rule.videoCaptionOverride || null,
         resetCycle,
       }
       const res = await fetch(`${API}/followup/rules${isEditing ? `/${rule.id}` : ''}`, {
@@ -481,48 +486,81 @@ function FollowupRuleForm({ initial, campaignOptions, onCancel, onSaved }) {
         </div>
       </div>
 
-      {/* Mode */}
+      {/* Vídeo (opcional) — se escolhido, manda só o vídeo com legenda */}
       <div className="mb-4">
-        <label className="block text-xs font-medium text-slate-600 mb-1.5">Tipo de mensagem</label>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setRule(r => ({ ...r, mode: 'manual' }))}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition ${rule.mode === 'manual' ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-slate-600 border-slate-200 hover:border-violet-300'}`}
-          >
-            Texto fixo
-          </button>
-          <button
-            onClick={() => setRule(r => ({ ...r, mode: 'ai' }))}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition ${rule.mode === 'ai' ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-slate-600 border-slate-200 hover:border-violet-300'}`}
-          >
-            <Sparkles className="w-3 h-3" /> IA gera automaticamente
-          </button>
-        </div>
+        <label className="block text-xs font-medium text-slate-600 mb-1.5">Anexar vídeo (opcional)</label>
+        <select
+          value={rule.videoId}
+          onChange={e => setRule(r => ({ ...r, videoId: e.target.value }))}
+          className="w-full text-sm border border-slate-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-violet-300 bg-white"
+        >
+          <option value="">Nenhum (mandar texto)</option>
+          {videos.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+        </select>
+        {hasVideo && (
+          <p className="text-[10px] text-slate-400 mt-1">
+            Com vídeo, a regra manda só o vídeo com legenda — a mensagem de texto (IA/fixa) é ignorada. Respeita o teto diário de vídeos.
+          </p>
+        )}
       </div>
 
-      {rule.mode === 'manual' && (
+      {hasVideo ? (
         <div className="mb-4">
-          <label className="block text-xs font-medium text-slate-600 mb-1.5">Mensagem de follow-up</label>
+          <label className="block text-xs font-medium text-slate-600 mb-1.5">Legenda do vídeo (opcional)</label>
           <textarea
-            value={rule.text}
-            onChange={e => setRule(r => ({ ...r, text: e.target.value }))}
-            rows={4}
-            placeholder="Ex: Oi! Vi que você não respondeu ainda. Ainda tem interesse em conhecer a Convert Hair AI? 😊"
+            value={rule.videoCaptionOverride}
+            onChange={e => setRule(r => ({ ...r, videoCaptionOverride: e.target.value }))}
+            rows={3}
+            placeholder={selectedVideo?.caption ? `Legenda padrão: ${selectedVideo.caption}` : 'Deixe vazio pra usar a legenda padrão do vídeo'}
             className="w-full text-sm border border-slate-200 rounded-lg p-3 resize-none focus:outline-none focus:ring-2 focus:ring-violet-300"
           />
         </div>
-      )}
-
-      {rule.mode === 'ai' && (
-        <div className="mb-4 bg-violet-50 rounded-lg p-3 border border-violet-100">
-          <div className="flex items-center gap-1.5 mb-1">
-            <Sparkles className="w-3.5 h-3.5 text-violet-500" />
-            <p className="text-xs font-medium text-violet-700">A Sofia vai gerar</p>
+      ) : (
+        <>
+          {/* Mode */}
+          <div className="mb-4">
+            <label className="block text-xs font-medium text-slate-600 mb-1.5">Tipo de mensagem</label>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setRule(r => ({ ...r, mode: 'manual' }))}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition ${rule.mode === 'manual' ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-slate-600 border-slate-200 hover:border-violet-300'}`}
+              >
+                Texto fixo
+              </button>
+              <button
+                onClick={() => setRule(r => ({ ...r, mode: 'ai' }))}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition ${rule.mode === 'ai' ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-slate-600 border-slate-200 hover:border-violet-300'}`}
+              >
+                <Sparkles className="w-3 h-3" /> IA gera automaticamente
+              </button>
+            </div>
           </div>
-          <p className="text-xs text-violet-600">
-            A IA analisa toda a conversa até aquele ponto e cria uma mensagem personalizada para reativar o interesse do lead, sem pressão e de forma natural.
-          </p>
-        </div>
+
+          {rule.mode === 'manual' && (
+            <div className="mb-4">
+              <label className="block text-xs font-medium text-slate-600 mb-1.5">Mensagem de follow-up</label>
+              <textarea
+                value={rule.text}
+                onChange={e => setRule(r => ({ ...r, text: e.target.value }))}
+                rows={4}
+                placeholder="Ex: Oi! Vi que você não respondeu ainda. Ainda tem interesse em conhecer a Convert Hair AI? 😊"
+                className="w-full text-sm border border-slate-200 rounded-lg p-3 resize-none focus:outline-none focus:ring-2 focus:ring-violet-300"
+              />
+            </div>
+          )}
+
+          {rule.mode === 'ai' && (
+            <div className="mb-4 bg-violet-50 rounded-lg p-3 border border-violet-100">
+              <div className="flex items-center gap-1.5 mb-1">
+                <Sparkles className="w-3.5 h-3.5 text-violet-500" />
+                <p className="text-xs font-medium text-violet-700">A Sofia vai gerar</p>
+              </div>
+              <p className="text-xs text-violet-600">
+                A IA analisa toda a conversa até aquele ponto e cria uma mensagem personalizada para reativar o interesse do lead, sem pressão e de forma natural.
+              </p>
+            </div>
+          )}
+        </>
       )}
 
       {isEditing && (
@@ -560,6 +598,10 @@ function FollowupRuleForm({ initial, campaignOptions, onCancel, onSaved }) {
 function FollowupRules() {
   const [rules, setRules] = useState([])
   const [campaignOptions, setCampaignOptions] = useState([])
+  const [videos, setVideos] = useState([])
+  const [videoLimit, setVideoLimit] = useState(15)
+  const [savingLimit, setSavingLimit] = useState(false)
+  const [limitSaved, setLimitSaved] = useState(false)
   const [loading, setLoading] = useState(true)
   const [editingId, setEditingId] = useState(null) // null = fechado, 'new' = criando, id = editando
   const [toast, setToast] = useState('')
@@ -569,16 +611,33 @@ function FollowupRules() {
     Promise.all([
       fetch(`${API}/followup/rules`).then(r => r.json()),
       fetch(`${API}/followup/campaign-options`).then(r => r.json()),
+      fetch(`${API}/followup/videos`).then(r => r.json()),
+      fetch(`${API}/followup/video-limit`).then(r => r.json()),
     ])
-      .then(([rulesData, campaignsData]) => {
+      .then(([rulesData, campaignsData, videosData, limitData]) => {
         setRules(Array.isArray(rulesData) ? rulesData : [])
         setCampaignOptions(Array.isArray(campaignsData) ? campaignsData : [])
+        setVideos(Array.isArray(videosData) ? videosData : [])
+        if (limitData?.limit) setVideoLimit(limitData.limit)
       })
       .catch(() => {})
       .finally(() => setLoading(false))
   }
 
   useEffect(() => { load() }, [])
+
+  const saveVideoLimit = async () => {
+    setSavingLimit(true); setLimitSaved(false)
+    try {
+      await fetch(`${API}/followup/video-limit`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ limit: videoLimit }),
+      })
+      setLimitSaved(true)
+      setTimeout(() => setLimitSaved(false), 2500)
+    } finally { setSavingLimit(false) }
+  }
 
   const toggleEnabled = async (rule) => {
     await fetch(`${API}/followup/rules/${rule.id}`, {
@@ -637,6 +696,7 @@ function FollowupRules() {
         <FollowupRuleForm
           initial={EMPTY_RULE}
           campaignOptions={campaignOptions}
+          videos={videos}
           onCancel={() => setEditingId(null)}
           onSaved={onSaved}
         />
@@ -653,8 +713,9 @@ function FollowupRules() {
           editingId === rule.id ? (
             <FollowupRuleForm
               key={rule.id}
-              initial={{ ...rule, kanbanStage: rule.kanbanStage || '', utmCampaign: rule.utmCampaign || '', text: rule.text || '' }}
+              initial={{ ...rule, kanbanStage: rule.kanbanStage || '', utmCampaign: rule.utmCampaign || '', text: rule.text || '', videoId: rule.videoId || '', videoCaptionOverride: rule.videoCaptionOverride || '' }}
               campaignOptions={campaignOptions}
+              videos={videos}
               onCancel={() => setEditingId(null)}
               onSaved={onSaved}
             />
@@ -677,9 +738,15 @@ function FollowupRules() {
                   <span className="px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-500">
                     {rule.delayMinutes >= 60 ? `${(rule.delayMinutes / 60).toFixed(rule.delayMinutes % 60 === 0 ? 0 : 1)}h` : `${rule.delayMinutes}min`}
                   </span>
-                  <span className="px-1.5 py-0.5 rounded-md bg-violet-50 text-violet-600">
-                    {rule.mode === 'ai' ? 'IA gera' : 'Texto fixo'}
-                  </span>
+                  {rule.videoId ? (
+                    <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-pink-50 text-pink-600">
+                      <Video className="w-2.5 h-2.5" /> {videos.find(v => v.id === rule.videoId)?.name || 'Vídeo'}
+                    </span>
+                  ) : (
+                    <span className="px-1.5 py-0.5 rounded-md bg-violet-50 text-violet-600">
+                      {rule.mode === 'ai' ? 'IA gera' : 'Texto fixo'}
+                    </span>
+                  )}
                 </div>
               </div>
               <div className="flex items-center gap-1 flex-shrink-0">
@@ -696,6 +763,33 @@ function FollowupRules() {
             </div>
           )
         ))}
+      </div>
+
+      {/* Teto diário de envio de vídeo */}
+      <div className="mt-5 pt-4 border-t border-slate-100">
+        <label className="flex items-center gap-1.5 text-xs font-medium text-slate-600 mb-2">
+          <Video className="w-3.5 h-3.5 text-pink-500" /> Limite diário de vídeos no follow-up
+        </label>
+        <div className="flex items-center gap-3">
+          <input
+            type="number"
+            min={1}
+            max={999}
+            value={videoLimit}
+            onChange={e => setVideoLimit(Math.max(1, parseInt(e.target.value) || 1))}
+            className="w-24 text-sm border border-slate-200 rounded-lg px-2.5 py-1.5 text-center focus:outline-none focus:ring-2 focus:ring-violet-300"
+          />
+          <span className="text-xs text-slate-400">vídeos/dia (protege o número de bloqueio; reseta à meia-noite)</span>
+          <button
+            onClick={saveVideoLimit}
+            disabled={savingLimit}
+            className="ml-auto flex items-center gap-1.5 text-xs font-medium text-white bg-violet-600 hover:bg-violet-700 disabled:opacity-50 px-3 py-1.5 rounded-lg transition"
+          >
+            {savingLimit ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+            Salvar
+          </button>
+          {limitSaved && <span className="flex items-center gap-1 text-xs text-emerald-600"><CheckCircle2 className="w-3.5 h-3.5" /> Salvo</span>}
+        </div>
       </div>
     </div>
   )

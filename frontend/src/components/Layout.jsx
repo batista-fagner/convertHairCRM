@@ -17,6 +17,7 @@ import {
   Zap,
   MessageCircle,
   Sparkles,
+  Video,
   LogOut,
 } from 'lucide-react'
 
@@ -55,6 +56,7 @@ const NAV_GROUPS = [
     label: 'Conteúdo',
     items: [
       { icon: Sparkles, label: 'Carrossel IG', path: '/content' },
+      { icon: Video, label: 'Vídeos', path: '/videos' },
     ],
   },
   {
@@ -76,6 +78,7 @@ const PAGE_TITLES = {
   '/instagram': 'Instagram Leads',
   '/instagram-auto': 'IG Automação',
   '/content': 'Carrossel IG',
+  '/videos': 'Vídeos de Follow-up',
   '/kanban': 'Kanban de Leads',
   '/settings': 'Configurações',
 }

@@ -31,6 +31,15 @@ export class FollowupRule {
   @Column({ name: 'text', type: 'text', nullable: true })
   text?: string | null;
 
+  // Se preenchido, a regra manda esse vídeo (com legenda) em vez de texto —
+  // o mode/text passam a ser ignorados. FK lógica pro FollowupVideo.
+  @Column({ name: 'video_id', type: 'uuid', nullable: true })
+  videoId?: string | null;
+
+  // Legenda específica desta regra; se null, usa a caption padrão do vídeo.
+  @Column({ name: 'video_caption_override', type: 'text', nullable: true })
+  videoCaptionOverride?: string | null;
+
   // Desempate manual quando duas regras têm a mesma especificidade pro mesmo lead (menor = prioridade maior).
   @Column({ name: 'priority', type: 'int', default: 0 })
   priority: number;
