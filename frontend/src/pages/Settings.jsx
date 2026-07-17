@@ -830,14 +830,19 @@ function FollowupStatus() {
         </div>
       </div>
 
-      {/* Aguardando — contador ao vivo */}
+      {/* Aguardando — contador ao vivo (só lead que casa com alguma regra ativa) */}
       <div className="mb-4">
-        <p className="text-xs font-semibold text-slate-600 mb-2 flex items-center gap-1.5">
+        <p className="text-xs font-semibold text-slate-600 mb-1 flex items-center gap-1.5">
           <Timer className="w-3.5 h-3.5 text-amber-500" /> Aguardando follow-up ({status.waiting.length})
         </p>
+        {status.noRuleCount > 0 && (
+          <p className="text-[10px] text-slate-400 mb-2">
+            + {status.noRuleCount} lead(s) sem nenhuma regra correspondente (não aparecem aqui — não vão receber follow-up)
+          </p>
+        )}
         {status.waiting.length === 0 ? (
           <p className="text-[11px] text-slate-400 bg-slate-50 rounded-lg p-3 text-center">
-            Nenhum lead na fila. Quando a IA mandar a última mensagem e o lead ficar em silêncio, ele aparece aqui com o contador.
+            Nenhum lead na fila casando com uma regra ativa no momento.
           </p>
         ) : (
           <div className="space-y-1.5">

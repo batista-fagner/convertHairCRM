@@ -207,10 +207,19 @@ export class SdrFollowupService {
       .getMany();
 
     const enabledRules = rules.filter((r) => r.enabled);
-    const waiting = activeLeads
+    const withRule = activeLeads
       .filter((l) => this.lastMessageWasFromAI(l))
-      .map((l) => {
-        const rule = this.matchRule(l, enabledRules);
+      .map((l) => ({ lead: l, rule: this.matchRule(l, enabledRules) }));
+
+    // Só entra na fila quem tem regra ativa de verdade te dando follow-up —
+    // lead sem regra correspondente nunca vai disparar, não faz sentido poluir a lista.
+    const noRuleCount = withRule.filter((x) => !x.rule).length;
+
+    const waiting = withRule
+      .filter((x) => x.rule)
+      .sort((a, b) => new Date(a.lead.waLastMessageAt!).getTime() + a.rule!.delayMinutes * 60000
+        - (new Date(b.lead.waLastMessageAt!).getTime() + b.rule!.delayMinutes * 60000))
+      .map(({ lead: l, rule }) => {
         return {
           id: l.id,
           name: l.name,
@@ -218,9 +227,9 @@ export class SdrFollowupService {
           kanbanStage: l.kanbanStage,
           utmCampaign: l.utmCampaign,
           waLastMessageAt: l.waLastMessageAt,
-          ruleId: rule?.id ?? null,
-          ruleName: rule?.name ?? null,
-          dueAt: rule ? new Date(new Date(l.waLastMessageAt!).getTime() + rule.delayMinutes * 60 * 1000) : null,
+          ruleId: rule!.id,
+          ruleName: rule!.name,
+          dueAt: new Date(new Date(l.waLastMessageAt!).getTime() + rule!.delayMinutes * 60 * 1000),
         };
       });
 
@@ -231,6 +240,7 @@ export class SdrFollowupService {
       whatsappConnected,
       whatsappName,
       totalSent,
+      noRuleCount,
       sent: sentLeads.map((l) => ({
         id: l.id,
         name: l.name,
