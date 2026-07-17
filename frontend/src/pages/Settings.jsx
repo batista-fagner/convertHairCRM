@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Settings as SettingsIcon, Key, Webhook, MessageCircle, Share2, Bot, Save, RotateCcw, Loader2, CheckCircle2, Send, Trash2, Clock, Sparkles, ToggleLeft, ToggleRight, Wifi, WifiOff, Timer, RefreshCw, XCircle, Activity } from 'lucide-react'
+import { Settings as SettingsIcon, Key, Webhook, MessageCircle, Share2, Bot, Save, RotateCcw, Loader2, CheckCircle2, Send, Trash2, Clock, Sparkles, ToggleLeft, ToggleRight, Wifi, WifiOff, Timer, RefreshCw, XCircle, Activity, Plus, Pencil, Tag, Layers } from 'lucide-react'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3002/api'
 
@@ -18,6 +18,21 @@ const STAGE_LABEL = {
   perdido: 'Perdido',
   encerrado: 'Encerrado',
 }
+
+// Raias do Kanban (kanban_stage) — mesmos rótulos do KanbanLeads.jsx
+const KANBAN_STAGE_LABEL = {
+  novo: 'Novo Lead',
+  atendimento: 'Atendimento',
+  'nao-qualificado': 'Não qualificado',
+  qualificado: 'Qualificado',
+  contactado: 'Contactado',
+  'ja-fez-prompt': 'Já fez prompt',
+  'ja-apresentado': 'Já apresentado',
+  'em-negociacao': 'Em negociação',
+  vendeu: 'Vendeu',
+  perdido: 'Lead perdido',
+}
+const KANBAN_STAGE_OPTIONS = Object.entries(KANBAN_STAGE_LABEL).map(([id, label]) => ({ id, label }))
 
 const STAGE_COLOR = {
   abertura: 'bg-slate-100 text-slate-600',
@@ -354,76 +369,87 @@ function SdrPromptEditor() {
   )
 }
 
-function FollowupConfig() {
-  const [config, setConfig] = useState({ enabled: false, delayMinutes: 60, mode: 'manual', text: '' })
-  const [resetCycle, setResetCycle] = useState(false)
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
-  const [resetMsg, setResetMsg] = useState('')
+const EMPTY_RULE = { name: '', enabled: true, kanbanStage: '', utmCampaign: '', delayMinutes: 60, mode: 'manual', text: '' }
 
-  useEffect(() => {
-    fetch(`${API}/settings/sdr-followup`)
-      .then(r => r.json())
-      .then(d => setConfig(d))
-      .catch(() => {})
-      .finally(() => setLoading(false))
-  }, [])
+function FollowupRuleForm({ initial, campaignOptions, onCancel, onSaved }) {
+  const [rule, setRule] = useState(initial)
+  const [resetCycle, setResetCycle] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const isEditing = Boolean(initial.id)
+
+  const hoursDisplay = rule.delayMinutes >= 60
+    ? `${(rule.delayMinutes / 60).toFixed(rule.delayMinutes % 60 === 0 ? 0 : 1)}h`
+    : `${rule.delayMinutes}min`
 
   const save = async () => {
+    setError('')
+    if (!rule.name.trim()) { setError('Dê um nome pra regra'); return }
+    if (rule.mode === 'manual' && !rule.text.trim()) { setError('Texto é obrigatório no modo manual'); return }
     setSaving(true)
-    setSaved(false)
-    setResetMsg('')
     try {
-      const res = await fetch(`${API}/settings/sdr-followup`, {
-        method: 'PUT',
+      const payload = {
+        name: rule.name.trim(),
+        enabled: rule.enabled,
+        kanbanStage: rule.kanbanStage || null,
+        utmCampaign: rule.utmCampaign || null,
+        delayMinutes: rule.delayMinutes,
+        mode: rule.mode,
+        text: rule.text || null,
+        resetCycle,
+      }
+      const res = await fetch(`${API}/followup/rules${isEditing ? `/${rule.id}` : ''}`, {
+        method: isEditing ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...config, resetCycle }),
+        body: JSON.stringify(payload),
       })
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.message || 'Erro ao salvar') }
       const d = await res.json()
-      setSaved(true)
-      if (resetCycle && d.resetCount > 0) setResetMsg(`${d.resetCount} lead(s) liberados para novo follow-up`)
-      setResetCycle(false)
-      setTimeout(() => { setSaved(false); setResetMsg('') }, 4000)
-    } catch {}
-    finally { setSaving(false) }
+      onSaved(d.resetCount > 0 ? `${d.resetCount} lead(s) liberados para novo follow-up` : null)
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setSaving(false)
+    }
   }
 
-  const hoursDisplay = config.delayMinutes >= 60
-    ? `${(config.delayMinutes / 60).toFixed(config.delayMinutes % 60 === 0 ? 0 : 1)}h`
-    : `${config.delayMinutes}min`
-
-  if (loading) return (
-    <div className="bg-white rounded-xl border border-slate-200 p-4 mb-6 flex items-center gap-2 text-slate-400">
-      <Loader2 className="w-4 h-4 animate-spin" /> Carregando...
-    </div>
-  )
-
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-5 mb-6">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <Clock className="w-4 h-4 text-violet-600" />
-          <p className="font-semibold text-slate-800 text-sm">Follow-up Automático</p>
-          <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${config.enabled ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
-            {config.enabled ? 'Ativo' : 'Inativo'}
-          </span>
-        </div>
-        <button
-          onClick={() => setConfig(c => ({ ...c, enabled: !c.enabled }))}
-          className="transition"
-          title={config.enabled ? 'Desativar' : 'Ativar'}
-        >
-          {config.enabled
-            ? <ToggleRight className="w-8 h-8 text-violet-600" />
-            : <ToggleLeft className="w-8 h-8 text-slate-300" />}
-        </button>
+    <div className="bg-violet-50/40 rounded-xl border border-violet-200 p-5 mb-4">
+      <div className="mb-4">
+        <label className="block text-xs font-medium text-slate-600 mb-1.5">Nome da regra</label>
+        <input
+          type="text"
+          value={rule.name}
+          onChange={e => setRule(r => ({ ...r, name: e.target.value }))}
+          placeholder="Ex: DIRETO PRO ZAP — qualificados"
+          className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-300"
+        />
       </div>
 
-      <p className="text-xs text-slate-400 mb-4">
-        Se a IA enviou a última mensagem e o lead não responder no prazo configurado, um follow-up é disparado automaticamente (1x por ciclo). Quando o lead responde, o ciclo reinicia.
-      </p>
+      <div className="grid grid-cols-2 gap-3 mb-4">
+        <div>
+          <label className="block text-xs font-medium text-slate-600 mb-1.5">Raia (kanban)</label>
+          <select
+            value={rule.kanbanStage}
+            onChange={e => setRule(r => ({ ...r, kanbanStage: e.target.value }))}
+            className="w-full text-sm border border-slate-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-violet-300 bg-white"
+          >
+            <option value="">Todas as raias</option>
+            {KANBAN_STAGE_OPTIONS.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-slate-600 mb-1.5">Campanha (utm_campaign)</label>
+          <select
+            value={rule.utmCampaign}
+            onChange={e => setRule(r => ({ ...r, utmCampaign: e.target.value }))}
+            className="w-full text-sm border border-slate-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-violet-300 bg-white"
+          >
+            <option value="">Todas as campanhas</option>
+            {campaignOptions.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
+      </div>
 
       {/* Delay */}
       <div className="mb-4">
@@ -434,8 +460,8 @@ function FollowupConfig() {
               type="number"
               min={1}
               max={9999}
-              value={config.delayMinutes}
-              onChange={e => setConfig(c => ({ ...c, delayMinutes: Math.max(1, parseInt(e.target.value) || 1) }))}
+              value={rule.delayMinutes}
+              onChange={e => setRule(r => ({ ...r, delayMinutes: Math.max(1, parseInt(e.target.value) || 1) }))}
               className="w-20 text-sm border border-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-violet-300 text-center"
             />
             <span className="text-xs text-slate-500">minutos</span>
@@ -445,8 +471,8 @@ function FollowupConfig() {
             {[30, 60, 120, 360, 720].map(m => (
               <button
                 key={m}
-                onClick={() => setConfig(c => ({ ...c, delayMinutes: m }))}
-                className={`text-[10px] px-2 py-1 rounded-md border transition ${config.delayMinutes === m ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-slate-500 border-slate-200 hover:border-violet-300'}`}
+                onClick={() => setRule(r => ({ ...r, delayMinutes: m }))}
+                className={`text-[10px] px-2 py-1 rounded-md border transition ${rule.delayMinutes === m ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-slate-500 border-slate-200 hover:border-violet-300'}`}
               >
                 {m >= 60 ? `${m / 60}h` : `${m}min`}
               </button>
@@ -460,29 +486,26 @@ function FollowupConfig() {
         <label className="block text-xs font-medium text-slate-600 mb-1.5">Tipo de mensagem</label>
         <div className="flex gap-2">
           <button
-            onClick={() => setConfig(c => ({ ...c, mode: 'manual' }))}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition ${config.mode === 'manual' ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-slate-600 border-slate-200 hover:border-violet-300'}`}
+            onClick={() => setRule(r => ({ ...r, mode: 'manual' }))}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition ${rule.mode === 'manual' ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-slate-600 border-slate-200 hover:border-violet-300'}`}
           >
             Texto fixo
           </button>
           <button
-            onClick={() => setConfig(c => ({ ...c, mode: 'ai' }))}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition ${config.mode === 'ai' ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-slate-600 border-slate-200 hover:border-violet-300'}`}
+            onClick={() => setRule(r => ({ ...r, mode: 'ai' }))}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition ${rule.mode === 'ai' ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-slate-600 border-slate-200 hover:border-violet-300'}`}
           >
             <Sparkles className="w-3 h-3" /> IA gera automaticamente
           </button>
         </div>
       </div>
 
-      {/* Message text (only if manual) */}
-      {config.mode === 'manual' && (
+      {rule.mode === 'manual' && (
         <div className="mb-4">
-          <label className="block text-xs font-medium text-slate-600 mb-1.5">
-            Mensagem de follow-up
-          </label>
+          <label className="block text-xs font-medium text-slate-600 mb-1.5">Mensagem de follow-up</label>
           <textarea
-            value={config.text}
-            onChange={e => setConfig(c => ({ ...c, text: e.target.value }))}
+            value={rule.text}
+            onChange={e => setRule(r => ({ ...r, text: e.target.value }))}
             rows={4}
             placeholder="Ex: Oi! Vi que você não respondeu ainda. Ainda tem interesse em conhecer a Convert Hair AI? 😊"
             className="w-full text-sm border border-slate-200 rounded-lg p-3 resize-none focus:outline-none focus:ring-2 focus:ring-violet-300"
@@ -490,7 +513,7 @@ function FollowupConfig() {
         </div>
       )}
 
-      {config.mode === 'ai' && (
+      {rule.mode === 'ai' && (
         <div className="mb-4 bg-violet-50 rounded-lg p-3 border border-violet-100">
           <div className="flex items-center gap-1.5 mb-1">
             <Sparkles className="w-3.5 h-3.5 text-violet-500" />
@@ -502,37 +525,177 @@ function FollowupConfig() {
         </div>
       )}
 
-      {/* Novo ciclo */}
-      <label className="flex items-start gap-2 mb-3 cursor-pointer bg-amber-50/60 border border-amber-100 rounded-lg p-3">
-        <input
-          type="checkbox"
-          checked={resetCycle}
-          onChange={e => setResetCycle(e.target.checked)}
-          className="mt-0.5 accent-violet-600"
-        />
-        <span className="text-[11px] text-slate-600">
-          <span className="font-medium text-slate-700">Disparar novo ciclo</span> — reenvia para os leads que já receberam follow-up e ainda não responderam (respeitando o novo tempo). Marque ao reconfigurar para um 2º follow-up.
-        </span>
-      </label>
-
-      {/* Save */}
-      <div className="flex items-center justify-end gap-3">
-        {resetMsg && (
-          <span className="text-xs text-amber-600 font-medium">{resetMsg}</span>
-        )}
-        {saved && (
-          <span className="flex items-center gap-1 text-xs text-emerald-600 font-medium">
-            <CheckCircle2 className="w-3.5 h-3.5" /> Salvo
+      {isEditing && (
+        <label className="flex items-start gap-2 mb-3 cursor-pointer bg-amber-50/60 border border-amber-100 rounded-lg p-3">
+          <input
+            type="checkbox"
+            checked={resetCycle}
+            onChange={e => setResetCycle(e.target.checked)}
+            className="mt-0.5 accent-violet-600"
+          />
+          <span className="text-[11px] text-slate-600">
+            <span className="font-medium text-slate-700">Disparar novo ciclo</span> — reenvia pros leads desta raia/campanha que já receberam follow-up e ainda não responderam. Marque ao reconfigurar.
           </span>
-        )}
+        </label>
+      )}
+
+      <div className="flex items-center justify-end gap-3">
+        {error && <span className="text-xs text-red-600 font-medium">{error}</span>}
+        <button onClick={onCancel} className="text-xs font-medium text-slate-500 hover:text-slate-700 px-3 py-2 transition">
+          Cancelar
+        </button>
         <button
           onClick={save}
-          disabled={saving || (config.mode === 'manual' && !config.text.trim() && config.enabled)}
+          disabled={saving}
           className="flex items-center gap-1.5 text-xs font-medium text-white bg-violet-600 hover:bg-violet-700 disabled:opacity-50 px-4 py-2 rounded-lg transition"
         >
           {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-          Salvar
+          Salvar regra
         </button>
+      </div>
+    </div>
+  )
+}
+
+function FollowupRules() {
+  const [rules, setRules] = useState([])
+  const [campaignOptions, setCampaignOptions] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [editingId, setEditingId] = useState(null) // null = fechado, 'new' = criando, id = editando
+  const [toast, setToast] = useState('')
+
+  const load = () => {
+    setLoading(true)
+    Promise.all([
+      fetch(`${API}/followup/rules`).then(r => r.json()),
+      fetch(`${API}/followup/campaign-options`).then(r => r.json()),
+    ])
+      .then(([rulesData, campaignsData]) => {
+        setRules(Array.isArray(rulesData) ? rulesData : [])
+        setCampaignOptions(Array.isArray(campaignsData) ? campaignsData : [])
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }
+
+  useEffect(() => { load() }, [])
+
+  const toggleEnabled = async (rule) => {
+    await fetch(`${API}/followup/rules/${rule.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: !rule.enabled }),
+    })
+    load()
+  }
+
+  const remove = async (rule) => {
+    if (!confirm(`Excluir a regra "${rule.name}"?`)) return
+    await fetch(`${API}/followup/rules/${rule.id}`, { method: 'DELETE' })
+    load()
+  }
+
+  const onSaved = (msg) => {
+    setEditingId(null)
+    if (msg) { setToast(msg); setTimeout(() => setToast(''), 4000) }
+    load()
+  }
+
+  if (loading) return (
+    <div className="bg-white rounded-xl border border-slate-200 p-4 mb-6 flex items-center gap-2 text-slate-400">
+      <Loader2 className="w-4 h-4 animate-spin" /> Carregando regras de follow-up...
+    </div>
+  )
+
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 p-5 mb-6">
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <Clock className="w-4 h-4 text-violet-600" />
+          <p className="font-semibold text-slate-800 text-sm">Follow-up Automático</p>
+        </div>
+        {editingId !== 'new' && (
+          <button
+            onClick={() => setEditingId('new')}
+            className="flex items-center gap-1.5 text-xs font-medium text-violet-600 hover:text-violet-700 transition"
+          >
+            <Plus className="w-3.5 h-3.5" /> Nova regra
+          </button>
+        )}
+      </div>
+      <p className="text-xs text-slate-400 mb-4">
+        Se a IA enviou a última mensagem e o lead não responder no prazo, um follow-up dispara automaticamente. Cada regra pode valer só pra uma raia e/ou campanha específica — a regra mais específica que casar com o lead é a usada.
+      </p>
+
+      {toast && (
+        <div className="mb-4 flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+          <CheckCircle2 className="w-3.5 h-3.5" /> {toast}
+        </div>
+      )}
+
+      {editingId === 'new' && (
+        <FollowupRuleForm
+          initial={EMPTY_RULE}
+          campaignOptions={campaignOptions}
+          onCancel={() => setEditingId(null)}
+          onSaved={onSaved}
+        />
+      )}
+
+      {rules.length === 0 && editingId !== 'new' && (
+        <p className="text-[11px] text-slate-400 bg-slate-50 rounded-lg p-4 text-center">
+          Nenhuma regra configurada ainda. Clique em "Nova regra" pra criar a primeira.
+        </p>
+      )}
+
+      <div className="space-y-2">
+        {rules.map(rule => (
+          editingId === rule.id ? (
+            <FollowupRuleForm
+              key={rule.id}
+              initial={{ ...rule, kanbanStage: rule.kanbanStage || '', utmCampaign: rule.utmCampaign || '', text: rule.text || '' }}
+              campaignOptions={campaignOptions}
+              onCancel={() => setEditingId(null)}
+              onSaved={onSaved}
+            />
+          ) : (
+            <div key={rule.id} className="flex items-center justify-between gap-3 border border-slate-200 rounded-lg px-4 py-3">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <p className="text-sm font-medium text-slate-800 truncate">{rule.name}</p>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium flex-shrink-0 ${rule.enabled ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                    {rule.enabled ? 'Ativa' : 'Inativa'}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5 flex-wrap text-[10px]">
+                  <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-600">
+                    <Layers className="w-2.5 h-2.5" /> {rule.kanbanStage ? KANBAN_STAGE_LABEL[rule.kanbanStage] || rule.kanbanStage : 'Todas as raias'}
+                  </span>
+                  <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-orange-50 text-orange-600">
+                    <Tag className="w-2.5 h-2.5" /> {rule.utmCampaign || 'Todas as campanhas'}
+                  </span>
+                  <span className="px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-500">
+                    {rule.delayMinutes >= 60 ? `${(rule.delayMinutes / 60).toFixed(rule.delayMinutes % 60 === 0 ? 0 : 1)}h` : `${rule.delayMinutes}min`}
+                  </span>
+                  <span className="px-1.5 py-0.5 rounded-md bg-violet-50 text-violet-600">
+                    {rule.mode === 'ai' ? 'IA gera' : 'Texto fixo'}
+                  </span>
+                </div>
+              </div>
+              <div className="flex items-center gap-1 flex-shrink-0">
+                <button onClick={() => toggleEnabled(rule)} title={rule.enabled ? 'Desativar' : 'Ativar'} className="transition">
+                  {rule.enabled ? <ToggleRight className="w-7 h-7 text-violet-600" /> : <ToggleLeft className="w-7 h-7 text-slate-300" />}
+                </button>
+                <button onClick={() => setEditingId(rule.id)} title="Editar" className="p-1.5 text-slate-400 hover:text-violet-600 transition">
+                  <Pencil className="w-4 h-4" />
+                </button>
+                <button onClick={() => remove(rule)} title="Excluir" className="p-1.5 text-slate-400 hover:text-red-600 transition">
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )
+        ))}
       </div>
     </div>
   )
@@ -630,16 +793,21 @@ function FollowupStatus() {
         </div>
 
         {/* Estado */}
-        <div className={`rounded-lg p-3 border ${status.enabled ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-50 border-slate-200'}`}>
-          <div className="flex items-center gap-1.5 mb-1">
-            <Clock className="w-3.5 h-3.5 text-slate-500" />
-            <span className="text-[10px] font-medium text-slate-500 uppercase">Follow-up</span>
-          </div>
-          <p className={`text-sm font-semibold ${status.enabled ? 'text-emerald-700' : 'text-slate-500'}`}>
-            {status.enabled ? 'Ativo' : 'Inativo'}
-          </p>
-          <p className="text-[10px] text-slate-400">desde {fmtDateTime(status.activatedAt)}</p>
-        </div>
+        {(() => {
+          const activeCount = (status.rules || []).filter(r => r.enabled).length
+          return (
+            <div className={`rounded-lg p-3 border ${activeCount > 0 ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-50 border-slate-200'}`}>
+              <div className="flex items-center gap-1.5 mb-1">
+                <Clock className="w-3.5 h-3.5 text-slate-500" />
+                <span className="text-[10px] font-medium text-slate-500 uppercase">Follow-up</span>
+              </div>
+              <p className={`text-sm font-semibold ${activeCount > 0 ? 'text-emerald-700' : 'text-slate-500'}`}>
+                {activeCount > 0 ? `${activeCount} regra(s) ativa(s)` : 'Nenhuma regra ativa'}
+              </p>
+              <p className="text-[10px] text-slate-400">{(status.rules || []).length} regra(s) no total</p>
+            </div>
+          )
+        })()}
 
         {/* Última verificação */}
         <div className="rounded-lg p-3 border bg-slate-50 border-slate-200">
@@ -674,16 +842,21 @@ function FollowupStatus() {
         ) : (
           <div className="space-y-1.5">
             {status.waiting.map(l => {
-              const cd = countdown(l.dueAt, now)
+              const cd = l.dueAt ? countdown(l.dueAt, now) : null
               return (
                 <div key={l.id} className="flex items-center justify-between bg-amber-50/60 border border-amber-100 rounded-lg px-3 py-2">
                   <div className="min-w-0">
                     <p className="text-xs font-medium text-slate-700 truncate">{firstName(l.name)}</p>
                     <p className="text-[10px] text-slate-400">última msg {timeAgo(l.waLastMessageAt, now)}</p>
+                    {l.ruleName && <p className="text-[10px] text-violet-500 truncate">regra: {l.ruleName}</p>}
                   </div>
-                  <span className={`text-xs font-mono font-semibold tabular-nums px-2 py-1 rounded-md ${cd.overdue ? 'bg-violet-100 text-violet-700' : 'bg-white text-amber-700 border border-amber-200'}`}>
-                    {cd.overdue ? cd.text : `⏱ ${cd.text}`}
-                  </span>
+                  {cd ? (
+                    <span className={`text-xs font-mono font-semibold tabular-nums px-2 py-1 rounded-md flex-shrink-0 ${cd.overdue ? 'bg-violet-100 text-violet-700' : 'bg-white text-amber-700 border border-amber-200'}`}>
+                      {cd.overdue ? cd.text : `⏱ ${cd.text}`}
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-slate-400 flex-shrink-0">sem regra</span>
+                  )}
                 </div>
               )
             })}
@@ -813,7 +986,7 @@ export default function Settings() {
 
       <NotifyPhonesConfig />
 
-      <FollowupConfig />
+      <FollowupRules />
 
       <FollowupStatus />
 

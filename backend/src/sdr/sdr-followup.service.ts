@@ -7,10 +7,13 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import OpenAI from 'openai';
 import { Lead } from '../common/entities/lead.entity';
+import { FollowupRule } from '../common/entities/followup-rule.entity';
 import { SettingsService } from '../settings/settings.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { SDR_PROMPT_KEY, DEFAULT_SDR_PROMPT, SDR_MODEL_KEY } from './sdr.prompt';
 
+// Chaves da config global antiga (1 regra só) — usadas só pra migração automática
+// pra 1ª FollowupRule na primeira vez que o sistema roda com a tabela vazia.
 const FOLLOWUP_ENABLED_KEY = 'sdr_followup_enabled';
 const FOLLOWUP_DELAY_KEY = 'sdr_followup_delay_minutes';
 const FOLLOWUP_MODE_KEY = 'sdr_followup_mode';
@@ -24,6 +27,7 @@ export class SdrFollowupService {
   private readonly openai: OpenAI;
   private readonly uazapiBaseUrl: string;
   private readonly uazapiToken: string;
+  private rulesSeeded = false;
 
   // Telemetria do cron (exposta em getStatus para o painel)
   private lastRunAt: Date | null = null;
@@ -32,6 +36,8 @@ export class SdrFollowupService {
   constructor(
     @InjectRepository(Lead)
     private leadsRepo: Repository<Lead>,
+    @InjectRepository(FollowupRule)
+    private rulesRepo: Repository<FollowupRule>,
     private settings: SettingsService,
     private http: HttpService,
     private config: ConfigService,
@@ -42,34 +48,77 @@ export class SdrFollowupService {
     this.uazapiToken = config.get('SDR_UAZAPI_TOKEN') || '';
   }
 
+  /**
+   * Migração automática: se a tabela de regras estiver vazia e existir a config
+   * global antiga (1 regra só, era via `settings`), cria 1 FollowupRule "Regra
+   * padrão" com os valores antigos — preserva o comportamento até o operador
+   * reconfigurar. Roda 1x (lazy, na primeira chamada do cron ou do painel).
+   */
+  async ensureRulesSeeded(): Promise<void> {
+    if (this.rulesSeeded) return;
+    this.rulesSeeded = true;
+
+    const existing = await this.rulesRepo.count();
+    if (existing > 0) return;
+
+    const enabledRow = await this.settings.getRow(FOLLOWUP_ENABLED_KEY);
+    if (!enabledRow) return;
+
+    const delayMinutes = parseInt((await this.settings.get(FOLLOWUP_DELAY_KEY)) || '60', 10);
+    const mode = (await this.settings.get(FOLLOWUP_MODE_KEY)) === 'ai' ? 'ai' : 'manual';
+    const text = (await this.settings.get(FOLLOWUP_TEXT_KEY)) || '';
+
+    await this.rulesRepo.save(this.rulesRepo.create({
+      name: 'Regra padrão (todas as raias e campanhas)',
+      enabled: enabledRow.value === 'true',
+      kanbanStage: null,
+      utmCampaign: null,
+      delayMinutes,
+      mode,
+      text,
+    }));
+    this.logger.log('[Followup] Config antiga migrada para "Regra padrão" em followup_rules');
+  }
+
+  /** Regra mais específica que casa com o lead (raia + campanha > só uma > coringa). Undefined se nenhuma casar. */
+  private matchRule(lead: Lead, rules: FollowupRule[]): FollowupRule | undefined {
+    let best: FollowupRule | undefined;
+    let bestScore = -1;
+    for (const rule of rules) {
+      const stageOk = rule.kanbanStage == null || rule.kanbanStage === lead.kanbanStage;
+      const campaignOk = rule.utmCampaign == null || rule.utmCampaign === lead.utmCampaign;
+      if (!stageOk || !campaignOk) continue;
+
+      const score = (rule.kanbanStage != null ? 1 : 0) + (rule.utmCampaign != null ? 1 : 0);
+      if (
+        score > bestScore ||
+        (score === bestScore && best && (rule.priority < best.priority ||
+          (rule.priority === best.priority && rule.createdAt < best.createdAt)))
+      ) {
+        best = rule;
+        bestScore = score;
+      }
+    }
+    return best;
+  }
+
   @Cron('*/5 * * * *')
   async checkFollowups() {
     this.lastRunAt = new Date();
+    await this.ensureRulesSeeded();
 
-    const enabled = (await this.settings.get(FOLLOWUP_ENABLED_KEY)) === 'true';
-    if (!enabled) return;
+    const rules = await this.rulesRepo.find({ where: { enabled: true } });
+    if (rules.length === 0) return;
 
-    const delayMinutes = parseInt((await this.settings.get(FOLLOWUP_DELAY_KEY)) || '60', 10);
-    const mode = (await this.settings.get(FOLLOWUP_MODE_KEY)) || 'manual';
-    const manualText = await this.settings.get(FOLLOWUP_TEXT_KEY);
-
-    if (mode === 'manual' && !manualText) {
-      this.logger.warn('[Followup] Modo manual sem texto configurado — ignorando');
-      return;
-    }
-
-    const cutoff = new Date(Date.now() - delayMinutes * 60 * 1000);
-
-    // Leads SDR: IA ativada + última atividade antes do cutoff + NUNCA recebeu follow-up
-    // (followup_sent_at IS NULL garante 1x; o reset acontece quando o lead responde
-    //  ou quando o operador reconfigura o follow-up)
+    // Candidatos: IA ativa + nunca recebeu follow-up (followup_sent_at IS NULL garante
+    // 1x; reseta quando o lead responde ou quando o operador reconfigura). O delay é
+    // por regra, então aqui não filtra por tempo ainda — isso é feito por lead abaixo.
     const candidates = await this.leadsRepo
       .createQueryBuilder('lead')
       .where('lead.agent_mode = :mode', { mode: 'sdr' })
       .andWhere('lead.ai_paused = false')
       .andWhere('lead.wa_stage != :encerrado', { encerrado: 'encerrado' })
       .andWhere('lead.wa_last_message_at IS NOT NULL')
-      .andWhere('lead.wa_last_message_at < :cutoff', { cutoff })
       .andWhere('lead.followup_sent_at IS NULL')
       .getMany();
 
@@ -77,12 +126,19 @@ export class SdrFollowupService {
     for (const lead of candidates) {
       if (!this.lastMessageWasFromAI(lead)) continue;
 
+      const rule = this.matchRule(lead, rules);
+      if (!rule) continue;
+
+      const cutoff = Date.now() - rule.delayMinutes * 60 * 1000;
+      if (new Date(lead.waLastMessageAt!).getTime() > cutoff) continue;
+
       let message: string;
-      if (mode === 'ai') {
-        message = await this.generateAiFollowup(lead, delayMinutes);
+      if (rule.mode === 'ai') {
+        message = await this.generateAiFollowup(lead, rule.delayMinutes);
         if (!message) continue;
       } else {
-        message = manualText!;
+        if (!rule.text) continue;
+        message = rule.text;
       }
 
       // Espaçamento aleatório entre envios (5-10s) para reduzir risco de
@@ -102,13 +158,10 @@ export class SdrFollowupService {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
-  /** Status do follow-up para o painel de Configurações. */
+  /** Status do follow-up para o painel de Configurações — agrupado por regra. */
   async getStatus() {
-    const enabledRow = await this.settings.getRow(FOLLOWUP_ENABLED_KEY);
-    const enabled = enabledRow?.value === 'true';
-    const delayMinutes = parseInt((await this.settings.get(FOLLOWUP_DELAY_KEY)) || '60', 10);
-    const mode = (await this.settings.get(FOLLOWUP_MODE_KEY)) || 'manual';
-    const delayMs = delayMinutes * 60 * 1000;
+    await this.ensureRulesSeeded();
+    const rules = await this.rulesRepo.find({ order: { createdAt: 'ASC' } });
 
     // Conexão WhatsApp (instância SDR)
     let whatsappConnected: boolean | null = null;
@@ -153,23 +206,26 @@ export class SdrFollowupService {
       .orderBy('lead.wa_last_message_at', 'ASC')
       .getMany();
 
+    const enabledRules = rules.filter((r) => r.enabled);
     const waiting = activeLeads
       .filter((l) => this.lastMessageWasFromAI(l))
-      .map((l) => ({
-        id: l.id,
-        name: l.name,
-        phone: l.phone,
-        kanbanStage: l.kanbanStage,
-        waLastMessageAt: l.waLastMessageAt,
-        // Quando o follow-up deve disparar
-        dueAt: new Date(new Date(l.waLastMessageAt!).getTime() + delayMs),
-      }));
+      .map((l) => {
+        const rule = this.matchRule(l, enabledRules);
+        return {
+          id: l.id,
+          name: l.name,
+          phone: l.phone,
+          kanbanStage: l.kanbanStage,
+          utmCampaign: l.utmCampaign,
+          waLastMessageAt: l.waLastMessageAt,
+          ruleId: rule?.id ?? null,
+          ruleName: rule?.name ?? null,
+          dueAt: rule ? new Date(new Date(l.waLastMessageAt!).getTime() + rule.delayMinutes * 60 * 1000) : null,
+        };
+      });
 
     return {
-      enabled,
-      delayMinutes,
-      mode,
-      activatedAt: enabledRow?.updatedAt ?? null,
+      rules,
       lastRunAt: this.lastRunAt,
       lastSentCount: this.lastSentCount,
       whatsappConnected,

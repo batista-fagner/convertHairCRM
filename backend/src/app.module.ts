@@ -8,6 +8,7 @@ import { Form } from './common/entities/form.entity';
 import { InstagramAutomation } from './instagram-automation/instagram-automation.entity';
 import { IgConversation } from './instagram-automation/ig-conversation.entity';
 import { Setting } from './settings/setting.entity';
+import { FollowupRule } from './common/entities/followup-rule.entity';
 import { LeadsModule } from './leads/leads.module';
 import { EnrichmentModule } from './enrichment/enrichment.module';
 import { FormsModule } from './forms/forms.module';
@@ -32,7 +33,7 @@ import { SettingsModule } from './settings/settings.module';
         type: 'postgres' as const,
         url: config.get('DATABASE_URL') || config.get('SUPABASE_DATABASE_URL'),
         ssl: { rejectUnauthorized: false },
-        entities: [Lead, Campaign, Form, InstagramAutomation, IgConversation, Setting],
+        entities: [Lead, Campaign, Form, InstagramAutomation, IgConversation, Setting, FollowupRule],
         synchronize: true,
         logging: false,
         timezone: 'Z',

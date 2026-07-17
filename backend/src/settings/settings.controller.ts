@@ -1,7 +1,6 @@
 import { Controller, Get, Put, Post, Body } from '@nestjs/common';
 import { SettingsService } from './settings.service';
 import { SDR_PROMPT_KEY, DEFAULT_SDR_PROMPT, SDR_MODEL_KEY, SDR_DEFAULT_MODEL } from '../sdr/sdr.prompt';
-import { FOLLOWUP_ENABLED_KEY, FOLLOWUP_DELAY_KEY, FOLLOWUP_MODE_KEY, FOLLOWUP_TEXT_KEY } from '../sdr/sdr-followup.service';
 import { SDR_NOTIFY_PHONES_KEY } from '../sdr/sdr.controller';
 
 @Controller('settings')
@@ -40,22 +39,6 @@ export class SettingsController {
     return this.settingsService.simulate(body.message ?? '', body.history ?? []);
   }
 
-  @Get('sdr-followup')
-  async getFollowup() {
-    const [enabled, delayMinutes, mode, text] = await Promise.all([
-      this.settingsService.get(FOLLOWUP_ENABLED_KEY),
-      this.settingsService.get(FOLLOWUP_DELAY_KEY),
-      this.settingsService.get(FOLLOWUP_MODE_KEY),
-      this.settingsService.get(FOLLOWUP_TEXT_KEY),
-    ]);
-    return {
-      enabled: enabled === 'true',
-      delayMinutes: parseInt(delayMinutes || '60', 10),
-      mode: mode || 'manual',
-      text: text || '',
-    };
-  }
-
   @Get('sdr-notify')
   async getNotifyPhones() {
     const value = await this.settingsService.get(SDR_NOTIFY_PHONES_KEY);
@@ -73,22 +56,4 @@ export class SettingsController {
     return { phone1: phones[0] ?? '', phone2: phones[1] ?? '' };
   }
 
-  @Put('sdr-followup')
-  async setFollowup(
-    @Body() body: { enabled: boolean; delayMinutes: number; mode: string; text: string; resetCycle?: boolean },
-  ) {
-    await Promise.all([
-      this.settingsService.set(FOLLOWUP_ENABLED_KEY, body.enabled ? 'true' : 'false'),
-      this.settingsService.set(FOLLOWUP_DELAY_KEY, String(Math.max(1, body.delayMinutes || 60))),
-      this.settingsService.set(FOLLOWUP_MODE_KEY, body.mode === 'ai' ? 'ai' : 'manual'),
-      this.settingsService.set(FOLLOWUP_TEXT_KEY, body.text || ''),
-    ]);
-
-    // Se o operador pediu novo ciclo, libera os leads que já receberam follow-up
-    let resetCount = 0;
-    if (body.resetCycle && body.enabled) {
-      resetCount = await this.settingsService.resetFollowupFlags();
-    }
-    return { ok: true, resetCount };
-  }
 }

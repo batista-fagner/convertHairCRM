@@ -7,6 +7,7 @@ import { ManualMessageController } from './manual-message.controller';
 import { SdrService } from './sdr.service';
 import { SdrFollowupService } from './sdr-followup.service';
 import { Lead } from '../common/entities/lead.entity';
+import { FollowupRule } from '../common/entities/followup-rule.entity';
 import { LeadsModule } from '../leads/leads.module';
 import { FacebookModule } from '../facebook/facebook.module';
 import { RealtimeModule } from '../realtime/realtime.module';
@@ -16,7 +17,7 @@ import { EnrichmentModule } from '../enrichment/enrichment.module';
 @Module({
   imports: [
     HttpModule,
-    TypeOrmModule.forFeature([Lead]),
+    TypeOrmModule.forFeature([Lead, FollowupRule]),
     LeadsModule,
     FacebookModule,
     RealtimeModule,
