@@ -17,6 +17,7 @@ export class EnrichmentService {
   private readonly rapidapiHost: string;
   private readonly sdrUazapiBaseUrl: string;
   private readonly sdrUazapiToken: string;
+  private readonly disableProfileAiAnalysis: boolean;
 
   constructor(
     private config: ConfigService,
@@ -24,6 +25,7 @@ export class EnrichmentService {
     private aiAnalysisService: AiAnalysisService,
     private messagingService: MessagingService,
   ) {
+    this.disableProfileAiAnalysis = config.get('DISABLE_PROFILE_AI_ANALYSIS') === 'true';
     this.apifyToken = config.get('APIFY_TOKEN') || '';
     this.rapidapiKey = config.get('RAPIDAPI_KEY') || '';
     this.rapidapiHost = config.get('RAPIDAPI_HOST') || 'instagram120.p.rapidapi.com';
@@ -51,14 +53,20 @@ export class EnrichmentService {
       const bonusScore = enrichmentData.enrichment_bonus || 0;
       const newScore = lead.score + bonusScore;
 
-      const aiInsight = await this.aiAnalysisService.analyzeLeadInstagram(
-        lead.name,
-        lead.instagram,
-        enrichmentData.followers || 0,
-        enrichmentData.engagement_rate || 0,
-        enrichmentData.content_type || '',
-        posts,
-      );
+      const aiInsight = this.disableProfileAiAnalysis
+        ? null
+        : await this.aiAnalysisService.analyzeLeadInstagram(
+            lead.name,
+            lead.instagram,
+            enrichmentData.followers || 0,
+            enrichmentData.engagement_rate || 0,
+            enrichmentData.content_type || '',
+            posts,
+          );
+
+      if (this.disableProfileAiAnalysis) {
+        this.logger.warn(`DISABLE_PROFILE_AI_ANALYSIS=true — pulando análise de IA do perfil (lead ${leadId})`);
+      }
 
       const updated = await this.leadsService.update(leadId, {
         enrichmentData,
