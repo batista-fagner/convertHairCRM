@@ -42,6 +42,17 @@ export class FollowupController {
     return rows.map((r) => r.utmCampaign).filter(Boolean).sort();
   }
 
+  // Valores distintos de ctwa_ad_title já gravados nos leads — popula o dropdown de criativo.
+  @Get('ad-title-options')
+  async adTitleOptions() {
+    const rows = await this.leadsRepo
+      .createQueryBuilder('lead')
+      .select('DISTINCT lead.ctwa_ad_title', 'adTitle')
+      .where('lead.ctwa_ad_title IS NOT NULL')
+      .getRawMany();
+    return rows.map((r) => r.adTitle).filter(Boolean).sort();
+  }
+
   @Post('rules')
   async createRule(@Body() body: Partial<FollowupRule>) {
     if (!body?.name?.trim()) throw new BadRequestException('Nome da regra é obrigatório');
@@ -55,6 +66,8 @@ export class FollowupController {
       enabled: body.enabled ?? true,
       kanbanStage: body.kanbanStage || null,
       utmCampaign: body.utmCampaign || null,
+      adTitle: body.adTitle || null,
+      createdAfter: body.createdAfter ? new Date(body.createdAfter) : null,
       delayMinutes: Math.max(1, body.delayMinutes || 60),
       mode: body.mode === 'ai' ? 'ai' : 'manual',
       text: body.text || null,
@@ -74,6 +87,8 @@ export class FollowupController {
     if (body.enabled !== undefined) rule.enabled = body.enabled;
     if (body.kanbanStage !== undefined) rule.kanbanStage = body.kanbanStage || null;
     if (body.utmCampaign !== undefined) rule.utmCampaign = body.utmCampaign || null;
+    if (body.adTitle !== undefined) rule.adTitle = body.adTitle || null;
+    if (body.createdAfter !== undefined) rule.createdAfter = body.createdAfter ? new Date(body.createdAfter) : null;
     if (body.delayMinutes !== undefined) rule.delayMinutes = Math.max(1, body.delayMinutes);
     if (body.mode !== undefined) rule.mode = body.mode === 'ai' ? 'ai' : 'manual';
     if (body.text !== undefined) rule.text = body.text || null;
@@ -101,6 +116,8 @@ export class FollowupController {
         .andWhere('followup_sent_at IS NOT NULL');
       if (rule.kanbanStage) qb.andWhere('kanban_stage = :stage', { stage: rule.kanbanStage });
       if (rule.utmCampaign) qb.andWhere('utm_campaign = :campaign', { campaign: rule.utmCampaign });
+      if (rule.adTitle) qb.andWhere('ctwa_ad_title = :adTitle', { adTitle: rule.adTitle });
+      if (rule.createdAfter) qb.andWhere('created_at >= :createdAfter', { createdAfter: rule.createdAfter });
       const res = await qb.execute();
       resetCount = res.affected ?? 0;
     }

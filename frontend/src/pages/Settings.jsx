@@ -369,9 +369,17 @@ function SdrPromptEditor() {
   )
 }
 
-const EMPTY_RULE = { name: '', enabled: true, kanbanStage: '', utmCampaign: '', delayMinutes: 60, mode: 'manual', text: '', videoId: '', videoCaptionOverride: '' }
+const EMPTY_RULE = { name: '', enabled: true, kanbanStage: '', utmCampaign: '', adTitle: '', createdAfter: '', delayMinutes: 60, mode: 'manual', text: '', videoId: '', videoCaptionOverride: '' }
 
-function FollowupRuleForm({ initial, campaignOptions, videos, onCancel, onSaved }) {
+// 'YYYY-MM-DDTHH:mm' no fuso local, pro valor inicial do <input type="datetime-local">.
+function todayStartLocal() {
+  const d = new Date()
+  d.setHours(0, 0, 0, 0)
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T00:00`
+}
+
+function FollowupRuleForm({ initial, campaignOptions, adTitleOptions, videos, onCancel, onSaved }) {
   const [rule, setRule] = useState(initial)
   const [resetCycle, setResetCycle] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -396,6 +404,8 @@ function FollowupRuleForm({ initial, campaignOptions, videos, onCancel, onSaved 
         enabled: rule.enabled,
         kanbanStage: rule.kanbanStage || null,
         utmCampaign: rule.utmCampaign || null,
+        adTitle: rule.adTitle || null,
+        createdAfter: rule.createdAfter ? new Date(rule.createdAfter).toISOString() : null,
         delayMinutes: rule.delayMinutes,
         mode: rule.mode,
         text: rule.text || null,
@@ -453,6 +463,48 @@ function FollowupRuleForm({ initial, campaignOptions, videos, onCancel, onSaved 
             <option value="">Todas as campanhas</option>
             {campaignOptions.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 mb-4">
+        <div>
+          <label className="block text-xs font-medium text-slate-600 mb-1.5">Criativo (anúncio)</label>
+          <select
+            value={rule.adTitle}
+            onChange={e => setRule(r => ({ ...r, adTitle: e.target.value }))}
+            className="w-full text-sm border border-slate-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-violet-300 bg-white"
+          >
+            <option value="">Todos os criativos</option>
+            {adTitleOptions.map(a => <option key={a} value={a}>{a}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-slate-600 mb-1.5">Leads a partir de</label>
+          <div className="flex gap-1.5">
+            <input
+              type="datetime-local"
+              value={rule.createdAfter}
+              onChange={e => setRule(r => ({ ...r, createdAfter: e.target.value }))}
+              className="flex-1 text-sm border border-slate-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-violet-300 bg-white"
+            />
+            <button
+              type="button"
+              onClick={() => setRule(r => ({ ...r, createdAfter: todayStartLocal() }))}
+              className="text-[10px] px-2 py-1 rounded-md border bg-white text-slate-500 border-slate-200 hover:border-violet-300 whitespace-nowrap"
+            >
+              Hoje
+            </button>
+            {rule.createdAfter && (
+              <button
+                type="button"
+                onClick={() => setRule(r => ({ ...r, createdAfter: '' }))}
+                className="text-[10px] px-2 py-1 rounded-md border bg-white text-slate-400 border-slate-200 hover:border-red-300"
+              >
+                Limpar
+              </button>
+            )}
+          </div>
+          <p className="text-[10px] text-slate-400 mt-1">Vazio = sem filtro de data (pega leads antigos também)</p>
         </div>
       </div>
 
@@ -598,6 +650,7 @@ function FollowupRuleForm({ initial, campaignOptions, videos, onCancel, onSaved 
 function FollowupRules() {
   const [rules, setRules] = useState([])
   const [campaignOptions, setCampaignOptions] = useState([])
+  const [adTitleOptions, setAdTitleOptions] = useState([])
   const [videos, setVideos] = useState([])
   const [videoLimit, setVideoLimit] = useState(15)
   const [savingLimit, setSavingLimit] = useState(false)
@@ -611,12 +664,14 @@ function FollowupRules() {
     Promise.all([
       fetch(`${API}/followup/rules`).then(r => r.json()),
       fetch(`${API}/followup/campaign-options`).then(r => r.json()),
+      fetch(`${API}/followup/ad-title-options`).then(r => r.json()),
       fetch(`${API}/followup/videos`).then(r => r.json()),
       fetch(`${API}/followup/video-limit`).then(r => r.json()),
     ])
-      .then(([rulesData, campaignsData, videosData, limitData]) => {
+      .then(([rulesData, campaignsData, adTitlesData, videosData, limitData]) => {
         setRules(Array.isArray(rulesData) ? rulesData : [])
         setCampaignOptions(Array.isArray(campaignsData) ? campaignsData : [])
+        setAdTitleOptions(Array.isArray(adTitlesData) ? adTitlesData : [])
         setVideos(Array.isArray(videosData) ? videosData : [])
         if (limitData?.limit) setVideoLimit(limitData.limit)
       })
@@ -696,6 +751,7 @@ function FollowupRules() {
         <FollowupRuleForm
           initial={EMPTY_RULE}
           campaignOptions={campaignOptions}
+          adTitleOptions={adTitleOptions}
           videos={videos}
           onCancel={() => setEditingId(null)}
           onSaved={onSaved}
@@ -713,8 +769,18 @@ function FollowupRules() {
           editingId === rule.id ? (
             <FollowupRuleForm
               key={rule.id}
-              initial={{ ...rule, kanbanStage: rule.kanbanStage || '', utmCampaign: rule.utmCampaign || '', text: rule.text || '', videoId: rule.videoId || '', videoCaptionOverride: rule.videoCaptionOverride || '' }}
+              initial={{
+                ...rule,
+                kanbanStage: rule.kanbanStage || '',
+                utmCampaign: rule.utmCampaign || '',
+                adTitle: rule.adTitle || '',
+                createdAfter: rule.createdAfter ? rule.createdAfter.slice(0, 16) : '',
+                text: rule.text || '',
+                videoId: rule.videoId || '',
+                videoCaptionOverride: rule.videoCaptionOverride || '',
+              }}
               campaignOptions={campaignOptions}
+              adTitleOptions={adTitleOptions}
               videos={videos}
               onCancel={() => setEditingId(null)}
               onSaved={onSaved}
@@ -735,6 +801,16 @@ function FollowupRules() {
                   <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-orange-50 text-orange-600">
                     <Tag className="w-2.5 h-2.5" /> {rule.utmCampaign || 'Todas as campanhas'}
                   </span>
+                  {rule.adTitle && (
+                    <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-cyan-50 text-cyan-700">
+                      <Tag className="w-2.5 h-2.5" /> {rule.adTitle}
+                    </span>
+                  )}
+                  {rule.createdAfter && (
+                    <span className="px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-700">
+                      desde {new Date(rule.createdAfter).toLocaleDateString('pt-BR')}
+                    </span>
+                  )}
                   <span className="px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-500">
                     {rule.delayMinutes >= 60 ? `${(rule.delayMinutes / 60).toFixed(rule.delayMinutes % 60 === 0 ? 0 : 1)}h` : `${rule.delayMinutes}min`}
                   </span>

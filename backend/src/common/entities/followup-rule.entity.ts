@@ -22,6 +22,16 @@ export class FollowupRule {
   @Column({ name: 'utm_campaign', type: 'varchar', nullable: true })
   utmCampaign?: string | null;
 
+  // Título do anúncio (ctwa_ad_title) — filtra por criativo específico. Nulo = qualquer criativo.
+  @Column({ name: 'ad_title', type: 'varchar', nullable: true })
+  adTitle?: string | null;
+
+  // Só casa com leads criados a partir desta data/hora. Nulo = sem filtro de data.
+  // Usado pra restringir uma regra aos leads que estão chegando agora (ex: "hoje"),
+  // sem afetar leads antigos já parados na mesma raia.
+  @Column({ name: 'created_after', type: 'timestamp', nullable: true })
+  createdAfter?: Date | null;
+
   @Column({ name: 'delay_minutes', type: 'int', default: 60 })
   delayMinutes: number;
 

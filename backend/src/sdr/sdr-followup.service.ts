@@ -91,16 +91,19 @@ export class SdrFollowupService {
     this.logger.log('[Followup] Config antiga migrada para "Regra padrão" em followup_rules');
   }
 
-  /** Regra mais específica que casa com o lead (raia + campanha > só uma > coringa). Undefined se nenhuma casar. */
+  /** Regra mais específica que casa com o lead (raia + campanha + criativo + data > coringa). Undefined se nenhuma casar. */
   private matchRule(lead: Lead, rules: FollowupRule[]): FollowupRule | undefined {
     let best: FollowupRule | undefined;
     let bestScore = -1;
     for (const rule of rules) {
       const stageOk = rule.kanbanStage == null || rule.kanbanStage === lead.kanbanStage;
       const campaignOk = rule.utmCampaign == null || rule.utmCampaign === lead.utmCampaign;
-      if (!stageOk || !campaignOk) continue;
+      const adTitleOk = rule.adTitle == null || rule.adTitle === lead.ctwaAdTitle;
+      const createdAfterOk = rule.createdAfter == null || new Date(lead.createdAt).getTime() >= new Date(rule.createdAfter).getTime();
+      if (!stageOk || !campaignOk || !adTitleOk || !createdAfterOk) continue;
 
-      const score = (rule.kanbanStage != null ? 1 : 0) + (rule.utmCampaign != null ? 1 : 0);
+      const score = (rule.kanbanStage != null ? 1 : 0) + (rule.utmCampaign != null ? 1 : 0)
+        + (rule.adTitle != null ? 1 : 0) + (rule.createdAfter != null ? 1 : 0);
       if (
         score > bestScore ||
         (score === bestScore && best && (rule.priority < best.priority ||
@@ -283,6 +286,7 @@ export class SdrFollowupService {
           phone: l.phone,
           kanbanStage: l.kanbanStage,
           utmCampaign: l.utmCampaign,
+          adTitle: l.ctwaAdTitle,
           waLastMessageAt: l.waLastMessageAt,
           ruleId: rule!.id,
           ruleName: rule!.name,
