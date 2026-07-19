@@ -142,6 +142,14 @@ function CardContent({ lead, overlay = false }) {
             👤 {lead.assignedTo}
           </span>
         )}
+        {lead.followupSentAt && (
+          <span
+            className="text-[10px] px-1.5 py-0.5 rounded-full bg-teal-100 text-teal-700 font-medium flex items-center gap-0.5"
+            title={`Follow-up enviado em ${new Date(lead.followupSentAt).toLocaleString('pt-BR')}`}
+          >
+            <Send className="w-3 h-3" /> Follow-up enviado
+          </span>
+        )}
       </div>
     </div>
   )
@@ -235,6 +243,14 @@ function LeadCard({ lead, onOpen, onEdit, onDelete }) {
         {lead.assignedTo && (
           <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700 font-medium">
             👤 {lead.assignedTo}
+          </span>
+        )}
+        {lead.followupSentAt && (
+          <span
+            className="text-[10px] px-1.5 py-0.5 rounded-full bg-teal-100 text-teal-700 font-medium flex items-center gap-0.5"
+            title={`Follow-up enviado em ${new Date(lead.followupSentAt).toLocaleString('pt-BR')}`}
+          >
+            <Send className="w-3 h-3" /> Follow-up enviado
           </span>
         )}
       </div>
