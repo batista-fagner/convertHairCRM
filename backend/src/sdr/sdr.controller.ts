@@ -117,14 +117,18 @@ export class SdrController {
     }
 
     // Mensagem enviada pelo próprio número do bot, digitada manualmente pelo
-    // operador (não veio da nossa API — wasSentByApi=false). Permite controlar
-    // a IA por palavra-chave direto na conversa do WhatsApp: "opa" pausa,
-    // "ok" reativa. O restante das mensagens fromMe é ignorado normalmente.
+    // operador/closer (não veio da nossa API — wasSentByApi=false). Permite
+    // controlar a IA por palavra-chave direto na conversa do WhatsApp: "opa"
+    // pausa, "ok" reativa. Qualquer outro texto é o closer conversando de
+    // verdade com o lead (ex.: pós-handoff) — antes isso era descartado sem
+    // ser salvo, o que apagava a conversa do closer do histórico do lead.
     if (message.fromMe && !message.wasSentByApi && !message.isGroup) {
+      const leadPhone: string = (body.chat?.phone ?? '').replace(/\D/g, '');
       const keyword = (message.text ?? '').trim().toLowerCase();
       if (keyword === 'opa' || keyword === 'ok') {
-        const leadPhone: string = (body.chat?.phone ?? '').replace(/\D/g, '');
         if (leadPhone) await this.toggleAiByKeyword(leadPhone, keyword === 'opa');
+      } else if (leadPhone && message.text) {
+        await this.recordHumanReply(leadPhone, message.text);
       }
       return { ok: true };
     }
@@ -249,6 +253,16 @@ export class SdrController {
     this.logger.log(`[SDR] IA ${pause ? 'pausada' : 'reativada'} via palavra-chave para o lead ${updated.phone}`);
   }
 
+  /** Registra no histórico a mensagem que o closer digitou direto no WhatsApp (fora do CRM). */
+  private async recordHumanReply(phone: string, text: string) {
+    const lead = await this.findLeadByPhoneVariants(phone);
+    if (!lead) return;
+    const ctx = [...(Array.isArray(lead.aiContext) ? lead.aiContext : []), { role: 'assistant', source: 'operator', content: text }];
+    const updated = await this.leadsService.update(lead.id, { aiContext: ctx, waLastMessageAt: new Date() });
+    this.realtime.emitLeadUpdated(updated);
+    this.logger.log(`[SDR] Resposta manual do closer registrada para o lead ${updated.phone}`);
+  }
+
   private async processMessage(phone: string, text: string, pushName: string, ctwa?: CtwaReferral) {
     let lead: Lead | null = await this.findLeadByPhoneVariants(phone);
 
@@ -287,9 +301,14 @@ export class SdrController {
       lead = await this.leadsService.update(lead.id, { agentMode: 'sdr' });
     }
 
-    // Encerrado por handoff: bloqueia a IA, a menos que o operador tenha reativado via switch
+    // Encerrado por handoff: bloqueia a IA, a menos que o operador tenha reativado via switch.
+    // Mesmo sem a IA responder, a mensagem do lead precisa ser salva — antes era
+    // descartada aqui, apagando a conversa do closer com o lead do histórico.
     if (lead.waStage === 'encerrado' && lead.aiPaused !== false) {
-      this.logger.log(`[SDR] Lead ${phone} encerrado — closer assumiu, sem resposta automática`);
+      const ctx = [...(Array.isArray(lead.aiContext) ? lead.aiContext : []), { role: 'user', content: text }];
+      lead = await this.leadsService.update(lead.id, { aiContext: ctx, waLastMessageAt: new Date() });
+      this.realtime.emitLeadUpdated(lead);
+      this.logger.log(`[SDR] Lead ${phone} encerrado — closer assumiu, mensagem registrada sem resposta automática`);
       return;
     }
 
