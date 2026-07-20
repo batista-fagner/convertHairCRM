@@ -17,6 +17,9 @@ import KanbanLeads from './pages/KanbanLeads'
 import Login from './pages/Login'
 
 function RequireAuth({ children }) {
+  // Em dev (npm run dev / localhost) pula o login pra agilizar teste local —
+  // não afeta o build de produção (import.meta.env.DEV é false no build).
+  if (import.meta.env.DEV) return children
   const auth = sessionStorage.getItem('crm_auth')
   if (!auth) return <Navigate to="/login" replace />
   return children
