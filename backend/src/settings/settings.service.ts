@@ -78,7 +78,7 @@ export class SettingsService {
       temperature: parsed.temperature ?? 'morno',
       nome: parsed.nome ?? null,
       vendeCabelo: parsed.vendeCabelo ?? null,
-      investeAnuncio: parsed.investeAnuncio ?? null,
+      mensagensPorDia: parsed.mensagensPorDia ?? null,
       instagram: parsed.instagram ?? null,
       semInstagram: parsed.semInstagram ?? null,
     };

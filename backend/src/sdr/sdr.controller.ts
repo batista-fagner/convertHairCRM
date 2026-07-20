@@ -348,7 +348,7 @@ export class SdrController {
     // respondido, então só sobrescreve quando a IA manda algo novo nesta mensagem
     // (senão mantém o valor já salvo — a IA não precisa repetir a cada turno).
     const vendeCabelo = ai.vendeCabelo === true || ai.vendeCabelo === false ? ai.vendeCabelo : lead.vendeCabelo ?? null;
-    const investeAnuncio = ai.investeAnuncio === true || ai.investeAnuncio === false ? ai.investeAnuncio : lead.investeAnuncio ?? null;
+    const mensagensPorDia = typeof ai.mensagensPorDia === 'number' ? ai.mensagensPorDia : lead.mensagensPorDia ?? null;
     const semInstagram = ai.semInstagram === true ? true : lead.semInstagram ?? null;
     const instagramValue = ai.instagram && typeof ai.instagram === 'string' && ai.instagram !== 'null'
       ? ai.instagram.replace('@', '').trim()
@@ -358,12 +358,12 @@ export class SdrController {
     // Raia calculada (a "verdade" da qualificação): vende cabelo = qualificado.
     const derivedStage = deriveKanbanStage(vendeCabelo, ai.stage, lead.status);
 
-    // Handoff pro especialista só acontece depois das 3 respostas completas
-    // (vende cabelo=true + investe em anúncio conhecido + instagram conhecido
-    // ou confirmado que não tem) — e só dispara uma vez.
+    // Handoff pro especialista só acontece depois das respostas completas
+    // (vende cabelo=true + volume de mensagens/dia conhecido + instagram
+    // conhecido ou confirmado que não tem) — e só dispara uma vez.
     const instagramKnown = Boolean(instagramValue) || semInstagram === true;
-    const investeAnuncioKnown = investeAnuncio === true || investeAnuncio === false;
-    const readyForHandoff = vendeCabelo === true && investeAnuncioKnown && instagramKnown;
+    const mensagensPorDiaKnown = typeof mensagensPorDia === 'number';
+    const readyForHandoff = vendeCabelo === true && mensagensPorDiaKnown && instagramKnown;
     const alreadyHandedOff = lead.waStage === 'encerrado';
     const handoff = readyForHandoff && !alreadyHandedOff;
 
@@ -377,7 +377,7 @@ export class SdrController {
       waLastMessageAt: new Date(),
       followupSentAt: null,
       vendeCabelo,
-      investeAnuncio,
+      mensagensPorDia,
       semInstagram,
     };
 
@@ -425,12 +425,20 @@ export class SdrController {
       this.logger.log(`[SDR] Lead ${phone} vende cabelo (MQL) — evento enviado ao Meta`);
     }
 
-    // Já investe em anúncio → tag "mql_premium" (mesma raia "qualificado", sem
-    // evento novo pro Meta — só diferencia visualmente quem já tem verba).
+    // Volume de mensagens/dia define premium (>=30) vs básico (<30) — mesma
+    // raia "qualificado", sem evento novo pro Meta, só diferencia visualmente
+    // quem tem mais volume. Remove a tag oposta se o lead corrigir a resposta.
     const existingTags = lead.tags || [];
-    if (investeAnuncio === true && !existingTags.includes('mql_premium')) {
-      updateData.tags = [...existingTags, 'mql_premium'];
-      this.logger.log(`[SDR] Lead ${phone} investe em anúncio — tag mql_premium adicionada`);
+    if (typeof mensagensPorDia === 'number') {
+      const tag = mensagensPorDia >= 30 ? 'mql_premium' : 'mql_basico';
+      const otherTag = mensagensPorDia >= 30 ? 'mql_basico' : 'mql_premium';
+      const withoutOther = existingTags.filter((t) => t !== otherTag);
+      if (!withoutOther.includes(tag)) {
+        updateData.tags = [...withoutOther, tag];
+        this.logger.log(`[SDR] Lead ${phone} tem ${mensagensPorDia} msgs/dia — tag ${tag} adicionada`);
+      } else if (withoutOther.length !== existingTags.length) {
+        updateData.tags = withoutOther;
+      }
     }
 
     lead = await this.leadsService.update(lead.id, updateData);

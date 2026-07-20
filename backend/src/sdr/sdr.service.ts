@@ -13,7 +13,7 @@ export interface SdrResponse {
   temperature: LeadTemperature;
   nome?: string | null;
   vendeCabelo?: boolean | null;
-  investeAnuncio?: boolean | null;
+  mensagensPorDia?: number | null;
   instagram?: string | null;
   semInstagram?: boolean | null;
   success: boolean;
@@ -109,7 +109,7 @@ export class SdrService {
       const parsed = JSON.parse(jsonMatch[0]) as SdrResponse;
       parsed.success = true;
 
-      this.logger.log(`SDR respondeu [stage=${parsed.stage}, temp=${parsed.temperature}, vendeCabelo=${parsed.vendeCabelo}, investeAnuncio=${parsed.investeAnuncio}]: ${parsed.reply}`);
+      this.logger.log(`SDR respondeu [stage=${parsed.stage}, temp=${parsed.temperature}, vendeCabelo=${parsed.vendeCabelo}, mensagensPorDia=${parsed.mensagensPorDia}]: ${parsed.reply}`);
       return parsed;
     } catch (err: any) {
       this.logger.error(`Erro no SDR: ${err.message}`);

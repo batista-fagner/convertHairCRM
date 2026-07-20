@@ -87,7 +87,7 @@ function ChatSimulator() {
         stage: data.stage,
         temperature: data.temperature,
         vendeCabelo: data.vendeCabelo,
-        investeAnuncio: data.investeAnuncio,
+        mensagensPorDia: data.mensagensPorDia,
         instagram: data.instagram,
         semInstagram: data.semInstagram,
       }])
@@ -151,9 +151,9 @@ function ChatSimulator() {
                   {msg.vendeCabelo ? '✓ Vende cabelo' : '✗ Não vende cabelo'}
                 </p>
               )}
-              {(msg.investeAnuncio !== undefined && msg.investeAnuncio !== null) && (
-                <p className={`text-[10px] mt-0.5 font-medium ${msg.investeAnuncio ? 'text-violet-600' : 'text-slate-500'}`}>
-                  {msg.investeAnuncio ? '✓ Investe em anúncio (MQL premium)' : '— Não investe em anúncio'}
+              {(msg.mensagensPorDia !== undefined && msg.mensagensPorDia !== null) && (
+                <p className={`text-[10px] mt-0.5 font-medium ${msg.mensagensPorDia >= 30 ? 'text-violet-600' : 'text-slate-500'}`}>
+                  {msg.mensagensPorDia >= 30 ? `✓ ~${msg.mensagensPorDia} msgs/dia (MQL premium)` : `— ~${msg.mensagensPorDia} msgs/dia (MQL básico)`}
                 </p>
               )}
               {msg.instagram && (
