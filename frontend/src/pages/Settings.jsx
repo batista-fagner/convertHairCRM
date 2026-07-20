@@ -369,7 +369,7 @@ function SdrPromptEditor() {
   )
 }
 
-const EMPTY_RULE = { name: '', enabled: true, kanbanStage: '', utmCampaign: '', adTitle: '', createdAfter: '', delayMinutes: 60, mode: 'manual', text: '', videoId: '', videoCaptionOverride: '' }
+const EMPTY_RULE = { name: '', enabled: true, kanbanStage: '', utmCampaign: '', adTitle: '', createdAfter: '', delayMinutes: 60, sendAtHour: '', sendAtMinute: 0, mode: 'manual', text: '', videoId: '', videoCaptionOverride: '' }
 
 // 'YYYY-MM-DDTHH:mm' no fuso local, pro valor inicial do <input type="datetime-local">.
 function todayStartLocal() {
@@ -407,6 +407,8 @@ function FollowupRuleForm({ initial, campaignOptions, adTitleOptions, videos, on
         adTitle: rule.adTitle || null,
         createdAfter: rule.createdAfter ? new Date(rule.createdAfter).toISOString() : null,
         delayMinutes: rule.delayMinutes,
+        sendAtHour: rule.sendAtHour === '' ? null : parseInt(rule.sendAtHour, 10),
+        sendAtMinute: rule.sendAtMinute === '' ? 0 : parseInt(rule.sendAtMinute, 10),
         mode: rule.mode,
         text: rule.text || null,
         videoId: rule.videoId || null,
@@ -536,6 +538,37 @@ function FollowupRuleForm({ initial, campaignOptions, adTitleOptions, videos, on
             ))}
           </div>
         </div>
+      </div>
+
+      {/* Horário preferido de envio — opcional */}
+      <div className="mb-4">
+        <label className="block text-xs font-medium text-slate-600 mb-1.5">Horário preferido de envio (opcional)</label>
+        <div className="flex items-center gap-2">
+          <select
+            value={rule.sendAtHour}
+            onChange={e => setRule(r => ({ ...r, sendAtHour: e.target.value }))}
+            className="text-sm border border-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-violet-300 bg-white"
+          >
+            <option value="">Sem restrição</option>
+            {Array.from({ length: 24 }, (_, h) => (
+              <option key={h} value={h}>{String(h).padStart(2, '0')}h</option>
+            ))}
+          </select>
+          {rule.sendAtHour !== '' && (
+            <select
+              value={rule.sendAtMinute}
+              onChange={e => setRule(r => ({ ...r, sendAtMinute: parseInt(e.target.value, 10) }))}
+              className="text-sm border border-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-violet-300 bg-white"
+            >
+              {[0, 15, 30, 45].map(m => <option key={m} value={m}>{String(m).padStart(2, '0')}min</option>)}
+            </select>
+          )}
+        </div>
+        <p className="text-[10px] text-slate-400 mt-1">
+          {rule.sendAtHour === ''
+            ? 'Dispara assim que o tempo de inatividade vencer, a qualquer hora.'
+            : `Mesmo com o prazo vencido, só dispara às ${String(rule.sendAtHour).padStart(2, '0')}:${String(rule.sendAtMinute).padStart(2, '0')} (hoje se ainda não passou, amanhã se já passou).`}
+        </p>
       </div>
 
       {/* Vídeo (opcional) — se escolhido, manda só o vídeo com legenda */}
@@ -775,6 +808,8 @@ function FollowupRules() {
                 utmCampaign: rule.utmCampaign || '',
                 adTitle: rule.adTitle || '',
                 createdAfter: rule.createdAfter ? rule.createdAfter.slice(0, 16) : '',
+                sendAtHour: rule.sendAtHour != null ? rule.sendAtHour : '',
+                sendAtMinute: rule.sendAtMinute ?? 0,
                 text: rule.text || '',
                 videoId: rule.videoId || '',
                 videoCaptionOverride: rule.videoCaptionOverride || '',
@@ -814,6 +849,11 @@ function FollowupRules() {
                   <span className="px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-500">
                     {rule.delayMinutes >= 60 ? `${(rule.delayMinutes / 60).toFixed(rule.delayMinutes % 60 === 0 ? 0 : 1)}h` : `${rule.delayMinutes}min`}
                   </span>
+                  {rule.sendAtHour != null && (
+                    <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-600">
+                      <Clock className="w-2.5 h-2.5" /> {String(rule.sendAtHour).padStart(2, '0')}:{String(rule.sendAtMinute ?? 0).padStart(2, '0')}
+                    </span>
+                  )}
                   {rule.videoId ? (
                     <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-pink-50 text-pink-600">
                       <Video className="w-2.5 h-2.5" /> {videos.find(v => v.id === rule.videoId)?.name || 'Vídeo'}

@@ -35,6 +35,16 @@ export class FollowupRule {
   @Column({ name: 'delay_minutes', type: 'int', default: 60 })
   delayMinutes: number;
 
+  // Horário preferido de disparo (fuso America/Sao_Paulo). Nulo = sem restrição,
+  // dispara assim que o prazo de inatividade vencer (comportamento padrão).
+  // Preenchido = só dispara na próxima ocorrência desse horário (hoje se ainda
+  // não passou, amanhã se já passou) — mesmo que o prazo já tenha vencido antes.
+  @Column({ name: 'send_at_hour', type: 'int', nullable: true })
+  sendAtHour?: number | null;
+
+  @Column({ name: 'send_at_minute', type: 'int', default: 0 })
+  sendAtMinute: number;
+
   @Column({ name: 'mode', type: 'varchar', default: 'manual' })
   mode: FollowupMode;
 

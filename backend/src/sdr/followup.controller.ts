@@ -69,6 +69,8 @@ export class FollowupController {
       adTitle: body.adTitle || null,
       createdAfter: body.createdAfter ? new Date(body.createdAfter) : null,
       delayMinutes: Math.max(1, body.delayMinutes || 60),
+      sendAtHour: body.sendAtHour != null ? Math.min(23, Math.max(0, body.sendAtHour)) : null,
+      sendAtMinute: body.sendAtMinute != null ? Math.min(59, Math.max(0, body.sendAtMinute)) : 0,
       mode: body.mode === 'ai' ? 'ai' : 'manual',
       text: body.text || null,
       videoId: body.videoId || null,
@@ -90,6 +92,8 @@ export class FollowupController {
     if (body.adTitle !== undefined) rule.adTitle = body.adTitle || null;
     if (body.createdAfter !== undefined) rule.createdAfter = body.createdAfter ? new Date(body.createdAfter) : null;
     if (body.delayMinutes !== undefined) rule.delayMinutes = Math.max(1, body.delayMinutes);
+    if (body.sendAtHour !== undefined) rule.sendAtHour = body.sendAtHour != null ? Math.min(23, Math.max(0, body.sendAtHour)) : null;
+    if (body.sendAtMinute !== undefined) rule.sendAtMinute = body.sendAtMinute != null ? Math.min(59, Math.max(0, body.sendAtMinute)) : 0;
     if (body.mode !== undefined) rule.mode = body.mode === 'ai' ? 'ai' : 'manual';
     if (body.text !== undefined) rule.text = body.text || null;
     if (body.videoId !== undefined) rule.videoId = body.videoId || null;

@@ -148,6 +148,14 @@ export class SdrFollowupService {
       const cutoff = Date.now() - rule.delayMinutes * 60 * 1000;
       if (new Date(lead.waLastMessageAt!).getTime() > cutoff) continue;
 
+      // Horário preferido: mesmo com o prazo de inatividade vencido, só dispara
+      // na próxima ocorrência do horário configurado (hoje ou amanhã).
+      if (rule.sendAtHour != null) {
+        const eligibleAt = new Date(lead.waLastMessageAt!).getTime() + rule.delayMinutes * 60 * 1000;
+        const target = this.nextSendTime(eligibleAt, rule.sendAtHour, rule.sendAtMinute ?? 0);
+        if (Date.now() < target) continue;
+      }
+
       // Regra com vídeo: manda o vídeo (com legenda), respeitando o teto diário.
       if (rule.videoId) {
         const video = await this.videoRepo.findOne({ where: { id: rule.videoId } });
@@ -199,6 +207,30 @@ export class SdrFollowupService {
   // Data de hoje no fuso de Brasília ('YYYY-MM-DD').
   private brToday(): string {
     return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
+  }
+
+  /**
+   * Próxima ocorrência (timestamp em ms) do horário hour:minute em America/Sao_Paulo
+   * a partir do momento em que o lead completou o prazo de inatividade (eligibleAt).
+   * Brasil não tem horário de verão desde 2019 — offset fixo UTC-3, então dá pra
+   * calcular direto (hour em BRT = hour+3 em UTC) sem lib de timezone.
+   */
+  private nextSendTime(eligibleAt: number, hour: number, minute: number): number {
+    const { year, month, day } = this.brDateParts(new Date(eligibleAt));
+    let candidate = Date.UTC(year, month - 1, day, hour + 3, minute);
+    if (candidate < eligibleAt) candidate += 24 * 60 * 60 * 1000;
+    return candidate;
+  }
+
+  private brDateParts(date: Date): { year: number; month: number; day: number } {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Sao_Paulo',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(date);
+    const get = (type: string) => parseInt(parts.find((p) => p.type === type)!.value, 10);
+    return { year: get('year'), month: get('month'), day: get('day') };
   }
 
   private rollVideoDayIfNeeded(): void {
@@ -275,10 +307,14 @@ export class SdrFollowupService {
     // lead sem regra correspondente nunca vai disparar, não faz sentido poluir a lista.
     const noRuleCount = withRule.filter((x) => !x.rule).length;
 
+    const dueAtMs = (l: Lead, rule: FollowupRule) => {
+      const eligibleAt = new Date(l.waLastMessageAt!).getTime() + rule.delayMinutes * 60 * 1000;
+      return rule.sendAtHour != null ? this.nextSendTime(eligibleAt, rule.sendAtHour, rule.sendAtMinute ?? 0) : eligibleAt;
+    };
+
     const waiting = withRule
       .filter((x) => x.rule)
-      .sort((a, b) => new Date(a.lead.waLastMessageAt!).getTime() + a.rule!.delayMinutes * 60000
-        - (new Date(b.lead.waLastMessageAt!).getTime() + b.rule!.delayMinutes * 60000))
+      .sort((a, b) => dueAtMs(a.lead, a.rule!) - dueAtMs(b.lead, b.rule!))
       .map(({ lead: l, rule }) => {
         return {
           id: l.id,
@@ -290,7 +326,7 @@ export class SdrFollowupService {
           waLastMessageAt: l.waLastMessageAt,
           ruleId: rule!.id,
           ruleName: rule!.name,
-          dueAt: new Date(new Date(l.waLastMessageAt!).getTime() + rule!.delayMinutes * 60 * 1000),
+          dueAt: new Date(dueAtMs(l, rule!)),
         };
       });
 
