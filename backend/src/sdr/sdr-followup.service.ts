@@ -148,12 +148,13 @@ export class SdrFollowupService {
       const cutoff = Date.now() - rule.delayMinutes * 60 * 1000;
       if (new Date(lead.waLastMessageAt!).getTime() > cutoff) continue;
 
-      // Horário preferido: mesmo com o prazo de inatividade vencido, só dispara
-      // na próxima ocorrência do horário configurado (hoje ou amanhã).
-      if (rule.sendAtHour != null) {
-        const eligibleAt = new Date(lead.waLastMessageAt!).getTime() + rule.delayMinutes * 60 * 1000;
-        const target = this.nextSendTime(eligibleAt, rule.sendAtHour, rule.sendAtMinute ?? 0);
-        if (Date.now() < target) continue;
+      // Horário preferido: mesmo com o prazo de inatividade vencido há muito
+      // tempo, só dispara dentro da janela do horário configurado (hoje).
+      // Não pode comparar contra o momento em que o lead ficou elegível — se
+      // esse momento já passou há dias, "a partir de agora" ficaria sempre
+      // verdadeiro e dispararia na hora em vez de esperar o horário certo.
+      if (rule.sendAtHour != null && !this.isWithinSendWindow(rule.sendAtHour, rule.sendAtMinute ?? 0)) {
+        continue;
       }
 
       // Regra com vídeo: manda o vídeo (com legenda), respeitando o teto diário.
@@ -211,15 +212,36 @@ export class SdrFollowupService {
 
   /**
    * Próxima ocorrência (timestamp em ms) do horário hour:minute em America/Sao_Paulo
-   * a partir do momento em que o lead completou o prazo de inatividade (eligibleAt).
-   * Brasil não tem horário de verão desde 2019 — offset fixo UTC-3, então dá pra
-   * calcular direto (hour em BRT = hour+3 em UTC) sem lib de timezone.
+   * a partir de um instante de referência (hoje, se ainda não passou; amanhã, se já
+   * passou). Só usado para EXIBIÇÃO (dueAt no painel) — a decisão real de disparar
+   * é a janela em isWithinSendWindow, não este cálculo. Brasil não tem horário de
+   * verão desde 2019 — offset fixo UTC-3, dá pra calcular direto sem lib de timezone.
    */
-  private nextSendTime(eligibleAt: number, hour: number, minute: number): number {
-    const { year, month, day } = this.brDateParts(new Date(eligibleAt));
+  private nextSendTime(referenceMs: number, hour: number, minute: number): number {
+    const { year, month, day } = this.brDateParts(new Date(referenceMs));
     let candidate = Date.UTC(year, month - 1, day, hour + 3, minute);
-    if (candidate < eligibleAt) candidate += 24 * 60 * 60 * 1000;
+    if (candidate < referenceMs) candidate += 24 * 60 * 60 * 1000;
     return candidate;
+  }
+
+  /**
+   * True quando o horário atual (America/Sao_Paulo) está dentro de uma janela curta
+   * logo após hour:minute — ex. 13:00 a 13:10. Não compara contra quando o lead
+   * ficou elegível (isso causava disparo imediato quando a elegibilidade era muito
+   * antiga): compara contra o relógio de agora, então só dispara de fato perto do
+   * horário configurado, todo dia, até o followupSentAt travar o reenvio.
+   */
+  private isWithinSendWindow(hour: number, minute: number, windowMinutes = 10): boolean {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Sao_Paulo',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    }).formatToParts(new Date());
+    const get = (type: string) => parseInt(parts.find((p) => p.type === type)!.value, 10);
+    const minutesNow = get('hour') * 60 + get('minute');
+    const minutesTarget = hour * 60 + minute;
+    return minutesNow >= minutesTarget && minutesNow < minutesTarget + windowMinutes;
   }
 
   private brDateParts(date: Date): { year: number; month: number; day: number } {
@@ -309,7 +331,11 @@ export class SdrFollowupService {
 
     const dueAtMs = (l: Lead, rule: FollowupRule) => {
       const eligibleAt = new Date(l.waLastMessageAt!).getTime() + rule.delayMinutes * 60 * 1000;
-      return rule.sendAtHour != null ? this.nextSendTime(eligibleAt, rule.sendAtHour, rule.sendAtMinute ?? 0) : eligibleAt;
+      if (rule.sendAtHour == null) return eligibleAt;
+      // Referência = o que vier depois: se a elegibilidade é futura, calcula a
+      // ocorrência a partir dela; se já passou (mesmo há dias), calcula a partir
+      // de agora — senão o painel mostraria um horário "devido" no passado.
+      return this.nextSendTime(Math.max(eligibleAt, Date.now()), rule.sendAtHour, rule.sendAtMinute ?? 0);
     };
 
     const waiting = withRule
