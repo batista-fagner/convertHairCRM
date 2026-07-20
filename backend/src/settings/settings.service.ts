@@ -10,6 +10,7 @@ import { SDR_PROMPT_KEY, DEFAULT_SDR_PROMPT, SDR_JSON_FORMAT, SDR_MODEL_KEY, SDR
 export class SettingsService {
   private readonly openai: OpenAI;
   private readonly model: string;
+  private readonly forceCodePrompt: boolean;
 
   constructor(
     @InjectRepository(Setting)
@@ -18,6 +19,7 @@ export class SettingsService {
   ) {
     this.openai = new OpenAI({ apiKey: config.get('OPENAI_API_KEY') });
     this.model = config.get('SDR_OPENAI_MODEL') || 'gpt-5.4-mini';
+    this.forceCodePrompt = config.get('SDR_PROMPT_FORCE_CODE') === 'true';
   }
 
   async get(key: string): Promise<string | null> {
@@ -34,8 +36,19 @@ export class SettingsService {
     return this.settingsRepo.findOneOrFail({ where: { key } });
   }
 
+  /**
+   * Fonte única do prompt da Sofia. Com SDR_PROMPT_FORCE_CODE=true (só local/dev,
+   * nunca setar em produção), ignora o que está salvo em settings.sdr_prompt e usa
+   * sempre o DEFAULT_SDR_PROMPT do código — assim dá pra testar um prompt novo sem
+   * afetar o banco compartilhado com produção.
+   */
+  async getSdrPrompt(): Promise<string> {
+    if (this.forceCodePrompt) return DEFAULT_SDR_PROMPT;
+    return (await this.get(SDR_PROMPT_KEY)) || DEFAULT_SDR_PROMPT;
+  }
+
   async simulate(message: string, history: { role: 'user' | 'assistant'; content: string }[]) {
-    const basePrompt = (await this.get(SDR_PROMPT_KEY)) || DEFAULT_SDR_PROMPT;
+    const basePrompt = await this.getSdrPrompt();
     const model = (await this.get(SDR_MODEL_KEY)) || this.model;
     const systemPrompt = `${basePrompt}\n\n${SDR_JSON_FORMAT}`;
 

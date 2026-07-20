@@ -11,7 +11,7 @@ import { FollowupRule } from '../common/entities/followup-rule.entity';
 import { FollowupVideo } from '../common/entities/followup-video.entity';
 import { SettingsService } from '../settings/settings.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
-import { SDR_PROMPT_KEY, DEFAULT_SDR_PROMPT, SDR_MODEL_KEY } from './sdr.prompt';
+import { SDR_MODEL_KEY } from './sdr.prompt';
 
 // Chaves da config global antiga (1 regra só) — usadas só pra migração automática
 // pra 1ª FollowupRule na primeira vez que o sistema roda com a tabela vazia.
@@ -384,7 +384,7 @@ export class SdrFollowupService {
 
   private async generateAiFollowup(lead: Lead, delayMinutes: number): Promise<string> {
     try {
-      const basePrompt = (await this.settings.get(SDR_PROMPT_KEY)) || DEFAULT_SDR_PROMPT;
+      const basePrompt = await this.settings.getSdrPrompt();
       const model = (await this.settings.get(SDR_MODEL_KEY)) || 'gpt-5.4-mini';
 
       const history: OpenAI.Chat.ChatCompletionMessageParam[] = (Array.isArray(lead.aiContext) ? lead.aiContext : []).map((m) => ({
