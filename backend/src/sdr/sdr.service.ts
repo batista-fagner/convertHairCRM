@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import OpenAI from 'openai';
 import { Lead, KanbanStage, LeadTemperature } from '../common/entities/lead.entity';
 import { SettingsService } from '../settings/settings.service';
-import { SDR_PROMPT_KEY, DEFAULT_SDR_PROMPT, SDR_JSON_FORMAT, SDR_MODEL_KEY, SDR_DEFAULT_MODEL } from './sdr.prompt';
+import { SDR_JSON_FORMAT, SDR_MODEL_KEY } from './sdr.prompt';
 
 export type SdrStage = 'abertura' | 'qualificacao' | 'quente' | 'frio' | 'perdido' | 'encerrado';
 
@@ -13,7 +13,7 @@ export interface SdrResponse {
   temperature: LeadTemperature;
   nome?: string | null;
   vendeCabelo?: boolean | null;
-  investeAnuncio?: boolean | null;
+  mensagensPorDia?: number | null;
   instagram?: string | null;
   semInstagram?: boolean | null;
   success: boolean;
@@ -83,7 +83,7 @@ export class SdrService {
     }));
 
     // Carrega o prompt e o modelo configurados em Configurações
-    const basePrompt = (await this.settings.get(SDR_PROMPT_KEY)) || DEFAULT_SDR_PROMPT;
+    const basePrompt = await this.settings.getSdrPrompt();
     const model = (await this.settings.get(SDR_MODEL_KEY)) || this.model;
 
     const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
@@ -109,7 +109,7 @@ export class SdrService {
       const parsed = JSON.parse(jsonMatch[0]) as SdrResponse;
       parsed.success = true;
 
-      this.logger.log(`SDR respondeu [stage=${parsed.stage}, temp=${parsed.temperature}, vendeCabelo=${parsed.vendeCabelo}, investeAnuncio=${parsed.investeAnuncio}]: ${parsed.reply}`);
+      this.logger.log(`SDR respondeu [stage=${parsed.stage}, temp=${parsed.temperature}, vendeCabelo=${parsed.vendeCabelo}, mensagensPorDia=${parsed.mensagensPorDia}]: ${parsed.reply}`);
       return parsed;
     } catch (err: any) {
       this.logger.error(`Erro no SDR: ${err.message}`);

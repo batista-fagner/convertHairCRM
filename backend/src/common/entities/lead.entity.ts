@@ -69,8 +69,17 @@ export class Lead {
   @Column({ name: 'vende_cabelo', type: 'boolean', nullable: true })
   vendeCabelo?: boolean | null;
 
+  // Campo do fluxo antigo (perguntava "já investe em anúncio?") — não é mais
+  // perguntado pelo prompt SPIN Selling atual, mantido só por causa de leads
+  // antigos que já têm esse dado salvo. mql_premium/mql_basico hoje vem de
+  // mensagens_por_dia (ver abaixo), não mais deste campo.
   @Column({ name: 'investe_anuncio', type: 'boolean', nullable: true })
   investeAnuncio?: boolean | null;
+
+  // Estimativa de mensagens recebidas por dia no WhatsApp (fluxo SPIN Selling).
+  // >=30 soma a tag "mql_premium", <30 soma "mql_basico" (ver sdr.controller.ts).
+  @Column({ name: 'mensagens_por_dia', type: 'int', nullable: true })
+  mensagensPorDia?: number | null;
 
   // Timestamp de quando o lead virou MQL (entrou em "qualificado" pela 1ª vez).
   // Usado pra calcular tempo médio até qualificar no relatório de anúncios.
