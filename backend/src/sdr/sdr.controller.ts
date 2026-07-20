@@ -525,7 +525,7 @@ export class SdrController {
     if (phones.length === 0) return;
 
     const isPremium = (lead.tags || []).includes('mql_premium');
-    const msg = `${isPremium ? '🔥🔥 Lead MQL PREMIUM' : '🔥 Lead qualificado'} pelo SDR!\n\nNome: ${lead.name}\nWhatsApp: ${lead.phone}${lead.instagram ? `\nInstagram: @${lead.instagram.replace('@', '')}` : '\nInstagram: não tem'}${isPremium ? '\nJá investe em anúncio: sim' : ''}${lead.revenueRange ? `\nFaturamento: ${lead.revenueRange}` : ''}\n\nAssuma a conversa seu Otário.`;
+    const msg = `${isPremium ? '🔥🔥 Lead MQL PREMIUM' : '🔥 Lead qualificado'} pelo SDR!\n\nNome: ${lead.name}\nWhatsApp: ${lead.phone}${lead.instagram ? `\nInstagram: @${lead.instagram.replace('@', '')}` : '\nInstagram: não tem'}${isPremium ? '\nJá investe em anúncio: sim' : ''}${lead.revenueRange ? `\nFaturamento: ${lead.revenueRange}` : ''}\n\nAssuma a conversa.`;
 
     await Promise.allSettled(
       phones.map((phone) =>
