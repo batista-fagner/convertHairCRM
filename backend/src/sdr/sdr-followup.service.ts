@@ -124,14 +124,18 @@ export class SdrFollowupService {
     const rules = await this.rulesRepo.find({ where: { enabled: true } });
     if (rules.length === 0) return;
 
-    // Candidatos: IA ativa + nunca recebeu follow-up (followup_sent_at IS NULL garante
-    // 1x; reseta quando o lead responde ou quando o operador reconfigura). O delay é
-    // por regra, então aqui não filtra por tempo ainda — isso é feito por lead abaixo.
+    // Candidatos: IA ativa (ai_paused=false é o único portão — mesmo critério usado
+    // pro webhook liberar resposta em leads encerrados reativados manualmente, então
+    // não exige mais wa_stage != 'encerrado' aqui) + nunca recebeu follow-up
+    // (followup_sent_at IS NULL garante 1x; reseta quando o lead responde ou quando
+    // o operador reconfigura). O delay é por regra, então aqui não filtra por tempo
+    // ainda — isso é feito por lead abaixo. O escopo real por raia é aplicado depois,
+    // no matchRule() — só quem casa com uma regra ativa (raia+campanha+criativo) sai
+    // daqui com mensagem de fato.
     const candidates = await this.leadsRepo
       .createQueryBuilder('lead')
       .where('lead.agent_mode = :mode', { mode: 'sdr' })
       .andWhere('lead.ai_paused = false')
-      .andWhere('lead.wa_stage != :encerrado', { encerrado: 'encerrado' })
       .andWhere('lead.wa_last_message_at IS NOT NULL')
       .andWhere('lead.followup_sent_at IS NULL')
       .getMany();
@@ -314,7 +318,6 @@ export class SdrFollowupService {
       .createQueryBuilder('lead')
       .where('lead.agent_mode = :mode', { mode: 'sdr' })
       .andWhere('lead.ai_paused = false')
-      .andWhere('lead.wa_stage != :encerrado', { encerrado: 'encerrado' })
       .andWhere('lead.wa_last_message_at IS NOT NULL')
       .andWhere('lead.followup_sent_at IS NULL')
       .orderBy('lead.wa_last_message_at', 'ASC')
