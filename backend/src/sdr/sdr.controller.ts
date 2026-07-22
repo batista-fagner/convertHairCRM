@@ -198,7 +198,7 @@ export class SdrController {
       this.processMessage(phone, combinedText, pushName, capturedCtwa).catch((err) =>
         this.logger.error(`[SDR] Erro ao processar ${phone}: ${err.message}`),
       );
-    }, 10_000);
+    }, 8_000);
     this.pendingBuffer.set(phone, pending);
 
     return { ok: true };
@@ -453,7 +453,7 @@ export class SdrController {
       );
     }
 
-    if (ai.reply) await this.sendMessage(phone, ai.reply);
+    if (ai.reply) await this.sendReplyAsBubbles(phone, ai.reply);
 
     // Handoff: avisa o closer e destaca o card
     if (handoff) {
@@ -553,6 +553,39 @@ export class SdrController {
       this.logger.log(`[SDR] respondeu para ${phone}`);
     } catch (err: any) {
       this.logger.error(`[SDR] Erro ao enviar resposta para ${phone}: ${err.message}`);
+    }
+  }
+
+  /**
+   * A IA pode separar a resposta em mais de uma "bolha" do WhatsApp usando "|||"
+   * como marcador (ex.: saudação numa bolha, pergunta na próxima) — imita alguém
+   * mandando duas mensagens seguidas em vez de um bloco só de texto.
+   */
+  private splitBubbles(reply: string): string[] {
+    return reply
+      .split('|||')
+      .map((b) => b.trim())
+      .filter(Boolean);
+  }
+
+  /**
+   * Tempo de "digitação" proporcional ao tamanho do texto, simulando o quanto um
+   * humano levaria pra escrever aquilo (~45 caracteres/segundo), com piso e teto
+   * pra não parecer instantâneo nem travar demais numa resposta longa.
+   */
+  private typingDelayForText(text: string): number {
+    const perCharMs = 1000 / 45;
+    return Math.min(8000, Math.max(1200, Math.round(text.length * perCharMs)));
+  }
+
+  /** Envia a resposta da IA em uma ou mais bolhas, cada uma com "digitando..." proporcional ao tamanho do texto. */
+  private async sendReplyAsBubbles(phone: string, reply: string) {
+    const bubbles = this.splitBubbles(reply);
+    for (const bubble of bubbles) {
+      const delay = this.typingDelayForText(bubble);
+      await this.sendTyping(phone, delay);
+      await new Promise((r) => setTimeout(r, delay));
+      await this.sendMessage(phone, bubble);
     }
   }
 
