@@ -342,7 +342,11 @@ export class SdrController {
       return;
     }
 
-    const updatedContext = this.sdrService.buildUpdatedContext(lead, text, ai.reply);
+    // Guarda o histórico com "|||" trocado por quebra de linha: o marcador é só
+    // uma instrução de envio (2 bolhas de WhatsApp), não deve aparecer literal
+    // nem no modal de conversa do CRM nem no contexto que a própria IA relê.
+    const contextReply = (ai.reply ?? '').replace(/\|\|\|/g, '\n');
+    const updatedContext = this.sdrService.buildUpdatedContext(lead, text, contextReply);
 
     // Os 3 sinais da qualificação são persistidos: o sistema guarda o que já foi
     // respondido, então só sobrescreve quando a IA manda algo novo nesta mensagem

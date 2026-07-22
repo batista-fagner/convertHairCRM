@@ -97,7 +97,12 @@ export class SdrService {
         model,
         messages,
         temperature: 0.7,
-        max_completion_tokens: 300,
+        // 900 (não 300): gpt-5.4-mini é um modelo de raciocínio — os tokens de
+        // "pensamento" saem do mesmo budget de max_completion_tokens. Com 300,
+        // conversas mais longas (mais contexto = mais raciocínio) estouravam o
+        // budget antes de escrever o JSON de verdade, e o modo json_object
+        // devolvia um objeto vazio/truncado em vez de erro (ver validação abaixo).
+        max_completion_tokens: 900,
         response_format: { type: 'json_object' },
       });
 
@@ -107,6 +112,16 @@ export class SdrService {
       if (!jsonMatch) throw new Error('Resposta sem JSON válido');
 
       const parsed = JSON.parse(jsonMatch[0]) as SdrResponse;
+
+      // Defesa contra JSON "válido" mas vazio/incompleto (ex.: modelo estourou o
+      // budget de tokens em raciocínio e devolveu {} pro response_format ainda
+      // assim aceitar). Sem isso, a conversa morre silenciosamente: reply vira
+      // undefined, o controller não manda nada e nem tenta de novo (só reage a
+      // success=false). Tratando como erro aqui, o retry único do controller entra em ação.
+      if (!parsed.reply || typeof parsed.reply !== 'string' || !parsed.stage) {
+        throw new Error(`JSON incompleto da IA (reply=${JSON.stringify(parsed.reply)}, stage=${parsed.stage})`);
+      }
+
       parsed.success = true;
 
       this.logger.log(`SDR respondeu [stage=${parsed.stage}, temp=${parsed.temperature}, vendeCabelo=${parsed.vendeCabelo}, mensagensPorDia=${parsed.mensagensPorDia}]: ${parsed.reply}`);
