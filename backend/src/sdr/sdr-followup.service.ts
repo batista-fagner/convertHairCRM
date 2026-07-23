@@ -396,19 +396,25 @@ export class SdrFollowupService {
       }));
 
       const hours = delayMinutes >= 60 ? `${Math.round(delayMinutes / 60)}h` : `${delayMinutes}min`;
+      const leadNeverResponded = !history.some((m) => m.role === 'user');
+      const noResponseCase = leadNeverResponded
+        ? `\n\nATENÇÃO — CASO ESPECIAL: o lead NUNCA respondeu nada nesta conversa (só recebeu sua abertura). Isso significa que você não sabe se ele vende cabelo, nem nada sobre o negócio dele — NÃO pule etapa nem finja que já sabe algo. Não faça pergunta de Problema/Implicação/Necessidade ainda. A única missão aqui é quebrar o gelo com empatia e trazer ele de volta pra responder a pergunta inicial (se vende cabelo/mega hair) — comece de um jeito leve e humano (ex.: reconhecendo que a correria do dia a dia atropela, sem soar como cobrança), depois retome a pergunta original com outras palavras.`
+        : '';
       const followupInstruction = `\n\nIMPORTANTE — ISSO NÃO É QUALIFICAÇÃO, IGNORE O FLUXO/ORDEM DE PERGUNTAS ACIMA: mesmo que ainda falte nome, "vende cabelo", "investe em anúncio" ou Instagram no histórico, NÃO pergunte isso agora e NÃO siga a ordem do fluxo de qualificação. Essa tarefa é outra: o lead sumiu no meio da conversa e sua única missão é fazer ele voltar a responder.
 
 AGORA: o lead não respondeu há ${hours}. Gere UMA mensagem de follow-up curta pra reacender essa conversa específica — não um follow-up genérico e não uma pergunta de qualificação.
-
+${noResponseCase}
 COMO PENSAR (técnica SPIN Selling, aplicada ao que já foi dito):
 1. Releia o histórico acima e identifique em que ponto ele parou: você já sabe a Situação dele (o que ele vende, se anuncia)? Já tocou no Problema (dificuldade real que ele tem hoje)? Já fez alguma pergunta de Implicação (o que isso custa pra ele continuar assim)? Já mostrou o ganho de resolver (Necessidade-payoff)?
 2. Escolha UMA coisa pra avançar a partir daí — nunca repita uma pergunta que ele já respondeu.
+   - Se ele nunca respondeu NADA ainda (caso especial acima): ignore os pontos abaixo, siga só a instrução do caso especial.
    - Se ele nunca falou de um problema/dor real: puxe isso com uma pergunta leve (ex: quantos clientes ele acha que perde por demorar a responder).
    - Se ele já falou do problema mas você nunca conectou ao custo disso: faça uma pergunta de implicação (o que isso representa em vendas perdidas, tempo, etc).
    - Se ele já entende o problema mas nunca ouviu o que ganha resolvendo: mostre o ganho de forma concreta e pergunte se faz sentido pra ele.
    - Se a conversa parou logo depois de uma pergunta sua sem resposta: não repita a mesma pergunta com outras palavras — traga uma entrada diferente pro assunto.
 
 TOM (isso é o mais importante, não soa como isso hoje):
+- Comece a mensagem com algo que quebre o gelo de forma empática (reconhecendo a correria, o sumiço, sem soar como cobrança) antes de ir pro conteúdo — nunca entre direto na pergunta fria.
 - Escreva como alguém mandando um zap de verdade pra um conhecido, não como um script de vendas. Sem "Olá! Tudo bem?" genérico, sem parecer disparo automático.
 - Trate por "vc", nunca "você" por extenso.
 - Pode usar 1 emoji no máximo, só se soar natural — nunca fileira de emoji.
