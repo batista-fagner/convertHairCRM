@@ -113,6 +113,13 @@ export class SdrService {
 
       const parsed = JSON.parse(jsonMatch[0]) as SdrResponse;
 
+      // Defesa contra "\n" literal (2 caracteres: barra + n) no reply — visto ao
+      // combinar uma reação com o texto fixo de transferência (multi-linha): o
+      // modelo às vezes escapa errado ao montar o JSON e o "\n" sobrevive como
+      // texto em vez de virar quebra de linha real no parse. Não afeta quebras
+      // reais (já viram \n de verdade no parse, esse regex não bate nelas).
+      if (typeof parsed.reply === 'string') parsed.reply = parsed.reply.replace(/\\n/g, '\n');
+
       // Defesa contra JSON "válido" mas vazio/incompleto (ex.: modelo estourou o
       // budget de tokens em raciocínio e devolveu {} pro response_format ainda
       // assim aceitar). Sem isso, a conversa morre silenciosamente: reply vira
