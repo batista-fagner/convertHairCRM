@@ -148,12 +148,13 @@ export class SdrService {
     lead: Lead | null,
     incomingText: string,
     reply: string,
-  ): OpenAI.Chat.ChatCompletionMessageParam[] {
-    const history: OpenAI.Chat.ChatCompletionMessageParam[] = (lead?.aiContext as any[]) ?? [];
+  ): any[] {
+    const history: any[] = (lead?.aiContext as any[]) ?? [];
+    const now = new Date().toISOString();
     return [
       ...history,
-      { role: 'user', content: incomingText },
-      { role: 'assistant', content: reply },
+      { role: 'user', content: incomingText, timestamp: now },
+      { role: 'assistant', content: reply, timestamp: now },
     ];
   }
 }

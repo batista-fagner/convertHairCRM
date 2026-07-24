@@ -49,7 +49,7 @@ export class ManualMessageController {
     await this.dispatchToUazapi(phone, body);
 
     const ctx = Array.isArray(lead.aiContext) ? lead.aiContext : [];
-    const entry: Record<string, any> = { role: 'assistant', source: 'operator' };
+    const entry: Record<string, any> = { role: 'assistant', source: 'operator', timestamp: new Date().toISOString() };
 
     if (body.type === 'text') {
       entry.content = body.text || '';

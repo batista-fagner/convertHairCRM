@@ -396,7 +396,16 @@ export class SdrFollowupService {
       }));
 
       const hours = delayMinutes >= 60 ? `${Math.round(delayMinutes / 60)}h` : `${delayMinutes}min`;
-      const leadNeverResponded = !history.some((m) => m.role === 'user');
+      // A 1ª mensagem do lead é só o "clique" que abre a conversa (texto do
+      // anúncio/CTWA ou "oi" genérico) — não conta como resposta à abertura da
+      // Sofia. "Nunca respondeu" de verdade = nenhuma msg do lead DEPOIS da
+      // 1ª resposta da IA. Sem esse recorte, todo lead tem pelo menos 1 'user'
+      // (a msg que criou o lead) e o caso "sumiu logo após a abertura" nunca
+      // era detectado (ver lead 61 9673-0268).
+      const firstAssistantIdx = history.findIndex((m) => m.role === 'assistant');
+      const leadNeverResponded = firstAssistantIdx === -1
+        ? false
+        : !history.slice(firstAssistantIdx + 1).some((m) => m.role === 'user');
 
       const tomBlock = `TOM (isso é o mais importante, não soa como isso hoje):
 - Comece a mensagem com algo que quebre o gelo de forma empática (reconhecendo a correria, o sumiço, sem soar como cobrança) antes de ir pro conteúdo — nunca entre direto na pergunta fria.
@@ -479,7 +488,7 @@ ${tomBlock}`;
       const ctx = Array.isArray(lead.aiContext) ? lead.aiContext : [];
       await this.leadsRepo.update(lead.id, {
         followupSentAt: new Date(),
-        aiContext: [...ctx, { role: 'assistant', content: text }],
+        aiContext: [...ctx, { role: 'assistant', content: text, timestamp: new Date().toISOString() }],
         waLastMessageAt: new Date(),
       });
 
@@ -523,6 +532,7 @@ ${tomBlock}`;
           mediaType: 'video',
           mediaUrl: videoUrl,
           filename: videoName,
+          timestamp: new Date().toISOString(),
         }],
         waLastMessageAt: new Date(),
       });

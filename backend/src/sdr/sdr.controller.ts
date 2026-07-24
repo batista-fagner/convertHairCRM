@@ -257,7 +257,7 @@ export class SdrController {
   private async recordHumanReply(phone: string, text: string) {
     const lead = await this.findLeadByPhoneVariants(phone);
     if (!lead) return;
-    const ctx = [...(Array.isArray(lead.aiContext) ? lead.aiContext : []), { role: 'assistant', source: 'operator', content: text }];
+    const ctx = [...(Array.isArray(lead.aiContext) ? lead.aiContext : []), { role: 'assistant', source: 'operator', content: text, timestamp: new Date().toISOString() }];
     const updated = await this.leadsService.update(lead.id, { aiContext: ctx, waLastMessageAt: new Date() });
     this.realtime.emitLeadUpdated(updated);
     this.logger.log(`[SDR] Resposta manual do closer registrada para o lead ${updated.phone}`);
@@ -305,7 +305,7 @@ export class SdrController {
     // Mesmo sem a IA responder, a mensagem do lead precisa ser salva — antes era
     // descartada aqui, apagando a conversa do closer com o lead do histórico.
     if (lead.waStage === 'encerrado' && lead.aiPaused !== false) {
-      const ctx = [...(Array.isArray(lead.aiContext) ? lead.aiContext : []), { role: 'user', content: text }];
+      const ctx = [...(Array.isArray(lead.aiContext) ? lead.aiContext : []), { role: 'user', content: text, timestamp: new Date().toISOString() }];
       lead = await this.leadsService.update(lead.id, { aiContext: ctx, waLastMessageAt: new Date() });
       this.realtime.emitLeadUpdated(lead);
       this.logger.log(`[SDR] Lead ${phone} encerrado — closer assumiu, mensagem registrada sem resposta automática`);
@@ -314,7 +314,7 @@ export class SdrController {
 
     // IA pausada: humano assumiu. Registra a mensagem recebida mas não responde.
     if (lead.aiPaused) {
-      const ctx = [...(Array.isArray(lead.aiContext) ? lead.aiContext : []), { role: 'user', content: text }];
+      const ctx = [...(Array.isArray(lead.aiContext) ? lead.aiContext : []), { role: 'user', content: text, timestamp: new Date().toISOString() }];
       lead = await this.leadsService.update(lead.id, { aiContext: ctx, waLastMessageAt: new Date() });
       this.realtime.emitLeadUpdated(lead);
       this.logger.log(`[SDR] Lead ${phone} com IA pausada — mensagem registrada, sem resposta`);
@@ -335,7 +335,7 @@ export class SdrController {
     // martelando o lead e avisa o operador assumir manualmente.
     if (this.isLoopReply(lead, ai.reply)) {
       this.logger.warn(`[SDR] Loop detectado para ${phone} — IA pausada automaticamente`);
-      const ctx = [...(Array.isArray(lead.aiContext) ? lead.aiContext : []), { role: 'user', content: text }];
+      const ctx = [...(Array.isArray(lead.aiContext) ? lead.aiContext : []), { role: 'user', content: text, timestamp: new Date().toISOString() }];
       lead = await this.leadsService.update(lead.id, { aiContext: ctx, waLastMessageAt: new Date(), aiPaused: true });
       this.realtime.emitLeadUpdated(lead);
       await this.notifyOperatorLoop(lead);

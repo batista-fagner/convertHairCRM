@@ -557,6 +557,11 @@ function ConversationModal({ lead, onClose, onTogglePause, onAssign, onSaveNotes
                   )}
                   <div className={`text-[9px] mt-0.5 ${isLead ? 'text-slate-400' : isOperator ? 'text-violet-200' : 'text-emerald-100'}`}>
                     {isLead ? lead.name.split(' ')[0] : isOperator ? 'Você' : 'SDR IA'}
+                    {m.timestamp && (
+                      <span className="ml-1.5 opacity-80">
+                        {new Date(m.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' })}
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
