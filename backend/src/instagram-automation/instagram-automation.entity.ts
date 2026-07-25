@@ -23,6 +23,9 @@ export class InstagramAutomation {
   @Column({ name: 'reply_message', type: 'text' })
   replyMessage: string;
 
+  @Column({ name: 'link', type: 'varchar', nullable: true })
+  link?: string;
+
   @Column({ name: 'comment_reply', type: 'text', nullable: true })
   commentReply?: string;
 

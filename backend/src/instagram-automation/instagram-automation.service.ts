@@ -160,7 +160,7 @@ export class InstagramAutomationService {
         await this.upsertConversation(senderIgId, igUsername, auto.id, 'waiting_email');
       } else {
         // Fluxo direto: envia DM com link
-        await this.sendDm(commentId, auto.replyMessage, auto.dmButtonLabel);
+        await this.sendDm(commentId, auto.replyMessage, auto.dmButtonLabel, auto.link);
       }
 
       if (auto.commentReply) {
@@ -205,7 +205,7 @@ export class InstagramAutomationService {
           await this.convRepo.update(conv.id, { step: 'waiting_email' });
         } else {
           // Sem captura de email: envia o link direto
-          if (auto?.replyMessage) await this.sendDmToUser(senderIgId, auto.replyMessage, auto.dmButtonLabel);
+          if (auto?.replyMessage) await this.sendDmToUser(senderIgId, auto.replyMessage, auto.dmButtonLabel, auto.link);
           await this.convRepo.update(conv.id, { step: 'completed' });
         }
       } else if (isNo) {
@@ -227,7 +227,7 @@ export class InstagramAutomationService {
       await this.saveLead(email, conv);
 
       if (auto?.replyMessage) {
-        await this.sendDmToUser(senderIgId, auto.replyMessage, auto.dmButtonLabel);
+        await this.sendDmToUser(senderIgId, auto.replyMessage, auto.dmButtonLabel, auto.link);
       } else {
         await this.sendDmToUser(senderIgId, 'Perfeito! Em breve você receberá mais informações 🙌');
       }
@@ -296,14 +296,17 @@ export class InstagramAutomationService {
     }
   }
 
-  private async sendDmToUser(senderIgId: string, message: string, buttonLabel?: string) {
+  private async sendDmToUser(senderIgId: string, message: string, buttonLabel?: string, link?: string) {
     const igUserId = await this.getIgUserId();
+    // Automações antigas ainda têm a URL embutida no texto da mensagem; as
+    // novas mandam o link no campo dedicado. Prioriza o campo — se não vier,
+    // cai pro regex antigo (compatibilidade com automações já criadas).
     const urlMatch = message.match(/https?:\/\/[^\s]+/);
-    const url = urlMatch?.[0];
+    const url = link || urlMatch?.[0];
 
     let messagePayload: any;
     if (buttonLabel && url) {
-      const textWithoutUrl = message.replace(url, '').trim();
+      const textWithoutUrl = urlMatch ? message.replace(urlMatch[0], '').trim() : message;
       messagePayload = {
         attachment: {
           type: 'template',
@@ -314,6 +317,10 @@ export class InstagramAutomationService {
           },
         },
       };
+    } else if (url && !urlMatch) {
+      // Link veio só pelo campo dedicado (não estava embutido no texto) e não
+      // tem label de botão — anexa como texto simples pra não se perder.
+      messagePayload = { text: `${message}\n${url}` };
     } else {
       messagePayload = { text: message };
     }
@@ -343,14 +350,17 @@ export class InstagramAutomationService {
     }
   }
 
-  private async sendDm(commentId: string, message: string, buttonLabel?: string) {
+  private async sendDm(commentId: string, message: string, buttonLabel?: string, link?: string) {
     const igUserId = await this.getIgUserId();
+    // Automações antigas ainda têm a URL embutida no texto da mensagem; as
+    // novas mandam o link no campo dedicado. Prioriza o campo — se não vier,
+    // cai pro regex antigo (compatibilidade com automações já criadas).
     const urlMatch = message.match(/https?:\/\/[^\s]+/);
-    const url = urlMatch?.[0];
+    const url = link || urlMatch?.[0];
 
     let messagePayload: any;
     if (buttonLabel && url) {
-      const textWithoutUrl = message.replace(url, '').trim();
+      const textWithoutUrl = urlMatch ? message.replace(urlMatch[0], '').trim() : message;
       messagePayload = {
         attachment: {
           type: 'template',
@@ -361,6 +371,10 @@ export class InstagramAutomationService {
           },
         },
       };
+    } else if (url && !urlMatch) {
+      // Link veio só pelo campo dedicado (não estava embutido no texto) e não
+      // tem label de botão — anexa como texto simples pra não se perder.
+      messagePayload = { text: `${message}\n${url}` };
     } else {
       messagePayload = { text: message };
     }

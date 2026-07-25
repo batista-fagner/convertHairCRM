@@ -7,6 +7,7 @@ const EMPTY_FORM = {
   keyword: 'eu quero',
   acceptAny: false,
   replyMessage: '',
+  link: '',
   dmButtonLabel: '',
   commentReply: 'Verifica lá na sua DM, já te mandei! 😉',
   captureConfirmation: false,
@@ -109,6 +110,7 @@ export default function InstagramAutomation() {
       keyword: auto.keyword || 'eu quero',
       acceptAny: auto.acceptAny || false,
       replyMessage: auto.replyMessage || '',
+      link: auto.link || '',
       dmButtonLabel: auto.dmButtonLabel || '',
       commentReply: auto.commentReply || '',
       captureConfirmation: auto.captureConfirmation || false,
@@ -141,6 +143,7 @@ export default function InstagramAutomation() {
         keyword: form.keyword || 'eu quero',
         acceptAny: form.acceptAny,
         replyMessage: form.replyMessage.trim(),
+        link: form.link.trim() || null,
         dmButtonLabel: form.dmButtonLabel.trim() || null,
         commentReply: form.commentReply.trim() || null,
         captureConfirmation: form.captureConfirmation,
@@ -517,11 +520,26 @@ export default function InstagramAutomation() {
                 <textarea
                   value={form.replyMessage}
                   onChange={e => setForm(f => ({ ...f, replyMessage: e.target.value }))}
-                  placeholder="Oi! Vi que você se interessou 😊 Aqui está o link exclusivo: https://..."
+                  placeholder="Oi! Vi que você se interessou 😊 Aqui está o material exclusivo:"
                   rows={5}
                   className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-violet-400 transition resize-none"
                 />
                 <p className="text-xs text-slate-400 mt-1">Esta mensagem é enviada após o lead confirmar/fornecer email.</p>
+              </div>
+
+              {/* Link */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                  Link <span className="text-slate-400 font-normal">(opcional)</span>
+                </label>
+                <input
+                  type="url"
+                  value={form.link}
+                  onChange={e => setForm(f => ({ ...f, link: e.target.value }))}
+                  placeholder="https://..."
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-violet-400 transition"
+                />
+                <p className="text-xs text-slate-400 mt-1">Enviado junto com a mensagem — como botão se preencher o label abaixo, ou como texto simples se deixar em branco.</p>
               </div>
 
               {/* Botão no DM */}
