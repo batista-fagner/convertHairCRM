@@ -127,6 +127,14 @@ export class InstagramAutomationService {
     const igUsername: string = value.from?.username;
     if (!commentId || !mediaId) return;
 
+    // Ignora comentários feitos pela própria conta conectada — sem isso, a
+    // resposta pública que a automação posta (replyToComment) é capturada de
+    // volta pelo webhook como um novo comentário e dispara a automação de novo,
+    // em loop (visto em produção: 7+ disparos em ~20s até a API do Instagram
+    // começar a rejeitar com 500).
+    const igUserId = await this.getIgUserId();
+    if (senderIgId && senderIgId === igUserId) return;
+
     const automations = await this.repo.find({ where: { postId: mediaId, isActive: true } });
 
     for (const auto of automations) {
