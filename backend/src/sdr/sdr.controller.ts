@@ -2,7 +2,7 @@ import { Controller, Post, Body, Logger, Param } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
-import { SdrService, deriveKanbanStage, SdrStage } from './sdr.service';
+import { SdrService, deriveKanbanStage, SdrStage, MIN_MENSAGENS_POR_DIA } from './sdr.service';
 import { LeadsService } from '../leads/leads.service';
 import { FacebookService } from '../facebook/facebook.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
@@ -361,13 +361,15 @@ export class SdrController {
     const vendeCabelo = ai.vendeCabelo === true || ai.vendeCabelo === false ? ai.vendeCabelo : lead.vendeCabelo ?? null;
     const mensagensPorDia = typeof ai.mensagensPorDia === 'number' ? ai.mensagensPorDia : lead.mensagensPorDia ?? null;
     const semInstagram = ai.semInstagram === true ? true : lead.semInstagram ?? null;
+    const iniciante = ai.iniciante === true ? true : lead.iniciante ?? null;
     const instagramValue = ai.instagram && typeof ai.instagram === 'string' && ai.instagram !== 'null'
       ? ai.instagram.replace('@', '').trim()
       : lead.instagram;
     const nomeValue = ai.nome && typeof ai.nome === 'string' && ai.nome !== 'null' ? ai.nome.trim() : null;
 
-    // Raia calculada (a "verdade" da qualificação): vende cabelo = qualificado.
-    const derivedStage = deriveKanbanStage(vendeCabelo, ai.stage, lead.status);
+    // Raia calculada (a "verdade" da qualificação): vende cabelo = qualificado,
+    // mas iniciante ou volume baixo (<10 msgs/dia) desqualifica mesmo assim.
+    const derivedStage = deriveKanbanStage(vendeCabelo, ai.stage, lead.status, mensagensPorDia, iniciante);
 
     // Handoff pro especialista só acontece depois das respostas completas
     // (vende cabelo=true + volume de mensagens/dia conhecido + instagram
@@ -390,6 +392,7 @@ export class SdrController {
       vendeCabelo,
       mensagensPorDia,
       semInstagram,
+      iniciante,
     };
 
     if (instagramValue) updateData.instagram = instagramValue;
@@ -401,8 +404,11 @@ export class SdrController {
       updateData.aiPaused = true;
     }
 
-    // Não qualificado (não vende cabelo) → IA desliga automaticamente
-    if (vendeCabelo === false) {
+    // Não qualificado (não vende cabelo, iniciante, ou volume baixo de
+    // mensagens/dia) → IA desliga automaticamente, a mensagem de encerramento
+    // já foi escrita pela própria IA (ver QUALIFICAÇÃO em sdr.prompt.ts).
+    const lowVolume = typeof mensagensPorDia === 'number' && mensagensPorDia < MIN_MENSAGENS_POR_DIA;
+    if (vendeCabelo === false || iniciante === true || lowVolume) {
       updateData.aiPaused = true;
     }
 

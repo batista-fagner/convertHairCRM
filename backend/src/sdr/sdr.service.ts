@@ -16,6 +16,7 @@ export interface SdrResponse {
   mensagensPorDia?: number | null;
   instagram?: string | null;
   semInstagram?: boolean | null;
+  iniciante?: boolean | null;
   success: boolean;
 }
 
@@ -42,19 +43,30 @@ function buildSystemPrompt(basePrompt: string, lead?: Lead | null): string {
   return `${basePrompt}\n${buildLeadContext(lead)}\n\n${SDR_JSON_FORMAT}`;
 }
 
+/** Volume mínimo de mensagens/dia pra ser considerado qualificado — abaixo disso, desqualifica mesmo vendendo cabelo. */
+export const MIN_MENSAGENS_POR_DIA = 10;
+
 /**
  * Mapeia a resposta de qualificação (vende cabelo) + estágio da conversa pra
  * raia do Kanban. `vendeCabelo` é a "verdade" da qualificação: true → qualificado
  * direto (MQL), false → não qualificado. Investir em anúncio NÃO muda de raia,
  * só soma a tag "mql_premium" (ver sdr.controller.ts).
+ *
+ * Desqualifica também (mesmo vendendo cabelo) quando o lead é "iniciante"
+ * (ainda não vende de verdade, só começando) ou recebe menos de
+ * MIN_MENSAGENS_POR_DIA mensagens/dia — não vale a pena pro negócio ainda.
  */
 export function deriveKanbanStage(
   vendeCabelo: boolean | null | undefined,
   stage: SdrStage,
   status: string | undefined,
+  mensagensPorDia?: number | null,
+  iniciante?: boolean | null,
 ): KanbanStage {
   if (status === 'perdido' || stage === 'perdido') return 'perdido';
   if (vendeCabelo === false) return 'nao-qualificado';
+  if (iniciante === true) return 'nao-qualificado';
+  if (typeof mensagensPorDia === 'number' && mensagensPorDia < MIN_MENSAGENS_POR_DIA) return 'nao-qualificado';
   if (vendeCabelo === true) return 'qualificado';
   if (stage === 'abertura') return 'novo';
   return 'atendimento';

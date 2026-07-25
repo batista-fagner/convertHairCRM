@@ -89,6 +89,12 @@ export class Lead {
   @Column({ name: 'sem_instagram', type: 'boolean', nullable: true })
   semInstagram?: boolean | null;
 
+  // true = lead disse que ainda está começando/não vende de fato (fluxo SPIN).
+  // Junto com mensagens_por_dia < 10, desqualifica o lead automaticamente
+  // (ver deriveKanbanStage em sdr.service.ts) mesmo que venda cabelo.
+  @Column({ name: 'iniciante', type: 'boolean', nullable: true })
+  iniciante?: boolean | null;
+
   @Column({ name: 'tags', type: 'jsonb', nullable: true })
   tags?: string[] | null;
 
