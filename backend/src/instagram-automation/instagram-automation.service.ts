@@ -142,16 +142,21 @@ export class InstagramAutomationService {
       if (!matches) continue;
 
       if (auto.captureConfirmation && senderIgId) {
-        // Passo 1: enviar quick reply de confirmação
+        // Passo 1: enviar quick reply de confirmação. Usa comment_id (não o
+        // id do usuário) porque essa é a 1ª mensagem da conversa — a API do
+        // Instagram bloqueia com 403 mensagens proativas por user id pra quem
+        // nunca abriu DM com a conta; resposta privada a um comentário é a
+        // única forma permitida de iniciar a conversa a partir daqui.
         const question = auto.confirmationQuestion || 'Quer receber o material gratuito? 👇';
-        await this.sendQuickReply(senderIgId, question);
+        await this.sendQuickReply(commentId, question);
 
         // Criar/resetar conversa no passo waiting_confirmation
         await this.upsertConversation(senderIgId, igUsername, auto.id, 'waiting_confirmation');
       } else if (auto.captureEmail && senderIgId) {
-        // Pula confirmação, vai direto pedir email
+        // Pula confirmação, vai direto pedir email — mesmo motivo acima: 1ª
+        // mensagem da conversa precisa ir via comment_id, não user id.
         const question = auto.emailQuestion || 'Oi! Qual é o seu melhor email? 😊';
-        await this.sendDmToUser(senderIgId, question);
+        await this.sendDm(commentId, question);
         await this.upsertConversation(senderIgId, igUsername, auto.id, 'waiting_email');
       } else {
         // Fluxo direto: envia DM com link
@@ -268,13 +273,13 @@ export class InstagramAutomationService {
     }
   }
 
-  private async sendQuickReply(senderIgId: string, text: string) {
+  private async sendQuickReply(commentId: string, text: string) {
     const igUserId = await this.getIgUserId();
     try {
       await axios.post(
         `${IG_API}/${igUserId}/messages`,
         {
-          recipient: { id: senderIgId },
+          recipient: { comment_id: commentId },
           message: {
             text,
             quick_replies: [
@@ -285,7 +290,7 @@ export class InstagramAutomationService {
         },
         { params: { access_token: this.igToken } },
       );
-      this.logger.log(`Quick reply enviado para ${senderIgId}`);
+      this.logger.log(`Quick reply enviado para comentário ${commentId}`);
     } catch (err) {
       this.logger.error(`Erro ao enviar quick reply: ${err.message}`);
     }
