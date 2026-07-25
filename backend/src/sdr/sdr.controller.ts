@@ -270,15 +270,20 @@ export class SdrController {
     let isNew = false;
     if (!lead) {
       const fromAd = Boolean(ctwa?.clid);
+      // Link do WhatsApp usado no botão da DM da automação de Instagram vem
+      // com esse texto pré-preenchido — é a única forma de "marcar" a origem
+      // num link de 1:1 do WhatsApp (não tem UTM de página aqui, o clique
+      // abre a conversa direto). Se mudar a frase no link, atualiza aqui.
+      const fromInstagram = !fromAd && /vim do instagram/i.test(text);
       lead = await this.leadsService.create({
         name: pushName || `Lead ${phone.slice(-4)}`,
         phone: phone.startsWith('55') ? phone : `55${phone}`,
         agentMode: 'sdr',
         kanbanStage: 'novo',
         waStage: 'abertura' as WaStage,
-        // Origem: anúncio Click-to-WhatsApp quando veio ctwa_clid, senão WhatsApp orgânico
-        utmSource: fromAd ? 'ctwa' : 'whatsapp',
-        utmMedium: fromAd ? 'whatsapp-ad' : 'sdr',
+        // Origem: anúncio Click-to-WhatsApp > automação de Instagram > WhatsApp orgânico
+        utmSource: fromAd ? 'ctwa' : fromInstagram ? 'instagram' : 'whatsapp',
+        utmMedium: fromAd ? 'whatsapp-ad' : fromInstagram ? 'ig-automation' : 'sdr',
         // Nome do anúncio vira utm_campaign quando disponível — aparece direto no
         // Kanban/relatórios sem precisar abrir o Ads Manager.
         utmCampaign: fromAd ? (ctwa?.adTitle ?? ctwa?.sourceId ?? undefined) : undefined,
@@ -294,6 +299,8 @@ export class SdrController {
         // em segundo plano — não atrasa a resposta ao lead. Só roda se tiver o
         // Ad ID (sourceId) e o FB_ADS_TOKEN configurado.
         if (ctwa?.sourceId) this.enrichAdAttribution(lead.id, ctwa.sourceId);
+      } else if (fromInstagram) {
+        this.logger.log(`[SDR] Lead ${phone} veio da automação de Instagram (link com "vim do Instagram")`);
       }
       this.realtime.emitLeadCreated(lead);
     } else if (lead.agentMode !== 'sdr') {
