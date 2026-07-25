@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Plus, Trash2, ToggleLeft, ToggleRight, ExternalLink, Zap, Image, ChevronRight, X, Loader2, RefreshCw, Users, Pencil } from 'lucide-react'
+import { Plus, Trash2, ToggleLeft, ToggleRight, ExternalLink, Zap, Image, ChevronRight, X, Loader2, RefreshCw, Users, Pencil, Sparkles } from 'lucide-react'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3001/api'
 
@@ -14,6 +14,8 @@ const EMPTY_FORM = {
   confirmationQuestion: '',
   captureEmail: false,
   emailQuestion: '',
+  useAi: false,
+  aiPrompt: '',
 }
 
 export default function InstagramAutomation() {
@@ -117,6 +119,8 @@ export default function InstagramAutomation() {
       confirmationQuestion: auto.confirmationQuestion || '',
       captureEmail: auto.captureEmail || false,
       emailQuestion: auto.emailQuestion || '',
+      useAi: auto.useAi || false,
+      aiPrompt: auto.aiPrompt || '',
     })
     setError('')
     setShowPanel(true)
@@ -150,6 +154,8 @@ export default function InstagramAutomation() {
         confirmationQuestion: form.confirmationQuestion.trim() || null,
         captureEmail: form.captureEmail,
         emailQuestion: form.emailQuestion.trim() || null,
+        useAi: form.useAi,
+        aiPrompt: form.aiPrompt.trim() || null,
       }
 
       const res = await fetch(`${API}/ig-auto${editingId ? `/${editingId}` : ''}`, {
@@ -571,62 +577,100 @@ export default function InstagramAutomation() {
                 />
               </div>
 
-              {/* Confirmação (Yes/No) */}
-              <div className="border border-slate-200 rounded-xl p-4 space-y-3">
+              {/* Agente de IA */}
+              <div className="border border-violet-200 bg-violet-50/50 rounded-xl p-4 space-y-3">
                 <label className="flex items-center gap-3 cursor-pointer">
                   <input
                     type="checkbox"
-                    checked={form.captureConfirmation}
-                    onChange={e => setForm(f => ({ ...f, captureConfirmation: e.target.checked }))}
+                    checked={form.useAi}
+                    onChange={e => setForm(f => ({ ...f, useAi: e.target.checked }))}
                     className="w-4 h-4 accent-violet-600"
                   />
-                  <div>
-                    <span className="text-sm font-medium text-slate-700">Pedir confirmação antes</span>
-                    <p className="text-xs text-slate-400 mt-0.5">Envia botões "Sim, quero! ✅" e "Não, obrigado" antes de continuar</p>
+                  <div className="flex items-center gap-1.5">
+                    <Sparkles className="w-4 h-4 text-violet-500" />
+                    <div>
+                      <span className="text-sm font-medium text-slate-700">Usar IA nessa automação</span>
+                      <p className="text-xs text-slate-400 mt-0.5">A IA responde o comentário e conduz a conversa por DM sozinha, decidindo quando mandar o link. Substitui os passos fixos abaixo.</p>
+                    </div>
                   </div>
                 </label>
-                {form.captureConfirmation && (
+                {form.useAi && (
                   <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1.5">Mensagem enviada com os botões</label>
-                    <input
-                      type="text"
-                      value={form.confirmationQuestion}
-                      onChange={e => setForm(f => ({ ...f, confirmationQuestion: e.target.value }))}
-                      placeholder="Quer receber o material gratuito? 👇"
-                      className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-violet-400 transition"
+                    <label className="block text-xs font-medium text-slate-600 mb-1.5">
+                      Prompt da IA <span className="text-slate-400 font-normal">(opcional — usa um padrão se deixar em branco)</span>
+                    </label>
+                    <textarea
+                      value={form.aiPrompt}
+                      onChange={e => setForm(f => ({ ...f, aiPrompt: e.target.value }))}
+                      placeholder="Ex: Você é a Sofia, vende mega hair e atende com simpatia..."
+                      rows={4}
+                      className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-violet-400 transition resize-none"
                     />
+                    <p className="text-xs text-slate-400 mt-1">A IA já recebe automaticamente a mensagem/oferta e o link configurados acima como contexto.</p>
                   </div>
                 )}
               </div>
 
-              {/* Captura de email */}
-              <div className="border border-slate-200 rounded-xl p-4 space-y-3">
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={form.captureEmail}
-                    onChange={e => setForm(f => ({ ...f, captureEmail: e.target.checked }))}
-                    className="w-4 h-4 accent-violet-600"
-                  />
-                  <div>
-                    <span className="text-sm font-medium text-slate-700">Capturar email via DM</span>
-                    <p className="text-xs text-slate-400 mt-0.5">O bot pede o email antes de enviar o link e salva como Lead</p>
+              {!form.useAi && (
+                <>
+                  {/* Confirmação (Yes/No) */}
+                  <div className="border border-slate-200 rounded-xl p-4 space-y-3">
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={form.captureConfirmation}
+                        onChange={e => setForm(f => ({ ...f, captureConfirmation: e.target.checked }))}
+                        className="w-4 h-4 accent-violet-600"
+                      />
+                      <div>
+                        <span className="text-sm font-medium text-slate-700">Pedir confirmação antes</span>
+                        <p className="text-xs text-slate-400 mt-0.5">Envia botões "Sim, quero! ✅" e "Não, obrigado" antes de continuar</p>
+                      </div>
+                    </label>
+                    {form.captureConfirmation && (
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1.5">Mensagem enviada com os botões</label>
+                        <input
+                          type="text"
+                          value={form.confirmationQuestion}
+                          onChange={e => setForm(f => ({ ...f, confirmationQuestion: e.target.value }))}
+                          placeholder="Quer receber o material gratuito? 👇"
+                          className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-violet-400 transition"
+                        />
+                      </div>
+                    )}
                   </div>
-                </label>
-                {form.captureEmail && (
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1.5">Pergunta enviada no DM</label>
-                    <input
-                      type="text"
-                      value={form.emailQuestion}
-                      onChange={e => setForm(f => ({ ...f, emailQuestion: e.target.value }))}
-                      placeholder="Oi! Qual é o seu melhor email para eu te enviar o material? 😊"
-                      className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-violet-400 transition"
-                    />
-                    <p className="text-xs text-slate-400 mt-1">Após a pessoa responder, o link acima é enviado automaticamente.</p>
+
+                  {/* Captura de email */}
+                  <div className="border border-slate-200 rounded-xl p-4 space-y-3">
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={form.captureEmail}
+                        onChange={e => setForm(f => ({ ...f, captureEmail: e.target.checked }))}
+                        className="w-4 h-4 accent-violet-600"
+                      />
+                      <div>
+                        <span className="text-sm font-medium text-slate-700">Capturar email via DM</span>
+                        <p className="text-xs text-slate-400 mt-0.5">O bot pede o email antes de enviar o link e salva como Lead</p>
+                      </div>
+                    </label>
+                    {form.captureEmail && (
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1.5">Pergunta enviada no DM</label>
+                        <input
+                          type="text"
+                          value={form.emailQuestion}
+                          onChange={e => setForm(f => ({ ...f, emailQuestion: e.target.value }))}
+                          placeholder="Oi! Qual é o seu melhor email para eu te enviar o material? 😊"
+                          className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-violet-400 transition"
+                        />
+                        <p className="text-xs text-slate-400 mt-1">Após a pessoa responder, o link acima é enviado automaticamente.</p>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
+                </>
+              )}
             </div>
 
             <div className="px-6 py-4 border-t border-slate-100 flex justify-end gap-3">

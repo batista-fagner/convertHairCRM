@@ -15,10 +15,13 @@ export class IgConversation {
   automationId: string;
 
   @Column({ name: 'step', type: 'varchar', default: 'waiting_email' })
-  step: string; // 'waiting_email' | 'completed'
+  step: string; // 'waiting_email' | 'waiting_confirmation' | 'ai_chat' | 'completed'
 
   @Column({ name: 'email', type: 'varchar', nullable: true })
   email?: string;
+
+  @Column({ name: 'ai_context', type: 'jsonb', nullable: true })
+  aiContext?: any[];
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

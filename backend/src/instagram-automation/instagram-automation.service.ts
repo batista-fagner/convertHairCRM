@@ -3,15 +3,21 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
+import OpenAI from 'openai';
 import { InstagramAutomation } from './instagram-automation.entity';
 import { IgConversation } from './ig-conversation.entity';
 import { Lead } from '../common/entities/lead.entity';
 
 const IG_API = 'https://graph.instagram.com/v21.0';
 
+const DEFAULT_IG_AI_PROMPT = `Você é uma atendente simpática respondendo comentários e DMs no Instagram.
+Escreva como alguém mandando mensagem de verdade, curto, direto, no máximo 2-3 frases, com no máximo 1 emoji.
+Nunca invente informação sobre produto/preço que não foi te dada no contexto.`;
+
 @Injectable()
 export class InstagramAutomationService {
   private readonly logger = new Logger(InstagramAutomationService.name);
+  private readonly openai: OpenAI;
 
   constructor(
     @InjectRepository(InstagramAutomation)
@@ -21,10 +27,16 @@ export class InstagramAutomationService {
     @InjectRepository(Lead)
     private leadRepo: Repository<Lead>,
     private config: ConfigService,
-  ) {}
+  ) {
+    this.openai = new OpenAI({ apiKey: config.get('OPENAI_API_KEY') });
+  }
 
   private get igToken() {
     return this.config.get<string>('IG_TOKEN');
+  }
+
+  private get aiModel() {
+    return this.config.get<string>('IG_AI_MODEL') || 'gpt-4o-mini';
   }
 
   private async getIgUserId(): Promise<string> {
@@ -141,6 +153,29 @@ export class InstagramAutomationService {
       const matches = auto.acceptAny || commentText.includes(this.normalize(auto.keyword || 'eu quero'));
       if (!matches) continue;
 
+      // Automação com IA: substitui todo o fluxo roteirizado abaixo — a IA
+      // conduz a resposta pública e abre a conversa por DM decidindo sozinha
+      // quando mandar o link, em vez de seguir os passos fixos de
+      // confirmação/captura de email.
+      if (auto.useAi && senderIgId) {
+        const rawComment = value.text || '';
+        const { reply, sendLink } = await this.generateAiReply(auto, [], rawComment);
+        if (reply) {
+          await this.sendDm(commentId, reply, sendLink ? auto.dmButtonLabel : undefined, sendLink ? auto.link : undefined);
+          await this.upsertConversation(senderIgId, igUsername, auto.id, 'ai_chat', [
+            { role: 'user', content: rawComment },
+            { role: 'assistant', content: reply },
+          ]);
+        }
+
+        const publicReply = await this.generateAiCommentReply(auto, rawComment);
+        if (publicReply) await this.replyToComment(commentId, publicReply);
+
+        await this.repo.increment({ id: auto.id }, 'triggeredCount', 1);
+        this.logger.log(`Automação IA "${auto.id}" disparada`);
+        continue;
+      }
+
       if (auto.captureConfirmation && senderIgId) {
         // Passo 1: enviar quick reply de confirmação. Usa comment_id (não o
         // id do usuário) porque essa é a 1ª mensagem da conversa — a API do
@@ -193,6 +228,26 @@ export class InstagramAutomationService {
 
     const auto = await this.repo.findOneBy({ id: conv.automationId });
 
+    // ── Passo: conversa conduzida pela IA ──
+    if (conv.step === 'ai_chat' && auto) {
+      const history = Array.isArray(conv.aiContext) ? conv.aiContext : [];
+      const { reply, sendLink } = await this.generateAiReply(auto, history, text);
+      if (reply) {
+        await this.sendDmToUser(senderIgId, reply, sendLink ? auto.dmButtonLabel : undefined, sendLink ? auto.link : undefined);
+        const updatedContext = [...history, { role: 'user', content: text }, { role: 'assistant', content: reply }];
+        await this.convRepo.update(conv.id, { aiContext: updatedContext });
+      }
+
+      // Se a pessoa mandar um email no meio da conversa, salva como lead —
+      // a IA pode pedir isso naturalmente sem precisar do passo fixo antigo.
+      if (this.isValidEmail(text)) {
+        const email = text.toLowerCase().trim();
+        await this.saveLead(email, conv);
+        await this.convRepo.update(conv.id, { email });
+      }
+      return;
+    }
+
     // ── Passo: esperando confirmação (Yes/No) ──
     if (conv.step === 'waiting_confirmation') {
       const isYes = quickReplyPayload === 'CONFIRM_YES' || /^(s|si|sim|yes|quero|ok|vai|bora)$/i.test(this.normalize(text));
@@ -238,12 +293,71 @@ export class InstagramAutomationService {
 
   // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-  private async upsertConversation(senderIgId: string, igUsername: string, automationId: string, step: string) {
+  private async upsertConversation(senderIgId: string, igUsername: string, automationId: string, step: string, aiContext?: any[]) {
     const existing = await this.convRepo.findOne({ where: { senderIgId, automationId } });
     if (!existing) {
-      await this.convRepo.save(this.convRepo.create({ senderIgId, igUsername, automationId, step }));
+      await this.convRepo.save(this.convRepo.create({ senderIgId, igUsername, automationId, step, aiContext }));
     } else {
-      await this.convRepo.update(existing.id, { step, email: undefined, igUsername });
+      await this.convRepo.update(existing.id, { step, email: undefined, igUsername, aiContext });
+    }
+  }
+
+  // ─── IA ──────────────────────────────────────────────────────────────────────
+
+  /** Gera a próxima mensagem de DM (abertura a partir de um comentário, ou continuação de uma conversa em andamento). */
+  private async generateAiReply(
+    auto: InstagramAutomation,
+    history: { role: string; content: string }[],
+    incomingText: string,
+  ): Promise<{ reply: string; sendLink: boolean }> {
+    try {
+      const basePrompt = auto.aiPrompt || DEFAULT_IG_AI_PROMPT;
+      const context = `\n\nCONTEXTO:\n- Essa conversa começou por um comentário no Instagram.\n- Mensagem/oferta que você pode usar quando fizer sentido: "${auto.replyMessage}"\n- Link disponível pra mandar quando for a hora certa (nunca invente outro): ${auto.link || 'nenhum'}\n\nResponda SEMPRE em JSON: {"reply": "texto curto da mensagem", "sendLink": true|false}. sendLink=true só no momento certo de mandar o link — não force isso na 1ª mensagem se não fizer sentido.`;
+
+      const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+        { role: 'system', content: basePrompt + context },
+        ...history.map((h) => ({ role: (h.role === 'assistant' ? 'assistant' : 'user') as 'assistant' | 'user', content: h.content })),
+        { role: 'user', content: incomingText },
+      ];
+
+      const response = await this.openai.chat.completions.create({
+        model: this.aiModel,
+        messages,
+        temperature: 0.7,
+        max_completion_tokens: 300,
+        response_format: { type: 'json_object' },
+      });
+
+      const raw = response.choices[0].message.content?.trim() ?? '{}';
+      const parsed = JSON.parse(raw);
+      return { reply: typeof parsed.reply === 'string' ? parsed.reply : '', sendLink: Boolean(parsed.sendLink) };
+    } catch (err) {
+      this.logger.error(`Erro ao gerar resposta da IA: ${err.message}`);
+      return { reply: '', sendLink: false };
+    }
+  }
+
+  /** Gera a resposta pública (visível no comentário) — nunca inclui link. */
+  private async generateAiCommentReply(auto: InstagramAutomation, commentText: string): Promise<string> {
+    const fallback = auto.commentReply || 'Verifica lá na sua DM, já te mandei! 😉';
+    try {
+      const basePrompt = auto.aiPrompt || DEFAULT_IG_AI_PROMPT;
+      const response = await this.openai.chat.completions.create({
+        model: this.aiModel,
+        messages: [
+          {
+            role: 'system',
+            content: `${basePrompt}\n\nTAREFA: responda PUBLICAMENTE a este comentário com 1 frase curta avisando que a pessoa vai receber algo no direct. Nunca inclua links. Responda só com o texto da resposta, sem aspas.`,
+          },
+          { role: 'user', content: commentText },
+        ],
+        temperature: 0.7,
+        max_completion_tokens: 80,
+      });
+      return response.choices[0].message.content?.trim() || fallback;
+    } catch (err) {
+      this.logger.error(`Erro ao gerar resposta pública da IA: ${err.message}`);
+      return fallback;
     }
   }
 

@@ -53,6 +53,12 @@ export class InstagramAutomation {
   @Column({ name: 'email_question', type: 'text', nullable: true })
   emailQuestion?: string;
 
+  @Column({ name: 'use_ai', type: 'boolean', default: false })
+  useAi: boolean;
+
+  @Column({ name: 'ai_prompt', type: 'text', nullable: true })
+  aiPrompt?: string;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
