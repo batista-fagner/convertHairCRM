@@ -10,6 +10,7 @@ import { IgConversation } from './instagram-automation/ig-conversation.entity';
 import { Setting } from './settings/setting.entity';
 import { FollowupRule } from './common/entities/followup-rule.entity';
 import { FollowupVideo } from './common/entities/followup-video.entity';
+import { IgPost } from './ig-posts/ig-post.entity';
 import { LeadsModule } from './leads/leads.module';
 import { EnrichmentModule } from './enrichment/enrichment.module';
 import { FormsModule } from './forms/forms.module';
@@ -20,6 +21,7 @@ import { TrackingModule } from './tracking/tracking.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { SdrModule } from './sdr/sdr.module';
 import { SettingsModule } from './settings/settings.module';
+import { IgPostsModule } from './ig-posts/ig-posts.module';
 
 @Module({
   imports: [
@@ -34,7 +36,7 @@ import { SettingsModule } from './settings/settings.module';
         type: 'postgres' as const,
         url: config.get('DATABASE_URL') || config.get('SUPABASE_DATABASE_URL'),
         ssl: { rejectUnauthorized: false },
-        entities: [Lead, Campaign, Form, InstagramAutomation, IgConversation, Setting, FollowupRule, FollowupVideo],
+        entities: [Lead, Campaign, Form, InstagramAutomation, IgConversation, Setting, FollowupRule, FollowupVideo, IgPost],
         synchronize: true,
         logging: false,
         timezone: 'Z',
@@ -50,6 +52,7 @@ import { SettingsModule } from './settings/settings.module';
     RealtimeModule,
     SdrModule,
     SettingsModule,
+    IgPostsModule,
   ],
 })
 export class AppModule {}
