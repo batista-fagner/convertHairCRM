@@ -10,7 +10,10 @@ import { IgPost, IgPostMediaType } from './ig-post.entity';
 
 const IG_API = 'https://graph.instagram.com/v21.0';
 const MAX_IMAGE_SIZE_MB = 20;
-const MAX_VIDEO_SIZE_MB = 100;
+// 50MB é o teto de upload do plano Supabase do projeto (mesmo limite já usado
+// no bucket sdr-followup-videos) — pedir mais que isso faz o createBucket
+// falhar com "The object exceeded the maximum allowed size".
+const MAX_VIDEO_SIZE_MB = 50;
 // Cada tentativa do cron de processamento acontece a cada 30s — 40 tentativas
 // ≈ 20min de espera antes de desistir de um vídeo travado no Instagram.
 const MAX_PROCESSING_ATTEMPTS = 40;
