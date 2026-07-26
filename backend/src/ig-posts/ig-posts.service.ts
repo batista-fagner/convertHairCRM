@@ -34,6 +34,22 @@ export interface CreateIgPostDto {
   scheduledAt?: string | null;
 }
 
+/**
+ * Sem isso, uma chamada do Supabase Storage que trava (sem responder e sem dar
+ * erro — ex.: API lenta/instável) deixa a requisição HTTP inteira pendurada
+ * pra sempre, sem nunca devolver resposta pro frontend. Não cancela a chamada
+ * de verdade, mas garante que o handler sempre segue em frente com um erro claro.
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`Timeout (${ms / 1000}s) em: ${label}`)), ms);
+    promise.then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (err) => { clearTimeout(timer); reject(err); },
+    );
+  });
+}
+
 @Injectable()
 export class IgPostsService {
   private readonly logger = new Logger(IgPostsService.name);
@@ -75,31 +91,44 @@ export class IgPostsService {
   // atualiza o fileSizeLimit em vez de pular — senão o limite antigo persiste
   // mesmo depois de subir MAX_VIDEO_SIZE_MB no código.
   private async ensureBucket(): Promise<void> {
-    const { data } = await this.supabase.storage.getBucket(this.bucket);
+    this.logger.log(`ensureBucket: verificando bucket ${this.bucket}...`);
+    const { data } = await withTimeout(this.supabase.storage.getBucket(this.bucket), 15_000, 'storage.getBucket');
     const desiredLimit = MAX_VIDEO_SIZE_MB * 1024 * 1024;
     if (data) {
+      this.logger.log(`ensureBucket: bucket existe (limite atual ${data.file_size_limit} bytes)`);
       if ((data.file_size_limit ?? 0) < desiredLimit) {
-        const { error: updateError } = await this.supabase.storage.updateBucket(this.bucket, {
-          public: true,
-          fileSizeLimit: desiredLimit,
-          allowedMimeTypes: ['image/jpeg', 'image/png', 'video/mp4'],
-        });
+        const { error: updateError } = await withTimeout(
+          this.supabase.storage.updateBucket(this.bucket, {
+            public: true,
+            fileSizeLimit: desiredLimit,
+            allowedMimeTypes: ['image/jpeg', 'image/png', 'video/mp4'],
+          }),
+          15_000,
+          'storage.updateBucket',
+        );
         if (updateError) {
           this.logger.error(`Erro ao atualizar limite do bucket ${this.bucket}: ${updateError.message}`);
           throw new BadRequestException(`Falha ao preparar o storage: ${updateError.message}`);
         }
+        this.logger.log(`ensureBucket: limite atualizado pra ${desiredLimit} bytes`);
       }
       return;
     }
-    const { error } = await this.supabase.storage.createBucket(this.bucket, {
-      public: true,
-      fileSizeLimit: desiredLimit,
-      allowedMimeTypes: ['image/jpeg', 'image/png', 'video/mp4'],
-    });
+    this.logger.log(`ensureBucket: bucket não existe, criando...`);
+    const { error } = await withTimeout(
+      this.supabase.storage.createBucket(this.bucket, {
+        public: true,
+        fileSizeLimit: desiredLimit,
+        allowedMimeTypes: ['image/jpeg', 'image/png', 'video/mp4'],
+      }),
+      15_000,
+      'storage.createBucket',
+    );
     if (error && !/already exists/i.test(error.message)) {
       this.logger.error(`Erro ao criar bucket ${this.bucket}: ${error.message}`);
       throw new BadRequestException(`Falha ao preparar o storage: ${error.message}`);
     }
+    this.logger.log(`ensureBucket: concluído`);
   }
 
   private validateFile(file: UploadedPostFile, mediaType: IgPostMediaType) {
@@ -125,17 +154,24 @@ export class IgPostsService {
   async create(file: UploadedPostFile, dto: CreateIgPostDto): Promise<IgPost> {
     const mediaType: IgPostMediaType = dto.mediaType === 'VIDEO' ? 'VIDEO' : 'IMAGE';
     this.validateFile(file, mediaType);
+    this.logger.log(`create: recebido ${mediaType} de ${(file.size / 1024 / 1024).toFixed(1)}MB, iniciando upload...`);
 
     await this.ensureBucket();
     const ext = mediaType === 'VIDEO' ? 'mp4' : file.mimetype === 'image/png' ? 'png' : 'jpg';
     const storagePath = `${randomUUID()}.${ext}`;
-    const { error } = await this.supabase.storage
-      .from(this.bucket)
-      .upload(storagePath, file.buffer, { contentType: file.mimetype, upsert: false });
+    this.logger.log(`create: enviando pro storage (${storagePath})...`);
+    // Vídeo grande pode levar mais tempo — timeout generoso (2min) só pra
+    // garantir que a requisição HTTP nunca fica pendurada pra sempre.
+    const { error } = await withTimeout(
+      this.supabase.storage.from(this.bucket).upload(storagePath, file.buffer, { contentType: file.mimetype, upsert: false }),
+      120_000,
+      'storage.upload',
+    );
     if (error) {
       this.logger.error(`Erro ao subir mídia pro storage: ${error.message}`);
       throw new BadRequestException(`Falha no upload: ${error.message}`);
     }
+    this.logger.log(`create: upload concluído`);
 
     const { data: urlData } = this.supabase.storage.from(this.bucket).getPublicUrl(storagePath);
     const scheduledAt = dto.scheduledAt ? new Date(dto.scheduledAt) : null;
