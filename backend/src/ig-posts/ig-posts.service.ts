@@ -10,10 +10,11 @@ import { IgPost, IgPostMediaType } from './ig-post.entity';
 
 const IG_API = 'https://graph.instagram.com/v21.0';
 const MAX_IMAGE_SIZE_MB = 20;
-// 50MB é o teto de upload do plano Supabase do projeto (mesmo limite já usado
-// no bucket sdr-followup-videos) — pedir mais que isso faz o createBucket
-// falhar com "The object exceeded the maximum allowed size".
-const MAX_VIDEO_SIZE_MB = 50;
+// Exige que o "Global file size limit" do projeto no painel do Supabase
+// (Settings → Storage) esteja em pelo menos 100MB — senão o createBucket
+// falha com "The object exceeded the maximum allowed size" (era o caso com
+// o teto padrão de 50MB, por isso o bucket precisou ser recriado).
+const MAX_VIDEO_SIZE_MB = 100;
 // Cada tentativa do cron de processamento acontece a cada 30s — 40 tentativas
 // ≈ 20min de espera antes de desistir de um vídeo travado no Instagram.
 const MAX_PROCESSING_ATTEMPTS = 40;
@@ -70,12 +71,29 @@ export class IgPostsService {
   }
 
   // Cria o bucket (público) na 1ª vez, se ainda não existir — evita passo manual no painel do Supabase.
+  // Se já existir com um limite menor (ex.: bucket criado antes com 50MB),
+  // atualiza o fileSizeLimit em vez de pular — senão o limite antigo persiste
+  // mesmo depois de subir MAX_VIDEO_SIZE_MB no código.
   private async ensureBucket(): Promise<void> {
     const { data } = await this.supabase.storage.getBucket(this.bucket);
-    if (data) return;
+    const desiredLimit = MAX_VIDEO_SIZE_MB * 1024 * 1024;
+    if (data) {
+      if ((data.file_size_limit ?? 0) < desiredLimit) {
+        const { error: updateError } = await this.supabase.storage.updateBucket(this.bucket, {
+          public: true,
+          fileSizeLimit: desiredLimit,
+          allowedMimeTypes: ['image/jpeg', 'image/png', 'video/mp4'],
+        });
+        if (updateError) {
+          this.logger.error(`Erro ao atualizar limite do bucket ${this.bucket}: ${updateError.message}`);
+          throw new BadRequestException(`Falha ao preparar o storage: ${updateError.message}`);
+        }
+      }
+      return;
+    }
     const { error } = await this.supabase.storage.createBucket(this.bucket, {
       public: true,
-      fileSizeLimit: MAX_VIDEO_SIZE_MB * 1024 * 1024,
+      fileSizeLimit: desiredLimit,
       allowedMimeTypes: ['image/jpeg', 'image/png', 'video/mp4'],
     });
     if (error && !/already exists/i.test(error.message)) {
