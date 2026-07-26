@@ -369,6 +369,143 @@ function SdrPromptEditor() {
   )
 }
 
+function IgCatchallEditor() {
+  const [enabled, setEnabled] = useState(false)
+  const [prompt, setPrompt] = useState('')
+  const [defaultPrompt, setDefaultPrompt] = useState('')
+  const [isCustom, setIsCustom] = useState(false)
+  const [link, setLink] = useState('')
+  const [buttonLabel, setButtonLabel] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+
+  useEffect(() => {
+    fetch(`${API}/ig-auto/catchall`)
+      .then((r) => r.json())
+      .then((d) => {
+        setEnabled(!!d.enabled)
+        setPrompt(d.prompt || '')
+        setDefaultPrompt(d.defaultPrompt || '')
+        setIsCustom(!!d.isCustomPrompt)
+        setLink(d.link || '')
+        setButtonLabel(d.buttonLabel || '')
+      })
+      .catch((e) => console.error('Erro ao carregar config catch-all', e))
+      .finally(() => setLoading(false))
+  }, [])
+
+  const save = async () => {
+    setSaving(true)
+    setSaved(false)
+    try {
+      const res = await fetch(`${API}/ig-auto/catchall`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled, prompt, link, buttonLabel }),
+      })
+      const d = await res.json()
+      setEnabled(!!d.enabled)
+      setPrompt(d.prompt || '')
+      setIsCustom(!!d.isCustomPrompt)
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2500)
+    } catch (e) {
+      console.error('Erro ao salvar config catch-all', e)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const restoreDefault = () => setPrompt(defaultPrompt)
+
+  return (
+    <div className="mb-6 bg-white rounded-xl border border-slate-200 p-5">
+      <div className="flex items-center justify-between mb-1">
+        <div className="flex items-center gap-2">
+          <Bot className="w-4 h-4 text-violet-600" />
+          <p className="font-semibold text-slate-800 text-sm">IA de DM direta no Instagram (sem automação específica)</p>
+          {isCustom ? (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700 font-medium">Personalizado</span>
+          ) : (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 font-medium">Padrão</span>
+          )}
+        </div>
+        <button
+          onClick={() => setEnabled((v) => !v)}
+          className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg transition ${enabled ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}
+        >
+          {enabled ? <ToggleRight className="w-4 h-4" /> : <ToggleLeft className="w-4 h-4" />}
+          {enabled ? 'Ativado' : 'Desativado'}
+        </button>
+      </div>
+      <p className="text-xs text-slate-400 mb-4">
+        Responde qualquer DM que chegar sem vir de um comentário/automação rastreada — ex.: alguém viu o anúncio, mas em vez de ir pro WhatsApp mandou mensagem direto aqui no Instagram.
+      </p>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-10 text-slate-400">
+          <Loader2 className="w-5 h-5 animate-spin" />
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-medium text-slate-600">Prompt da IA</label>
+              <button onClick={restoreDefault} className="flex items-center gap-1 text-[11px] font-medium text-slate-500 hover:text-slate-700 transition">
+                <RotateCcw className="w-3 h-3" /> Restaurar padrão
+              </button>
+            </div>
+            <textarea
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              spellCheck={false}
+              rows={10}
+              className="w-full text-sm text-slate-700 border border-slate-200 rounded-lg p-3 font-mono leading-relaxed resize-none focus:outline-none focus:ring-2 focus:ring-violet-300"
+              placeholder="Escreva o prompt da IA que atende quem manda DM direto..."
+            />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1.5">Link (ex: wa.me do SDR)</label>
+              <input
+                value={link}
+                onChange={(e) => setLink(e.target.value)}
+                placeholder="https://wa.me/55..."
+                className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-300"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1.5">Label do botão no DM (opcional)</label>
+              <input
+                value={buttonLabel}
+                onChange={(e) => setButtonLabel(e.target.value)}
+                placeholder="Ex: Falar com a Sofia"
+                className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-300"
+              />
+            </div>
+          </div>
+          <div className="flex items-center justify-end gap-3">
+            {saved && (
+              <span className="flex items-center gap-1 text-xs text-emerald-600 font-medium">
+                <CheckCircle2 className="w-4 h-4" /> Salvo
+              </span>
+            )}
+            <button
+              onClick={save}
+              disabled={saving || !prompt.trim()}
+              className="flex items-center gap-1.5 text-xs font-medium text-white bg-violet-600 hover:bg-violet-700 disabled:opacity-50 px-4 py-2 rounded-lg transition"
+            >
+              {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+              Salvar
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 const EMPTY_RULE = { name: '', enabled: true, kanbanStage: '', utmCampaign: '', adTitle: '', createdAfter: '', delayMinutes: 60, sendAtHour: '', sendAtMinute: 0, mode: 'manual', text: '', videoId: '', videoCaptionOverride: '' }
 
 // 'YYYY-MM-DDTHH:mm' no fuso local, pro valor inicial do <input type="datetime-local">.
@@ -1198,6 +1335,8 @@ export default function Settings() {
       </div>
 
       <SdrPromptEditor />
+
+      <IgCatchallEditor />
 
       <NotifyPhonesConfig />
 

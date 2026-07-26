@@ -7,12 +7,33 @@ import OpenAI from 'openai';
 import { InstagramAutomation } from './instagram-automation.entity';
 import { IgConversation } from './ig-conversation.entity';
 import { Lead } from '../common/entities/lead.entity';
+import { SettingsService } from '../settings/settings.service';
 
 const IG_API = 'https://graph.instagram.com/v21.0';
 
 const DEFAULT_IG_AI_PROMPT = `Você é uma atendente simpática respondendo comentários e DMs no Instagram.
 Escreva como alguém mandando mensagem de verdade, curto, direto, no máximo 2-3 frases, com no máximo 1 emoji.
 Nunca invente informação sobre produto/preço que não foi te dada no contexto.`;
+
+// DM que chega sem vir de um comentário/automação rastreada (ex.: alguém vê o
+// anúncio, mas em vez de ir pro WhatsApp manda DM direto no Instagram falando
+// "quero a IA de vocês"). Chave única no key-value de settings (mesmo padrão
+// do prompt da Sofia em sdr.prompt.ts).
+export const IG_CATCHALL_ENABLED_KEY = 'ig_catchall_enabled';
+export const IG_CATCHALL_PROMPT_KEY = 'ig_catchall_prompt';
+export const IG_CATCHALL_LINK_KEY = 'ig_catchall_link';
+export const IG_CATCHALL_BUTTON_KEY = 'ig_catchall_button_label';
+
+const DEFAULT_CATCHALL_PROMPT = `Você é uma atendente simpática da Convert Hair AI respondendo mensagens diretas no Instagram.
+Essas pessoas vieram de um anúncio (às vezes de um anúncio que leva pro WhatsApp, mas preferiram mandar DM direto aqui) dizendo que têm interesse na IA.
+Seja breve, humana, no máximo 2-3 frases por mensagem, no máximo 1 emoji. Entenda rapidamente se a pessoa vende cabelo/mega hair/perucas, e quando fizer sentido, mande o link pra continuar a conversa.
+Nunca invente preço ou funcionalidade que não foi te dada no contexto.`;
+
+interface AiReplyConfig {
+  aiPrompt?: string | null;
+  replyMessage?: string | null;
+  link?: string | null;
+}
 
 @Injectable()
 export class InstagramAutomationService {
@@ -27,8 +48,34 @@ export class InstagramAutomationService {
     @InjectRepository(Lead)
     private leadRepo: Repository<Lead>,
     private config: ConfigService,
+    private settings: SettingsService,
   ) {
     this.openai = new OpenAI({ apiKey: config.get('OPENAI_API_KEY') });
+  }
+
+  async getCatchallConfig() {
+    const [enabled, prompt, link, buttonLabel] = await Promise.all([
+      this.settings.get(IG_CATCHALL_ENABLED_KEY),
+      this.settings.get(IG_CATCHALL_PROMPT_KEY),
+      this.settings.get(IG_CATCHALL_LINK_KEY),
+      this.settings.get(IG_CATCHALL_BUTTON_KEY),
+    ]);
+    return {
+      enabled: enabled === 'true',
+      prompt: prompt || DEFAULT_CATCHALL_PROMPT,
+      isCustomPrompt: prompt != null,
+      defaultPrompt: DEFAULT_CATCHALL_PROMPT,
+      link: link || '',
+      buttonLabel: buttonLabel || '',
+    };
+  }
+
+  async setCatchallConfig(body: { enabled?: boolean; prompt?: string; link?: string; buttonLabel?: string }) {
+    if (body.enabled !== undefined) await this.settings.set(IG_CATCHALL_ENABLED_KEY, body.enabled ? 'true' : 'false');
+    if (body.prompt !== undefined) await this.settings.set(IG_CATCHALL_PROMPT_KEY, body.prompt.trim() || DEFAULT_CATCHALL_PROMPT);
+    if (body.link !== undefined) await this.settings.set(IG_CATCHALL_LINK_KEY, body.link.trim());
+    if (body.buttonLabel !== undefined) await this.settings.set(IG_CATCHALL_BUTTON_KEY, body.buttonLabel.trim());
+    return this.getCatchallConfig();
   }
 
   private get igToken() {
@@ -224,16 +271,50 @@ export class InstagramAutomationService {
       where: { senderIgId },
       order: { updatedAt: 'DESC' },
     });
-    if (!conv || conv.step === 'completed') return;
 
-    const auto = await this.repo.findOneBy({ id: conv.automationId });
+    // Nenhuma conversa rastreada (não veio de comentário/automação nenhuma) —
+    // ex.: a pessoa viu o anúncio mas mandou DM direto no Instagram em vez de
+    // ir pro WhatsApp. Se a IA "catch-all" estiver ligada, abre a conversa
+    // agora mesmo; senão, mantém o comportamento antigo (ignora).
+    if (!conv) {
+      const catchall = await this.getCatchallConfig();
+      if (!catchall.enabled) return;
+      this.logger.log(`DM catch-all: nova conversa com ${senderIgId}`);
+      const { reply, sendLink } = await this.generateAiReply(
+        { aiPrompt: catchall.prompt, link: catchall.link },
+        [],
+        text,
+      );
+      if (!reply) return;
+      await this.sendDmToUser(senderIgId, reply, sendLink ? catchall.buttonLabel : undefined, sendLink ? catchall.link : undefined);
+      await this.convRepo.save(
+        this.convRepo.create({
+          senderIgId,
+          automationId: null,
+          step: 'ai_chat',
+          aiContext: [
+            { role: 'user', content: text },
+            { role: 'assistant', content: reply },
+          ],
+        }),
+      );
+      return;
+    }
 
-    // ── Passo: conversa conduzida pela IA ──
-    if (conv.step === 'ai_chat' && auto) {
+    if (conv.step === 'completed') return;
+
+    const auto = conv.automationId ? await this.repo.findOneBy({ id: conv.automationId }) : null;
+
+    // ── Passo: conversa conduzida pela IA (automação específica OU catch-all) ──
+    if (conv.step === 'ai_chat') {
+      const catchall = auto ? null : await this.getCatchallConfig();
+      const aiConfig: AiReplyConfig = auto ?? { aiPrompt: catchall!.prompt, link: catchall!.link };
+      const dmButtonLabel = auto ? auto.dmButtonLabel : catchall!.buttonLabel;
+
       const history = Array.isArray(conv.aiContext) ? conv.aiContext : [];
-      const { reply, sendLink } = await this.generateAiReply(auto, history, text);
+      const { reply, sendLink } = await this.generateAiReply(aiConfig, history, text);
       if (reply) {
-        await this.sendDmToUser(senderIgId, reply, sendLink ? auto.dmButtonLabel : undefined, sendLink ? auto.link : undefined);
+        await this.sendDmToUser(senderIgId, reply, sendLink ? dmButtonLabel : undefined, sendLink ? aiConfig.link ?? undefined : undefined);
         const updatedContext = [...history, { role: 'user', content: text }, { role: 'assistant', content: reply }];
         await this.convRepo.update(conv.id, { aiContext: updatedContext });
       }
@@ -304,15 +385,15 @@ export class InstagramAutomationService {
 
   // ─── IA ──────────────────────────────────────────────────────────────────────
 
-  /** Gera a próxima mensagem de DM (abertura a partir de um comentário, ou continuação de uma conversa em andamento). */
+  /** Gera a próxima mensagem de DM (abertura a partir de um comentário/DM direta, ou continuação de uma conversa em andamento). */
   private async generateAiReply(
-    auto: InstagramAutomation,
+    auto: AiReplyConfig,
     history: { role: string; content: string }[],
     incomingText: string,
   ): Promise<{ reply: string; sendLink: boolean }> {
     try {
       const basePrompt = auto.aiPrompt || DEFAULT_IG_AI_PROMPT;
-      const context = `\n\nCONTEXTO:\n- Essa conversa começou por um comentário no Instagram.\n- Mensagem/oferta que você pode usar quando fizer sentido: "${auto.replyMessage}"\n- Link disponível pra mandar quando for a hora certa (nunca invente outro): ${auto.link || 'nenhum'}\n\nResponda SEMPRE em JSON: {"reply": "texto curto da mensagem", "sendLink": true|false}. sendLink=true só no momento certo de mandar o link — não force isso na 1ª mensagem se não fizer sentido.`;
+      const context = `\n\nCONTEXTO:\n- Mensagem/oferta que você pode usar quando fizer sentido: "${auto.replyMessage || ''}"\n- Link disponível pra mandar quando for a hora certa (nunca invente outro): ${auto.link || 'nenhum'}\n\nResponda SEMPRE em JSON: {"reply": "texto curto da mensagem", "sendLink": true|false}. sendLink=true só no momento certo de mandar o link — não force isso na 1ª mensagem se não fizer sentido.`;
 
       const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
         { role: 'system', content: basePrompt + context },

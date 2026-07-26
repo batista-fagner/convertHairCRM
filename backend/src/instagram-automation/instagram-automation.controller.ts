@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, Query, Res } from '@nestjs/common';
+import { Controller, Get, Post, Put, Patch, Delete, Body, Param, Query, Res } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InstagramAutomationService } from './instagram-automation.service';
 
@@ -37,6 +37,18 @@ export class InstagramAutomationController {
   @Get('media')
   getMedia(@Query('after') after?: string) {
     return this.service.getRecentMedia(after);
+  }
+
+  // ─── IA catch-all: DM direta sem vir de comentário/automação ────────────────
+
+  @Get('catchall')
+  getCatchall() {
+    return this.service.getCatchallConfig();
+  }
+
+  @Put('catchall')
+  setCatchall(@Body() body: { enabled?: boolean; prompt?: string; link?: string; buttonLabel?: string }) {
+    return this.service.setCatchallConfig(body);
   }
 
   @Post('subscribe')

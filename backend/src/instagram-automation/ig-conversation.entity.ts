@@ -11,8 +11,10 @@ export class IgConversation {
   @Column({ name: 'ig_username', type: 'varchar', nullable: true })
   igUsername?: string;
 
-  @Column({ name: 'automation_id', type: 'uuid' })
-  automationId: string;
+  // null = conversa "catch-all" (DM direta sem vir de comentário/automação
+  // específica) — ver getCatchallConfig() em instagram-automation.service.ts.
+  @Column({ name: 'automation_id', type: 'uuid', nullable: true })
+  automationId: string | null;
 
   @Column({ name: 'step', type: 'varchar', default: 'waiting_email' })
   step: string; // 'waiting_email' | 'waiting_confirmation' | 'ai_chat' | 'completed'
