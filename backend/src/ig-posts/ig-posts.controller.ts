@@ -13,7 +13,7 @@ export class IgPostsController {
   }
 
   @Post()
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 100 * 1024 * 1024 } }))
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 500 * 1024 * 1024 } }))
   async create(
     @UploadedFile() file: UploadedPostFile,
     @Body('mediaType') mediaType: string,

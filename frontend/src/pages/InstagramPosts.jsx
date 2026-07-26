@@ -151,7 +151,7 @@ function UploadForm({ onCancel, onDone, onError }) {
 
         <div>
           <label className="block text-xs font-medium text-slate-600 mb-1.5">
-            Arquivo ({mediaType === 'IMAGE' ? 'JPEG/PNG, máx 20MB' : 'MP4, máx 100MB'})
+            Arquivo ({mediaType === 'IMAGE' ? 'JPEG/PNG, máx 20MB' : 'MP4, máx 500MB'})
           </label>
           <input
             ref={fileRef}

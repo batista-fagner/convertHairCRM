@@ -10,9 +10,11 @@ import { IgPost, IgPostMediaType } from './ig-post.entity';
 
 const IG_API = 'https://graph.instagram.com/v21.0';
 const MAX_IMAGE_SIZE_MB = 20;
-// R2 não tem o teto de 50MB do plano Free do Supabase — sem essa restrição,
-// pode subir até o valor que o usuário pediu.
-const MAX_VIDEO_SIZE_MB = 100;
+// R2 não tem teto de tamanho por plano (S3 aceita objeto único até 5GiB) —
+// 500MB dá bastante folga pra Reels/vídeos maiores sem exagerar no buffer
+// em memória do multer (FileInterceptor guarda o arquivo inteiro em RAM
+// antes de mandar pro R2).
+const MAX_VIDEO_SIZE_MB = 500;
 // Cada tentativa do cron de processamento acontece a cada 30s — 40 tentativas
 // ≈ 20min de espera antes de desistir de um vídeo travado no Instagram.
 const MAX_PROCESSING_ATTEMPTS = 40;
