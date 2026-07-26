@@ -10,11 +10,11 @@ import { IgPost, IgPostMediaType } from './ig-post.entity';
 
 const IG_API = 'https://graph.instagram.com/v21.0';
 const MAX_IMAGE_SIZE_MB = 20;
-// Exige que o "Global file size limit" do projeto no painel do Supabase
-// (Settings → Storage) esteja em pelo menos 100MB — senão o createBucket
-// falha com "The object exceeded the maximum allowed size" (era o caso com
-// o teto padrão de 50MB, por isso o bucket precisou ser recriado).
-const MAX_VIDEO_SIZE_MB = 100;
+// 50MB é um teto FIXO do plano Free do Supabase (confirmado no painel:
+// "Free Plan has a fixed upload file size limit of 50 MB") — não dá pra
+// configurar mais alto sem upgrade pro Pro Plan, então pedir mais que isso
+// no bucket sempre falha com "The object exceeded the maximum allowed size".
+const MAX_VIDEO_SIZE_MB = 50;
 // Cada tentativa do cron de processamento acontece a cada 30s — 40 tentativas
 // ≈ 20min de espera antes de desistir de um vídeo travado no Instagram.
 const MAX_PROCESSING_ATTEMPTS = 40;
