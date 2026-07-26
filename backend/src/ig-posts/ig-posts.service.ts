@@ -3,18 +3,16 @@ import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Cron } from '@nestjs/schedule';
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { randomUUID } from 'crypto';
 import axios from 'axios';
 import { IgPost, IgPostMediaType } from './ig-post.entity';
 
 const IG_API = 'https://graph.instagram.com/v21.0';
 const MAX_IMAGE_SIZE_MB = 20;
-// 50MB é um teto FIXO do plano Free do Supabase (confirmado no painel:
-// "Free Plan has a fixed upload file size limit of 50 MB") — não dá pra
-// configurar mais alto sem upgrade pro Pro Plan, então pedir mais que isso
-// no bucket sempre falha com "The object exceeded the maximum allowed size".
-const MAX_VIDEO_SIZE_MB = 50;
+// R2 não tem o teto de 50MB do plano Free do Supabase — sem essa restrição,
+// pode subir até o valor que o usuário pediu.
+const MAX_VIDEO_SIZE_MB = 100;
 // Cada tentativa do cron de processamento acontece a cada 30s — 40 tentativas
 // ≈ 20min de espera antes de desistir de um vídeo travado no Instagram.
 const MAX_PROCESSING_ATTEMPTS = 40;
@@ -53,18 +51,25 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
 @Injectable()
 export class IgPostsService {
   private readonly logger = new Logger(IgPostsService.name);
-  private readonly supabase: SupabaseClient;
+  private readonly s3: S3Client;
   private readonly bucket: string;
+  private readonly publicUrlBase: string;
 
   constructor(
     @InjectRepository(IgPost) private readonly repo: Repository<IgPost>,
     private readonly config: ConfigService,
   ) {
-    this.supabase = createClient(
-      config.get('SUPABASE_URL') ?? '',
-      config.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
-    );
-    this.bucket = config.get('IG_POSTS_BUCKET') ?? 'ig-posts';
+    this.s3 = new S3Client({
+      region: 'auto',
+      endpoint: config.get('R2_ENDPOINT'),
+      credentials: {
+        accessKeyId: config.get('R2_ACCESS_KEY_ID') ?? '',
+        secretAccessKey: config.get('R2_SECRET_ACCESS_KEY') ?? '',
+      },
+    });
+    this.bucket = config.get('R2_BUCKET') ?? 'converthair-ig';
+    // Sem barra no final — montamos a URL como `${base}/${storagePath}`.
+    this.publicUrlBase = (config.get<string>('R2_PUBLIC_URL') ?? '').replace(/\/$/, '');
   }
 
   private get igToken() {
@@ -84,51 +89,6 @@ export class IgPostsService {
 
   list(): Promise<IgPost[]> {
     return this.repo.find({ order: { createdAt: 'DESC' } });
-  }
-
-  // Cria o bucket (público) na 1ª vez, se ainda não existir — evita passo manual no painel do Supabase.
-  // Se já existir com um limite menor (ex.: bucket criado antes com 50MB),
-  // atualiza o fileSizeLimit em vez de pular — senão o limite antigo persiste
-  // mesmo depois de subir MAX_VIDEO_SIZE_MB no código.
-  private async ensureBucket(): Promise<void> {
-    this.logger.log(`ensureBucket: verificando bucket ${this.bucket}...`);
-    const { data } = await withTimeout(this.supabase.storage.getBucket(this.bucket), 15_000, 'storage.getBucket');
-    const desiredLimit = MAX_VIDEO_SIZE_MB * 1024 * 1024;
-    if (data) {
-      this.logger.log(`ensureBucket: bucket existe (limite atual ${data.file_size_limit} bytes)`);
-      if ((data.file_size_limit ?? 0) < desiredLimit) {
-        const { error: updateError } = await withTimeout(
-          this.supabase.storage.updateBucket(this.bucket, {
-            public: true,
-            fileSizeLimit: desiredLimit,
-            allowedMimeTypes: ['image/jpeg', 'image/png', 'video/mp4'],
-          }),
-          15_000,
-          'storage.updateBucket',
-        );
-        if (updateError) {
-          this.logger.error(`Erro ao atualizar limite do bucket ${this.bucket}: ${updateError.message}`);
-          throw new BadRequestException(`Falha ao preparar o storage: ${updateError.message}`);
-        }
-        this.logger.log(`ensureBucket: limite atualizado pra ${desiredLimit} bytes`);
-      }
-      return;
-    }
-    this.logger.log(`ensureBucket: bucket não existe, criando...`);
-    const { error } = await withTimeout(
-      this.supabase.storage.createBucket(this.bucket, {
-        public: true,
-        fileSizeLimit: desiredLimit,
-        allowedMimeTypes: ['image/jpeg', 'image/png', 'video/mp4'],
-      }),
-      15_000,
-      'storage.createBucket',
-    );
-    if (error && !/already exists/i.test(error.message)) {
-      this.logger.error(`Erro ao criar bucket ${this.bucket}: ${error.message}`);
-      throw new BadRequestException(`Falha ao preparar o storage: ${error.message}`);
-    }
-    this.logger.log(`ensureBucket: concluído`);
   }
 
   private validateFile(file: UploadedPostFile, mediaType: IgPostMediaType) {
@@ -156,24 +116,29 @@ export class IgPostsService {
     this.validateFile(file, mediaType);
     this.logger.log(`create: recebido ${mediaType} de ${(file.size / 1024 / 1024).toFixed(1)}MB, iniciando upload...`);
 
-    await this.ensureBucket();
     const ext = mediaType === 'VIDEO' ? 'mp4' : file.mimetype === 'image/png' ? 'png' : 'jpg';
     const storagePath = `${randomUUID()}.${ext}`;
-    this.logger.log(`create: enviando pro storage (${storagePath})...`);
+    this.logger.log(`create: enviando pro R2 (${storagePath})...`);
     // Vídeo grande pode levar mais tempo — timeout generoso (2min) só pra
     // garantir que a requisição HTTP nunca fica pendurada pra sempre.
-    const { error } = await withTimeout(
-      this.supabase.storage.from(this.bucket).upload(storagePath, file.buffer, { contentType: file.mimetype, upsert: false }),
-      120_000,
-      'storage.upload',
-    );
-    if (error) {
-      this.logger.error(`Erro ao subir mídia pro storage: ${error.message}`);
-      throw new BadRequestException(`Falha no upload: ${error.message}`);
+    try {
+      await withTimeout(
+        this.s3.send(new PutObjectCommand({
+          Bucket: this.bucket,
+          Key: storagePath,
+          Body: file.buffer,
+          ContentType: file.mimetype,
+        })),
+        120_000,
+        's3.putObject',
+      );
+    } catch (err: any) {
+      this.logger.error(`Erro ao subir mídia pro R2: ${err.message}`);
+      throw new BadRequestException(`Falha no upload: ${err.message}`);
     }
     this.logger.log(`create: upload concluído`);
 
-    const { data: urlData } = this.supabase.storage.from(this.bucket).getPublicUrl(storagePath);
+    const publicUrl = `${this.publicUrlBase}/${storagePath}`;
     const scheduledAt = dto.scheduledAt ? new Date(dto.scheduledAt) : null;
 
     const post = await this.repo.save(
@@ -181,7 +146,7 @@ export class IgPostsService {
         mediaType,
         caption: dto.caption?.trim() || null,
         storagePath,
-        publicUrl: urlData.publicUrl,
+        publicUrl,
         status: 'scheduled',
         scheduledAt,
       }),
@@ -213,8 +178,11 @@ export class IgPostsService {
   async remove(id: string): Promise<void> {
     const post = await this.repo.findOne({ where: { id } });
     if (!post) throw new NotFoundException('Post não encontrado');
-    const { error } = await this.supabase.storage.from(this.bucket).remove([post.storagePath]);
-    if (error) this.logger.warn(`Erro ao remover mídia do storage (segue com delete no banco): ${error.message}`);
+    try {
+      await this.s3.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: post.storagePath }));
+    } catch (err: any) {
+      this.logger.warn(`Erro ao remover mídia do R2 (segue com delete no banco): ${err.message}`);
+    }
     await this.repo.delete(id);
   }
 
