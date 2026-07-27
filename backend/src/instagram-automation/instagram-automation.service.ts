@@ -159,6 +159,23 @@ export class InstagramAutomationService {
     return { subscribed: true, igUserId };
   }
 
+  /**
+   * DMs (diferente de comentários) não vêm com o username no payload do
+   * webhook — só o IGSID. A API do Instagram permite resolver o perfil de
+   * quem já trocou mensagem com a conta via este endpoint.
+   */
+  private async fetchIgUsername(igsid: string): Promise<string | undefined> {
+    try {
+      const res = await axios.get(`${IG_API}/${igsid}`, {
+        params: { fields: 'username', access_token: this.igToken },
+      });
+      return res.data?.username || undefined;
+    } catch (err: any) {
+      this.logger.warn(`Não consegui buscar username de ${igsid}: ${err.message}`);
+      return undefined;
+    }
+  }
+
   private normalize(text: string): string {
     return text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
   }
@@ -353,8 +370,9 @@ export class InstagramAutomationService {
       if (!catchall.enabled) return;
       this.logger.log(`DM catch-all: nova conversa com ${senderIgId}`);
 
+      const igUsername = await this.fetchIgUsername(senderIgId);
       const newConv = await this.convRepo.save(
-        this.convRepo.create({ senderIgId, automationId: null, step: 'ai_chat', originType: 'direct' }),
+        this.convRepo.create({ senderIgId, igUsername, automationId: null, step: 'ai_chat', originType: 'direct' }),
       );
       this.realtime.emitIgConversationCreated(newConv);
       await this.recordMessage(newConv.id, 'inbound', text, 'contact');
@@ -368,6 +386,16 @@ export class InstagramAutomationService {
       await this.sendBlocksToUser(senderIgId, blocks, sendLink ? catchall.buttonLabel : undefined, sendLink ? catchall.link : undefined);
       for (const block of blocks) await this.recordMessage(newConv.id, 'outbound', block, 'ai');
       return;
+    }
+
+    // Conversas antigas/DM não têm username salvo (só comentário traz isso no
+    // payload) — busca uma vez e preenche, pra parar de aparecer só o ID.
+    if (!conv.igUsername) {
+      const igUsername = await this.fetchIgUsername(senderIgId);
+      if (igUsername) {
+        conv.igUsername = igUsername;
+        await this.convRepo.update(conv.id, { igUsername });
+      }
     }
 
     if (conv.step === 'completed') {
