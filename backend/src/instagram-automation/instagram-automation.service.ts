@@ -26,7 +26,9 @@ export const IG_CATCHALL_BUTTON_KEY = 'ig_catchall_button_label';
 
 const DEFAULT_CATCHALL_PROMPT = `Você é uma atendente simpática da Convert Hair AI respondendo mensagens diretas no Instagram.
 Essas pessoas vieram de um anúncio (às vezes de um anúncio que leva pro WhatsApp, mas preferiram mandar DM direto aqui) dizendo que têm interesse na IA.
-Seja breve, humana, no máximo 2-3 frases por mensagem, no máximo 1 emoji. Entenda rapidamente se a pessoa vende cabelo/mega hair/perucas, e quando fizer sentido, mande o link pra continuar a conversa.
+Seja breve, humana, no máximo 2-3 frases por mensagem, no máximo 1 emoji.
+Se a mensagem da pessoa for só um cumprimento solto (oi, olá, boa tarde, opa, e aí etc.), sem contar nada ainda, NÃO se apresente nem dispare a pergunta de qualificação de cara — isso soa robótico. Responda o cumprimento de forma leve e natural, como alguém real responderia, e só avance pra entender o interesse dela na mensagem seguinte.
+Entenda rapidamente se a pessoa vende cabelo/mega hair/perucas, e quando fizer sentido, mande o link pra continuar a conversa.
 Nunca invente preço ou funcionalidade que não foi te dada no contexto.`;
 
 interface AiReplyConfig {
@@ -34,6 +36,9 @@ interface AiReplyConfig {
   replyMessage?: string | null;
   link?: string | null;
 }
+
+/** Espera entre cada bloco de mensagem enviado em sequência, simulando alguém digitando. */
+const BLOCK_DELAY_MS = 2000;
 
 @Injectable()
 export class InstagramAutomationService {
@@ -206,12 +211,12 @@ export class InstagramAutomationService {
       // confirmação/captura de email.
       if (auto.useAi && senderIgId) {
         const rawComment = value.text || '';
-        const { reply, sendLink } = await this.generateAiReply(auto, [], rawComment);
-        if (reply) {
-          await this.sendDm(commentId, reply, sendLink ? auto.dmButtonLabel : undefined, sendLink ? auto.link : undefined);
+        const { blocks, sendLink } = await this.generateAiReply(auto, [], rawComment);
+        if (blocks.length) {
+          await this.sendBlocksToComment(commentId, blocks, sendLink ? auto.dmButtonLabel : undefined, sendLink ? auto.link : undefined);
           await this.upsertConversation(senderIgId, igUsername, auto.id, 'ai_chat', [
             { role: 'user', content: rawComment },
-            { role: 'assistant', content: reply },
+            { role: 'assistant', content: blocks.join('\n\n') },
           ]);
         }
 
@@ -280,13 +285,13 @@ export class InstagramAutomationService {
       const catchall = await this.getCatchallConfig();
       if (!catchall.enabled) return;
       this.logger.log(`DM catch-all: nova conversa com ${senderIgId}`);
-      const { reply, sendLink } = await this.generateAiReply(
+      const { blocks, sendLink } = await this.generateAiReply(
         { aiPrompt: catchall.prompt, link: catchall.link },
         [],
         text,
       );
-      if (!reply) return;
-      await this.sendDmToUser(senderIgId, reply, sendLink ? catchall.buttonLabel : undefined, sendLink ? catchall.link : undefined);
+      if (!blocks.length) return;
+      await this.sendBlocksToUser(senderIgId, blocks, sendLink ? catchall.buttonLabel : undefined, sendLink ? catchall.link : undefined);
       await this.convRepo.save(
         this.convRepo.create({
           senderIgId,
@@ -294,7 +299,7 @@ export class InstagramAutomationService {
           step: 'ai_chat',
           aiContext: [
             { role: 'user', content: text },
-            { role: 'assistant', content: reply },
+            { role: 'assistant', content: blocks.join('\n\n') },
           ],
         }),
       );
@@ -312,10 +317,10 @@ export class InstagramAutomationService {
       const dmButtonLabel = auto ? auto.dmButtonLabel : catchall!.buttonLabel;
 
       const history = Array.isArray(conv.aiContext) ? conv.aiContext : [];
-      const { reply, sendLink } = await this.generateAiReply(aiConfig, history, text);
-      if (reply) {
-        await this.sendDmToUser(senderIgId, reply, sendLink ? dmButtonLabel : undefined, sendLink ? aiConfig.link ?? undefined : undefined);
-        const updatedContext = [...history, { role: 'user', content: text }, { role: 'assistant', content: reply }];
+      const { blocks, sendLink } = await this.generateAiReply(aiConfig, history, text);
+      if (blocks.length) {
+        await this.sendBlocksToUser(senderIgId, blocks, sendLink ? dmButtonLabel : undefined, sendLink ? aiConfig.link ?? undefined : undefined);
+        const updatedContext = [...history, { role: 'user', content: text }, { role: 'assistant', content: blocks.join('\n\n') }];
         await this.convRepo.update(conv.id, { aiContext: updatedContext });
       }
 
@@ -390,10 +395,10 @@ export class InstagramAutomationService {
     auto: AiReplyConfig,
     history: { role: string; content: string }[],
     incomingText: string,
-  ): Promise<{ reply: string; sendLink: boolean }> {
+  ): Promise<{ blocks: string[]; sendLink: boolean }> {
     try {
       const basePrompt = auto.aiPrompt || DEFAULT_IG_AI_PROMPT;
-      const context = `\n\nCONTEXTO:\n- Mensagem/oferta que você pode usar quando fizer sentido: "${auto.replyMessage || ''}"\n- Link disponível pra mandar quando for a hora certa (nunca invente outro): ${auto.link || 'nenhum'}\n\nResponda SEMPRE em JSON: {"reply": "texto curto da mensagem", "sendLink": true|false}. sendLink=true só no momento certo de mandar o link — não force isso na 1ª mensagem se não fizer sentido.`;
+      const context = `\n\nCONTEXTO:\n- Mensagem/oferta que você pode usar quando fizer sentido: "${auto.replyMessage || ''}"\n- Link disponível pra mandar quando for a hora certa (nunca invente outro): ${auto.link || 'nenhum'}\n\nResponda SEMPRE em JSON: {"blocks": ["mensagem 1", "mensagem 2 (opcional)"], "sendLink": true|false}. "blocks" é a lista de mensagens a mandar em sequência, como alguém real mandando 2-3 mensagens curtas seguidas em vez de um texto único grande — use 1 bloco só quando a resposta já é curta, e separe em 2-3 blocos quando a resposta natural ficaria longa. Cada bloco deve ser curto (1-2 frases). sendLink=true só no momento certo de mandar o link — não force isso na 1ª mensagem se não fizer sentido.`;
 
       const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
         { role: 'system', content: basePrompt + context },
@@ -411,10 +416,16 @@ export class InstagramAutomationService {
 
       const raw = response.choices[0].message.content?.trim() ?? '{}';
       const parsed = JSON.parse(raw);
-      return { reply: typeof parsed.reply === 'string' ? parsed.reply : '', sendLink: Boolean(parsed.sendLink) };
+      let blocks: string[] = Array.isArray(parsed.blocks)
+        ? parsed.blocks.filter((b: unknown) => typeof b === 'string' && b.trim()).map((b: string) => b.trim())
+        : [];
+      if (!blocks.length && typeof parsed.reply === 'string' && parsed.reply.trim()) {
+        blocks = [parsed.reply.trim()];
+      }
+      return { blocks, sendLink: Boolean(parsed.sendLink) };
     } catch (err) {
       this.logger.error(`Erro ao gerar resposta da IA: ${err.message}`);
-      return { reply: '', sendLink: false };
+      return { blocks: [], sendLink: false };
     }
   }
 
@@ -488,6 +499,24 @@ export class InstagramAutomationService {
       this.logger.log(`Quick reply enviado para comentário ${commentId}`);
     } catch (err) {
       this.logger.error(`Erro ao enviar quick reply: ${err.message}`);
+    }
+  }
+
+  /** Manda vários blocos de mensagem em sequência com pausa entre eles, simulando alguém digitando. Só o último bloco leva o botão/link. */
+  private async sendBlocksToUser(senderIgId: string, blocks: string[], buttonLabel?: string, link?: string) {
+    for (let i = 0; i < blocks.length; i++) {
+      const isLast = i === blocks.length - 1;
+      await this.sendDmToUser(senderIgId, blocks[i], isLast ? buttonLabel : undefined, isLast ? link : undefined);
+      if (!isLast) await new Promise((resolve) => setTimeout(resolve, BLOCK_DELAY_MS));
+    }
+  }
+
+  /** Mesma ideia de sendBlocksToUser, mas pra 1ª mensagem de uma conversa (via comment_id). */
+  private async sendBlocksToComment(commentId: string, blocks: string[], buttonLabel?: string, link?: string) {
+    for (let i = 0; i < blocks.length; i++) {
+      const isLast = i === blocks.length - 1;
+      await this.sendDm(commentId, blocks[i], isLast ? buttonLabel : undefined, isLast ? link : undefined);
+      if (!isLast) await new Promise((resolve) => setTimeout(resolve, BLOCK_DELAY_MS));
     }
   }
 
