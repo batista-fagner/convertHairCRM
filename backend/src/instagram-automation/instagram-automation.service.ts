@@ -1,13 +1,16 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, IsNull } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import OpenAI from 'openai';
 import { InstagramAutomation } from './instagram-automation.entity';
-import { IgConversation } from './ig-conversation.entity';
+import { IgConversation, IgConversationOrigin } from './ig-conversation.entity';
+import { IgMessage, IgMessageDirection, IgMessageSource } from './ig-message.entity';
+import { IgCommentEvent } from './ig-comment-event.entity';
 import { Lead } from '../common/entities/lead.entity';
 import { SettingsService } from '../settings/settings.service';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 
 const IG_API = 'https://graph.instagram.com/v21.0';
 
@@ -40,6 +43,8 @@ interface AiReplyConfig {
 /** Espera entre cada bloco de mensagem enviado em sequência, simulando alguém digitando. */
 const BLOCK_DELAY_MS = 2000;
 
+export type IgConversationFilter = 'all' | 'unread' | 'ai_paused';
+
 @Injectable()
 export class InstagramAutomationService {
   private readonly logger = new Logger(InstagramAutomationService.name);
@@ -50,10 +55,15 @@ export class InstagramAutomationService {
     private repo: Repository<InstagramAutomation>,
     @InjectRepository(IgConversation)
     private convRepo: Repository<IgConversation>,
+    @InjectRepository(IgMessage)
+    private msgRepo: Repository<IgMessage>,
+    @InjectRepository(IgCommentEvent)
+    private commentEventRepo: Repository<IgCommentEvent>,
     @InjectRepository(Lead)
     private leadRepo: Repository<Lead>,
     private config: ConfigService,
     private settings: SettingsService,
+    private realtime: RealtimeGateway,
   ) {
     this.openai = new OpenAI({ apiKey: config.get('OPENAI_API_KEY') });
   }
@@ -200,6 +210,33 @@ export class InstagramAutomationService {
     if (senderIgId && senderIgId === igUserId) return;
 
     const automations = await this.repo.find({ where: { postId: mediaId, isActive: true } });
+    const rawComment = value.text || '';
+    const matchedAuto = automations.find(
+      (a) => a.acceptAny || commentText.includes(this.normalize(a.keyword || 'eu quero')),
+    );
+
+    // Loga o comentário independentemente de ter batido com alguma automação —
+    // é o que permite montar a jornada completa do lead (timeline), não só o
+    // que virou DM. Retries do webhook são ignorados via unique(comment_id).
+    let commentEventId: string | null = null;
+    try {
+      const saved = await this.commentEventRepo.save(
+        this.commentEventRepo.create({
+          commentId,
+          senderIgId,
+          igUsername,
+          postId: mediaId,
+          postCaption: matchedAuto?.postCaption,
+          postThumbnail: matchedAuto?.postThumbnail,
+          postPermalink: matchedAuto?.postPermalink,
+          commentText: rawComment,
+          matchedAutomationId: matchedAuto?.id ?? null,
+        }),
+      );
+      commentEventId = saved.id;
+    } catch (err: any) {
+      if (err?.code !== '23505') this.logger.error(`Erro ao registrar comment event: ${err.message}`);
+    }
 
     for (const auto of automations) {
       const matches = auto.acceptAny || commentText.includes(this.normalize(auto.keyword || 'eu quero'));
@@ -210,14 +247,18 @@ export class InstagramAutomationService {
       // quando mandar o link, em vez de seguir os passos fixos de
       // confirmação/captura de email.
       if (auto.useAi && senderIgId) {
-        const rawComment = value.text || '';
+        const conv = await this.upsertConversation(senderIgId, igUsername, auto.id, 'ai_chat', {
+          originType: 'comment',
+          originPostId: mediaId,
+          originCommentText: rawComment,
+        });
+        if (commentEventId) await this.commentEventRepo.update(commentEventId, { conversationId: conv.id });
+        await this.recordMessage(conv.id, 'inbound', rawComment, 'contact');
+
         const { blocks, sendLink } = await this.generateAiReply(auto, [], rawComment);
         if (blocks.length) {
           await this.sendBlocksToComment(commentId, blocks, sendLink ? auto.dmButtonLabel : undefined, sendLink ? auto.link : undefined);
-          await this.upsertConversation(senderIgId, igUsername, auto.id, 'ai_chat', [
-            { role: 'user', content: rawComment },
-            { role: 'assistant', content: blocks.join('\n\n') },
-          ]);
+          for (const block of blocks) await this.recordMessage(conv.id, 'outbound', block, 'ai');
         }
 
         const publicReply = await this.generateAiCommentReply(auto, rawComment);
@@ -237,17 +278,39 @@ export class InstagramAutomationService {
         const question = auto.confirmationQuestion || 'Quer receber o material gratuito? 👇';
         await this.sendQuickReply(commentId, question);
 
-        // Criar/resetar conversa no passo waiting_confirmation
-        await this.upsertConversation(senderIgId, igUsername, auto.id, 'waiting_confirmation');
+        const conv = await this.upsertConversation(senderIgId, igUsername, auto.id, 'waiting_confirmation', {
+          originType: 'comment',
+          originPostId: mediaId,
+          originCommentText: rawComment,
+        });
+        if (commentEventId) await this.commentEventRepo.update(commentEventId, { conversationId: conv.id });
+        await this.recordMessage(conv.id, 'outbound', question, 'ai');
       } else if (auto.captureEmail && senderIgId) {
         // Pula confirmação, vai direto pedir email — mesmo motivo acima: 1ª
         // mensagem da conversa precisa ir via comment_id, não user id.
         const question = auto.emailQuestion || 'Oi! Qual é o seu melhor email? 😊';
         await this.sendDm(commentId, question);
-        await this.upsertConversation(senderIgId, igUsername, auto.id, 'waiting_email');
+
+        const conv = await this.upsertConversation(senderIgId, igUsername, auto.id, 'waiting_email', {
+          originType: 'comment',
+          originPostId: mediaId,
+          originCommentText: rawComment,
+        });
+        if (commentEventId) await this.commentEventRepo.update(commentEventId, { conversationId: conv.id });
+        await this.recordMessage(conv.id, 'outbound', question, 'ai');
       } else {
         // Fluxo direto: envia DM com link
         await this.sendDm(commentId, auto.replyMessage, auto.dmButtonLabel, auto.link);
+
+        if (senderIgId) {
+          const conv = await this.upsertConversation(senderIgId, igUsername, auto.id, 'completed', {
+            originType: 'comment',
+            originPostId: mediaId,
+            originCommentText: rawComment,
+          });
+          if (commentEventId) await this.commentEventRepo.update(commentEventId, { conversationId: conv.id });
+          await this.recordMessage(conv.id, 'outbound', auto.replyMessage, 'ai');
+        }
       }
 
       if (auto.commentReply) {
@@ -285,6 +348,13 @@ export class InstagramAutomationService {
       const catchall = await this.getCatchallConfig();
       if (!catchall.enabled) return;
       this.logger.log(`DM catch-all: nova conversa com ${senderIgId}`);
+
+      const newConv = await this.convRepo.save(
+        this.convRepo.create({ senderIgId, automationId: null, step: 'ai_chat', originType: 'direct' }),
+      );
+      this.realtime.emitIgConversationCreated(newConv);
+      await this.recordMessage(newConv.id, 'inbound', text, 'contact');
+
       const { blocks, sendLink } = await this.generateAiReply(
         { aiPrompt: catchall.prompt, link: catchall.link },
         [],
@@ -292,21 +362,22 @@ export class InstagramAutomationService {
       );
       if (!blocks.length) return;
       await this.sendBlocksToUser(senderIgId, blocks, sendLink ? catchall.buttonLabel : undefined, sendLink ? catchall.link : undefined);
-      await this.convRepo.save(
-        this.convRepo.create({
-          senderIgId,
-          automationId: null,
-          step: 'ai_chat',
-          aiContext: [
-            { role: 'user', content: text },
-            { role: 'assistant', content: blocks.join('\n\n') },
-          ],
-        }),
-      );
+      for (const block of blocks) await this.recordMessage(newConv.id, 'outbound', block, 'ai');
       return;
     }
 
-    if (conv.step === 'completed') return;
+    if (conv.step === 'completed') {
+      // Continua registrando pra jornada aparecer completa na inbox, mas não responde mais.
+      await this.recordMessage(conv.id, 'inbound', text, 'contact');
+      return;
+    }
+
+    if (conv.aiPaused) {
+      // Operador assumiu a conversa — só registra, quem responde é o humano
+      // pelo endpoint de envio manual (sendOperatorMessage).
+      await this.recordMessage(conv.id, 'inbound', text, 'contact');
+      return;
+    }
 
     const auto = conv.automationId ? await this.repo.findOneBy({ id: conv.automationId }) : null;
 
@@ -316,12 +387,13 @@ export class InstagramAutomationService {
       const aiConfig: AiReplyConfig = auto ?? { aiPrompt: catchall!.prompt, link: catchall!.link };
       const dmButtonLabel = auto ? auto.dmButtonLabel : catchall!.buttonLabel;
 
-      const history = Array.isArray(conv.aiContext) ? conv.aiContext : [];
+      const history = await this.buildAiHistory(conv.id, conv.contextResetAt);
+      await this.recordMessage(conv.id, 'inbound', text, 'contact');
+
       const { blocks, sendLink } = await this.generateAiReply(aiConfig, history, text);
       if (blocks.length) {
         await this.sendBlocksToUser(senderIgId, blocks, sendLink ? dmButtonLabel : undefined, sendLink ? aiConfig.link ?? undefined : undefined);
-        const updatedContext = [...history, { role: 'user', content: text }, { role: 'assistant', content: blocks.join('\n\n') }];
-        await this.convRepo.update(conv.id, { aiContext: updatedContext });
+        for (const block of blocks) await this.recordMessage(conv.id, 'outbound', block, 'ai');
       }
 
       // Se a pessoa mandar um email no meio da conversa, salva como lead —
@@ -329,13 +401,15 @@ export class InstagramAutomationService {
       if (this.isValidEmail(text)) {
         const email = text.toLowerCase().trim();
         await this.saveLead(email, conv);
-        await this.convRepo.update(conv.id, { email });
+        await this.convRepo.update(conv.id, { email, emailCapturedAt: conv.emailCapturedAt ?? new Date() });
       }
       return;
     }
 
     // ── Passo: esperando confirmação (Yes/No) ──
     if (conv.step === 'waiting_confirmation') {
+      await this.recordMessage(conv.id, 'inbound', text, 'contact');
+
       const isYes = quickReplyPayload === 'CONFIRM_YES' || /^(s|si|sim|yes|quero|ok|vai|bora)$/i.test(this.normalize(text));
       const isNo = quickReplyPayload === 'CONFIRM_NO' || /^(n|nao|no|nope|nã)/.test(this.normalize(text));
 
@@ -343,14 +417,20 @@ export class InstagramAutomationService {
         if (auto?.captureEmail) {
           const question = auto.emailQuestion || 'Ótimo! Qual é o seu melhor email? 😊';
           await this.sendDmToUser(senderIgId, question);
+          await this.recordMessage(conv.id, 'outbound', question, 'ai');
           await this.convRepo.update(conv.id, { step: 'waiting_email' });
         } else {
           // Sem captura de email: envia o link direto
-          if (auto?.replyMessage) await this.sendDmToUser(senderIgId, auto.replyMessage, auto.dmButtonLabel, auto.link);
+          if (auto?.replyMessage) {
+            await this.sendDmToUser(senderIgId, auto.replyMessage, auto.dmButtonLabel, auto.link);
+            await this.recordMessage(conv.id, 'outbound', auto.replyMessage, 'ai');
+          }
           await this.convRepo.update(conv.id, { step: 'completed' });
         }
       } else if (isNo) {
-        await this.sendDmToUser(senderIgId, 'Tudo bem! Se mudar de ideia é só me chamar 😊');
+        const bye = 'Tudo bem! Se mudar de ideia é só me chamar 😊';
+        await this.sendDmToUser(senderIgId, bye);
+        await this.recordMessage(conv.id, 'outbound', bye, 'ai');
         await this.convRepo.update(conv.id, { step: 'completed' });
       }
       // Se não for nem sim nem não, ignora (pode ser outra mensagem aleatória)
@@ -359,33 +439,251 @@ export class InstagramAutomationService {
 
     // ── Passo: esperando email ──
     if (conv.step === 'waiting_email') {
+      await this.recordMessage(conv.id, 'inbound', text, 'contact');
+
       if (!this.isValidEmail(text)) {
-        await this.sendDmToUser(senderIgId, 'Hmm, não parece um email válido 🤔 Pode me mandar novamente? Ex: nome@gmail.com');
+        const retry = 'Hmm, não parece um email válido 🤔 Pode me mandar novamente? Ex: nome@gmail.com';
+        await this.sendDmToUser(senderIgId, retry);
+        await this.recordMessage(conv.id, 'outbound', retry, 'ai');
         return;
       }
 
       const email = text.toLowerCase().trim();
       await this.saveLead(email, conv);
 
+      let reply: string;
       if (auto?.replyMessage) {
         await this.sendDmToUser(senderIgId, auto.replyMessage, auto.dmButtonLabel, auto.link);
+        reply = auto.replyMessage;
       } else {
-        await this.sendDmToUser(senderIgId, 'Perfeito! Em breve você receberá mais informações 🙌');
+        reply = 'Perfeito! Em breve você receberá mais informações 🙌';
+        await this.sendDmToUser(senderIgId, reply);
       }
+      await this.recordMessage(conv.id, 'outbound', reply, 'ai');
 
-      await this.convRepo.update(conv.id, { step: 'completed', email });
+      await this.convRepo.update(conv.id, {
+        step: 'completed',
+        email,
+        emailCapturedAt: conv.emailCapturedAt ?? new Date(),
+      });
     }
+  }
+
+  // ─── Inbox: mensagens normalizadas (ig_messages) ────────────────────────────
+
+  /**
+   * Fonte única de verdade de uma conversa. Toda entrada/saída passa por
+   * aqui: grava a IgMessage, denormaliza os campos de lista (last_message_*,
+   * unread_count) e emite os eventos de tempo real da inbox.
+   */
+  private async recordMessage(
+    conversationId: string,
+    direction: IgMessageDirection,
+    body: string,
+    source: IgMessageSource,
+    meta?: Record<string, unknown>,
+  ): Promise<IgMessage> {
+    const message = await this.msgRepo.save(
+      this.msgRepo.create({ conversationId, direction, body, source, meta }),
+    );
+
+    if (direction === 'inbound') {
+      await this.convRepo.increment({ id: conversationId }, 'unreadCount', 1);
+    }
+    await this.convRepo.update(conversationId, {
+      lastMessageAt: new Date(),
+      lastMessagePreview: body.slice(0, 280),
+      lastMessageDirection: direction,
+    });
+
+    this.realtime.emitIgMessageCreated(message);
+    const conv = await this.convRepo.findOneBy({ id: conversationId });
+    if (conv) this.realtime.emitIgConversationUpdated(conv);
+    return message;
+  }
+
+  /** Últimas ~40 mensagens (em ordem cronológica) usadas como contexto da IA. Ignora tudo antes de `contextResetAt`, se setado (ver resetContext). */
+  private async buildAiHistory(conversationId: string, contextResetAt?: Date | null) {
+    const qb = this.msgRepo
+      .createQueryBuilder('m')
+      .where('m.conversation_id = :conversationId', { conversationId })
+      .orderBy('m.created_at', 'DESC')
+      .take(40);
+    if (contextResetAt) qb.andWhere('m.created_at > :cutoff', { cutoff: contextResetAt });
+
+    const rows = await qb.getMany();
+    return rows.reverse().map((r) => ({ role: r.direction === 'inbound' ? 'user' : 'assistant', content: r.body }));
+  }
+
+  // ─── Inbox: API pra tela (mirror da SmsService) ─────────────────────────────
+
+  async listConversations(opts: { search?: string; filter?: IgConversationFilter; page?: number; limit?: number }) {
+    const page = Math.max(1, opts.page ?? 1);
+    const limit = Math.min(100, Math.max(1, opts.limit ?? 30));
+
+    const qb = this.convRepo.createQueryBuilder('c');
+    if (opts.search) {
+      qb.andWhere('c.ig_username ILIKE :s', { s: `%${opts.search}%` });
+    }
+    switch (opts.filter) {
+      case 'unread':
+        qb.andWhere('c.unread_count > 0');
+        break;
+      case 'ai_paused':
+        qb.andWhere('c.ai_paused = true');
+        break;
+    }
+
+    const total = await qb.getCount();
+    const data = await qb
+      .orderBy('c.last_message_at', 'DESC', 'NULLS LAST')
+      .addOrderBy('c.created_at', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getMany();
+
+    const unreadTotal = await this.convRepo.createQueryBuilder('c').where('c.unread_count > 0').getCount();
+
+    return { data, total, page, totalPages: Math.ceil(total / limit) || 1, unreadTotal };
+  }
+
+  async getConversation(id: string): Promise<IgConversation> {
+    const conv = await this.convRepo.findOneBy({ id });
+    if (!conv) throw new NotFoundException(`Conversa ${id} não encontrada`);
+    return conv;
+  }
+
+  /** Thread paginada por keyset (cursor) — mesma lógica da SmsService.listMessages. */
+  async listMessages(conversationId: string, opts: { before?: string; limit?: number }) {
+    const limit = Math.min(200, Math.max(1, opts.limit ?? 50));
+
+    const qb = this.msgRepo
+      .createQueryBuilder('m')
+      .where('m.conversation_id = :conversationId', { conversationId })
+      .orderBy('m.created_at', 'DESC')
+      .take(limit + 1);
+
+    if (opts.before) {
+      const cursor = new Date(opts.before);
+      if (!isNaN(cursor.getTime())) qb.andWhere('m.created_at < :cursor', { cursor });
+    }
+
+    const rows = await qb.getMany();
+    const hasMore = rows.length > limit;
+    const page = hasMore ? rows.slice(0, limit) : rows;
+
+    return {
+      data: page.reverse(),
+      hasMore,
+      nextBefore: page.length ? page[0].createdAt.toISOString() : null,
+    };
+  }
+
+  /** Timeline de comentários do contato — inclui os que ainda não têm conversationId vinculado. */
+  async listCommentEvents(conversationId: string) {
+    const conv = await this.getConversation(conversationId);
+    const [byConv, bySender] = await Promise.all([
+      this.commentEventRepo.find({ where: { conversationId }, order: { createdAt: 'ASC' } }),
+      this.commentEventRepo.find({ where: { senderIgId: conv.senderIgId, conversationId: IsNull() }, order: { createdAt: 'ASC' } }),
+    ]);
+
+    const seen = new Set<string>();
+    return [...bySender, ...byConv]
+      .filter((e) => (seen.has(e.commentId) ? false : (seen.add(e.commentId), true)))
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+  }
+
+  async sendOperatorMessage(conversationId: string, text: string) {
+    const conv = await this.getConversation(conversationId);
+    await this.sendDmToUser(conv.senderIgId, text);
+    const message = await this.recordMessage(conversationId, 'outbound', text, 'operator');
+    await this.convRepo.update(conversationId, { aiPaused: true });
+    const updated = await this.getConversation(conversationId);
+    this.realtime.emitIgConversationUpdated(updated);
+    return { message, conversation: updated };
+  }
+
+  async markRead(conversationId: string) {
+    await this.convRepo.update(conversationId, { unreadCount: 0 });
+    await this.msgRepo
+      .createQueryBuilder()
+      .update(IgMessage)
+      .set({ readAt: new Date() })
+      .where('conversation_id = :id AND direction = :dir AND read_at IS NULL', { id: conversationId, dir: 'inbound' })
+      .execute();
+
+    const conv = await this.getConversation(conversationId);
+    this.realtime.emitIgConversationUpdated(conv);
+    return conv;
+  }
+
+  async setAiPaused(conversationId: string, paused: boolean) {
+    await this.convRepo.update(conversationId, { aiPaused: paused });
+    const conv = await this.getConversation(conversationId);
+    this.realtime.emitIgConversationUpdated(conv);
+    return conv;
+  }
+
+  /**
+   * "Reiniciar contexto" — NÃO apaga nada. O histórico continua visível na
+   * tela pra sempre; só a memória que a IA usa (buildAiHistory) passa a
+   * ignorar tudo antes de `contextResetAt`. email/emailCapturedAt não são
+   * tocados de propósito, pra não corromper a métrica de tempo-até-virar-lead.
+   */
+  async resetContext(conversationId: string) {
+    await this.getConversation(conversationId); // 404 se não existir
+    await this.recordMessage(conversationId, 'outbound', 'Contexto da IA reiniciado pelo operador', 'system', {
+      systemEvent: true,
+    });
+    await this.convRepo.update(conversationId, { contextResetAt: new Date() });
+    const updated = await this.getConversation(conversationId);
+    this.realtime.emitIgConversationUpdated(updated);
+    return updated;
+  }
+
+  async getStats() {
+    const [totalConversations, aiPaused, unreadTotal] = await Promise.all([
+      this.convRepo.count(),
+      this.convRepo.count({ where: { aiPaused: true } }),
+      this.convRepo.createQueryBuilder('c').where('c.unread_count > 0').getCount(),
+    ]);
+
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const messagesLast24h = await this.msgRepo
+      .createQueryBuilder('m')
+      .where('m.created_at >= :since', { since })
+      .getCount();
+
+    return { totalConversations, aiPaused, unreadTotal, messagesLast24h };
   }
 
   // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-  private async upsertConversation(senderIgId: string, igUsername: string, automationId: string, step: string, aiContext?: any[]) {
+  private async upsertConversation(
+    senderIgId: string,
+    igUsername: string,
+    automationId: string,
+    step: string,
+    origin?: { originType: IgConversationOrigin; originPostId?: string; originCommentText?: string },
+  ): Promise<IgConversation> {
     const existing = await this.convRepo.findOne({ where: { senderIgId, automationId } });
     if (!existing) {
-      await this.convRepo.save(this.convRepo.create({ senderIgId, igUsername, automationId, step, aiContext }));
-    } else {
-      await this.convRepo.update(existing.id, { step, email: undefined, igUsername, aiContext });
+      const conv = await this.convRepo.save(
+        this.convRepo.create({
+          senderIgId,
+          igUsername,
+          automationId,
+          step,
+          originType: origin?.originType ?? 'comment',
+          originPostId: origin?.originPostId,
+          originCommentText: origin?.originCommentText,
+        }),
+      );
+      this.realtime.emitIgConversationCreated(conv);
+      return conv;
     }
+    await this.convRepo.update(existing.id, { step, email: undefined, igUsername });
+    return (await this.convRepo.findOneBy({ id: existing.id }))!;
   }
 
   // ─── IA ──────────────────────────────────────────────────────────────────────

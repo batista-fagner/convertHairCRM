@@ -15,6 +15,8 @@ import Content from './pages/Content'
 import Videos from './pages/Videos'
 import InstagramPosts from './pages/InstagramPosts'
 import KanbanLeads from './pages/KanbanLeads'
+import SmsInbox from './pages/sms/SmsInbox'
+import IgInbox from './pages/instagram-inbox/IgInbox'
 import Login from './pages/Login'
 
 function RequireAuth({ children }) {
@@ -41,8 +43,10 @@ export default function App() {
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/email-sequences" element={<EmailSequences />} />
           <Route path="/whatsapp" element={<WhatsAppLeads />} />
+          <Route path="/sms" element={<SmsInbox />} />
           <Route path="/instagram" element={<InstagramLeads />} />
           <Route path="/instagram-auto" element={<InstagramAutomation />} />
+          <Route path="/ig-inbox" element={<IgInbox />} />
           <Route path="/content" element={<Content />} />
           <Route path="/videos" element={<Videos />} />
           <Route path="/instagram-posts" element={<InstagramPosts />} />

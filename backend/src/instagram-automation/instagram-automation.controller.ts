@@ -1,6 +1,7 @@
-import { Controller, Get, Post, Put, Patch, Delete, Body, Param, Query, Res } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpException, HttpStatus, Param, Patch, Post, Put, Query, Res } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InstagramAutomationService } from './instagram-automation.service';
+import type { IgConversationFilter } from './instagram-automation.service';
 
 @Controller('ig-auto')
 export class InstagramAutomationController {
@@ -69,5 +70,68 @@ export class InstagramAutomationController {
   handleWebhook(@Body() body: any) {
     this.service.handleWebhookEvent(body).catch(() => {});
     return { status: 'ok' };
+  }
+
+  // ─── Inbox de DM (mirror do /sms) ────────────────────────────────────────────
+
+  @Get('stats')
+  getStats() {
+    return this.service.getStats();
+  }
+
+  @Get('conversations')
+  listConversations(
+    @Query('search') search?: string,
+    @Query('filter') filter?: IgConversationFilter,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.service.listConversations({
+      search: search?.trim() || undefined,
+      filter: filter || 'all',
+      page: page ? parseInt(page, 10) : 1,
+      limit: limit ? parseInt(limit, 10) : 30,
+    });
+  }
+
+  @Get('conversations/:id')
+  getConversation(@Param('id') id: string) {
+    return this.service.getConversation(id);
+  }
+
+  @Get('conversations/:id/messages')
+  async listMessages(@Param('id') id: string, @Query('before') before?: string, @Query('limit') limit?: string) {
+    await this.service.getConversation(id); // 404 se não existir
+    return this.service.listMessages(id, { before, limit: limit ? parseInt(limit, 10) : 50 });
+  }
+
+  @Get('conversations/:id/comment-events')
+  listCommentEvents(@Param('id') id: string) {
+    return this.service.listCommentEvents(id);
+  }
+
+  @Post('conversations/:id/messages')
+  async sendMessage(@Param('id') id: string, @Body() body: { text?: string }) {
+    const text = (body?.text ?? '').trim();
+    if (!text) throw new HttpException('Texto é obrigatório', HttpStatus.BAD_REQUEST);
+    return this.service.sendOperatorMessage(id, text);
+  }
+
+  @Patch('conversations/:id/read')
+  markRead(@Param('id') id: string) {
+    return this.service.markRead(id);
+  }
+
+  @Patch('conversations/:id/ai')
+  toggleAi(@Param('id') id: string, @Body() body: { paused?: boolean }) {
+    if (typeof body?.paused !== 'boolean') {
+      throw new HttpException('Campo "paused" (boolean) é obrigatório', HttpStatus.BAD_REQUEST);
+    }
+    return this.service.setAiPaused(id, body.paused);
+  }
+
+  @Post('conversations/:id/reset')
+  resetContext(@Param('id') id: string) {
+    return this.service.resetContext(id);
   }
 }

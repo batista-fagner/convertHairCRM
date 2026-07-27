@@ -20,6 +20,8 @@ import {
   Video,
   Image,
   LogOut,
+  MessageSquare,
+  Camera,
 } from 'lucide-react'
 
 const NAV_GROUPS = [
@@ -47,10 +49,17 @@ const NAV_GROUPS = [
     ],
   },
   {
+    label: 'SMS (US)',
+    items: [
+      { icon: MessageSquare, label: 'Inbox', path: '/sms', badgeKey: 'smsUnread' },
+    ],
+  },
+  {
     label: 'Integrações',
     items: [
       { icon: MessageCircle, label: 'Instagram Leads', path: '/instagram' },
       { icon: Zap, label: 'IG Automação', path: '/instagram-auto' },
+      { icon: Camera, label: 'DM Inbox', path: '/ig-inbox', badgeKey: 'igUnread' },
     ],
   },
   {
@@ -77,8 +86,10 @@ const PAGE_TITLES = {
   '/analytics': 'Analytics',
   '/email-sequences': 'Email Sequences',
   '/whatsapp': 'WhatsApp & Leads',
+  '/sms': 'SMS Inbox',
   '/instagram': 'Instagram Leads',
   '/instagram-auto': 'IG Automação',
+  '/ig-inbox': 'Instagram DM Inbox',
   '/content': 'Carrossel IG',
   '/videos': 'Vídeos de Follow-up',
   '/instagram-posts': 'Posts no Instagram',
@@ -90,6 +101,8 @@ const API = import.meta.env.VITE_API_URL || 'http://localhost:3001/api'
 
 function useHeaderStats() {
   const [leadsHoje, setLeadsHoje] = useState(null)
+  const [smsUnread, setSmsUnread] = useState(0)
+  const [igUnread, setIgUnread] = useState(0)
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -107,20 +120,40 @@ function useHeaderStats() {
       } catch {
         setLeadsHoje(0)
       }
+
+      // Badge de não-lidas do canal de SMS (independente das stats de lead —
+      // uma falha aqui não pode zerar a outra).
+      try {
+        const res = await fetch(`${API}/sms/stats`)
+        const data = await res.json()
+        setSmsUnread(data?.unreadConversations || 0)
+      } catch {
+        setSmsUnread(0)
+      }
+
+      // Badge de não-lidas do canal de Instagram DM — mesmo isolamento acima.
+      try {
+        const res = await fetch(`${API}/ig-auto/stats`)
+        const data = await res.json()
+        setIgUnread(data?.unreadTotal || 0)
+      } catch {
+        setIgUnread(0)
+      }
     }
     fetchStats()
     const t = setInterval(fetchStats, 60000) // atualiza a cada 1 min
     return () => clearInterval(t)
   }, [])
 
-  return { leadsHoje }
+  return { leadsHoje, smsUnread, igUnread }
 }
 
 export default function Layout() {
   const [collapsed, setCollapsed] = useState(false)
   const location = useLocation()
   const navigate = useNavigate()
-  const { leadsHoje } = useHeaderStats()
+  const { leadsHoje, smsUnread, igUnread } = useHeaderStats()
+  const navBadges = { smsUnread, igUnread }
 
   function handleLogout() {
     sessionStorage.removeItem('crm_auth')
@@ -172,21 +205,29 @@ export default function Layout() {
                 </p>
               )}
               <div className="space-y-0.5">
-                {group.items.map(({ icon: Icon, label, path }) => (
-                  <Link
-                    key={path}
-                    to={path}
-                    title={collapsed ? label : ''}
-                    className={`flex items-center gap-3 px-2 py-2 rounded-lg transition-all text-sm ${
-                      isActive(path)
-                        ? 'bg-violet-600 text-white font-medium'
-                        : 'text-slate-400 hover:text-white hover:bg-slate-700/60'
-                    }`}
-                  >
-                    <Icon className="w-4 h-4 shrink-0" />
-                    {!collapsed && <span>{label}</span>}
-                  </Link>
-                ))}
+                {group.items.map(({ icon: Icon, label, path, badgeKey }) => {
+                  const badge = badgeKey ? navBadges[badgeKey] : 0
+                  return (
+                    <Link
+                      key={path}
+                      to={path}
+                      title={collapsed ? label : ''}
+                      className={`flex items-center gap-3 px-2 py-2 rounded-lg transition-all text-sm ${
+                        isActive(path)
+                          ? 'bg-violet-600 text-white font-medium'
+                          : 'text-slate-400 hover:text-white hover:bg-slate-700/60'
+                      }`}
+                    >
+                      <Icon className="w-4 h-4 shrink-0" />
+                      {!collapsed && <span>{label}</span>}
+                      {!collapsed && badge > 0 && (
+                        <span className="ml-auto min-w-[18px] h-[18px] px-1 rounded-full bg-sky-500 text-white text-[10px] font-bold flex items-center justify-center">
+                          {badge > 99 ? '99+' : badge}
+                        </span>
+                      )}
+                    </Link>
+                  )
+                })}
               </div>
             </div>
           ))}

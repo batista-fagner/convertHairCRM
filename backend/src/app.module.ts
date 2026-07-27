@@ -7,9 +7,13 @@ import { Campaign } from './common/entities/campaign.entity';
 import { Form } from './common/entities/form.entity';
 import { InstagramAutomation } from './instagram-automation/instagram-automation.entity';
 import { IgConversation } from './instagram-automation/ig-conversation.entity';
+import { IgMessage } from './instagram-automation/ig-message.entity';
+import { IgCommentEvent } from './instagram-automation/ig-comment-event.entity';
 import { Setting } from './settings/setting.entity';
 import { FollowupRule } from './common/entities/followup-rule.entity';
 import { FollowupVideo } from './common/entities/followup-video.entity';
+import { SmsContact } from './sms/entities/sms-contact.entity';
+import { SmsMessage } from './sms/entities/sms-message.entity';
 import { IgPost } from './ig-posts/ig-post.entity';
 import { LeadsModule } from './leads/leads.module';
 import { EnrichmentModule } from './enrichment/enrichment.module';
@@ -21,6 +25,7 @@ import { TrackingModule } from './tracking/tracking.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { SdrModule } from './sdr/sdr.module';
 import { SettingsModule } from './settings/settings.module';
+import { SmsModule } from './sms/sms.module';
 import { IgPostsModule } from './ig-posts/ig-posts.module';
 
 @Module({
@@ -35,8 +40,10 @@ import { IgPostsModule } from './ig-posts/ig-posts.module';
       useFactory: (config: ConfigService) => ({
         type: 'postgres' as const,
         url: config.get('DATABASE_URL') || config.get('SUPABASE_DATABASE_URL'),
-        ssl: { rejectUnauthorized: false },
-        entities: [Lead, Campaign, Form, InstagramAutomation, IgConversation, Setting, FollowupRule, FollowupVideo, IgPost],
+        // Supabase exige SSL; `DATABASE_SSL=false` permite apontar para um
+        // Postgres local descartável ao testar sem tocar em produção.
+        ssl: config.get('DATABASE_SSL') === 'false' ? false : { rejectUnauthorized: false },
+        entities: [Lead, Campaign, Form, InstagramAutomation, IgConversation, IgMessage, IgCommentEvent, Setting, FollowupRule, FollowupVideo, SmsContact, SmsMessage, IgPost],
         synchronize: true,
         logging: false,
         timezone: 'Z',
@@ -52,6 +59,7 @@ import { IgPostsModule } from './ig-posts/ig-posts.module';
     RealtimeModule,
     SdrModule,
     SettingsModule,
+    SmsModule,
     IgPostsModule,
   ],
 })

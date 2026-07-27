@@ -2,10 +2,16 @@ import { Logger } from '@nestjs/common';
 import { WebSocketGateway, WebSocketServer, OnGatewayConnection, OnGatewayDisconnect } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { Lead } from '../common/entities/lead.entity';
+import { SmsContact } from '../sms/entities/sms-contact.entity';
+import { SmsMessage } from '../sms/entities/sms-message.entity';
+import { IgConversation } from '../instagram-automation/ig-conversation.entity';
+import { IgMessage } from '../instagram-automation/ig-message.entity';
 
 /**
  * Gateway Socket.IO usado pelo Kanban para refletir em tempo real as
- * movimentações de leads feitas pela IA (SDR) ou pelo operador.
+ * movimentações de leads feitas pela IA (SDR) ou pelo operador, pela inbox
+ * de SMS para refletir mensagens e status de entrega, e pela inbox de DM do
+ * Instagram para refletir mensagens e conversas.
  */
 @WebSocketGateway({ cors: { origin: '*' } })
 export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect {
@@ -36,5 +42,48 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
 
   emitLeadDeleted(id: string) {
     this.server?.emit('lead:deleted', { id });
+  }
+
+  // --- Canal de SMS (inbox das alunas mentoradas) ---
+  // Eventos próprios de propósito: reusar `lead:*` faria o Kanban do sócio
+  // tentar renderizar contatos de SMS como cards.
+
+  emitSmsContactCreated(contact: SmsContact) {
+    this.server?.emit('sms:contact:created', contact);
+  }
+
+  emitSmsContactUpdated(contact: SmsContact) {
+    this.server?.emit('sms:contact:updated', contact);
+  }
+
+  emitSmsMessageCreated(message: SmsMessage) {
+    this.server?.emit('sms:message:created', message);
+  }
+
+  /** É o que faz o tick ✓✓ aparecer sozinho na tela quando a entrega confirma. */
+  emitSmsMessageStatus(payload: {
+    id: string;
+    contactId: string;
+    status: string;
+    errorCode?: string;
+    errorMessage?: string;
+    deliveredAt?: Date | null;
+  }) {
+    this.server?.emit('sms:message:status', payload);
+  }
+
+  // --- Canal de Instagram DM Inbox ---
+  // Eventos próprios de propósito, mesmo motivo do bloco sms:* acima.
+
+  emitIgConversationCreated(conv: IgConversation) {
+    this.server?.emit('ig:conversation:created', conv);
+  }
+
+  emitIgConversationUpdated(conv: IgConversation) {
+    this.server?.emit('ig:conversation:updated', conv);
+  }
+
+  emitIgMessageCreated(message: IgMessage) {
+    this.server?.emit('ig:message:created', message);
   }
 }
