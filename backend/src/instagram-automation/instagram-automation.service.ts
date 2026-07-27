@@ -324,8 +324,12 @@ export class InstagramAutomationService {
   // ─── Resposta via DM ─────────────────────────────────────────────────────────
 
   private async handleMessagingEvent(messaging: any) {
-    // Ignora ecos (mensagens enviadas pela própria conta)
-    if (messaging.is_echo) return;
+    // Ignora ecos (mensagens enviadas pela própria conta) — o campo `is_echo`
+    // vem DENTRO de `message`, não no nível raiz do evento. Checar no lugar
+    // errado (bug pré-existente) fazia toda resposta da IA ser reprocessada
+    // como se fosse uma nova DM recebida da própria conta, criando uma
+    // conversa catch-all fantasma que ficava respondendo a si mesma em loop.
+    if (messaging.message?.is_echo) return;
 
     const senderIgId: string = messaging.sender?.id;
     const text: string = messaging.message?.text?.trim();
