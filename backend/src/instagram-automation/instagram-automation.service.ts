@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, HttpException, HttpStatus } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
@@ -627,7 +627,13 @@ export class InstagramAutomationService {
 
   async sendOperatorMessage(conversationId: string, text: string) {
     const conv = await this.getConversation(conversationId);
-    await this.sendDmToUser(conv.senderIgId, text);
+    const sent = await this.sendDmToUser(conv.senderIgId, text);
+    if (!sent) {
+      throw new HttpException(
+        'Falha ao enviar a mensagem pro Instagram — confira os logs/token da IG_API.',
+        HttpStatus.BAD_GATEWAY,
+      );
+    }
     const message = await this.recordMessage(conversationId, 'outbound', text, 'operator');
     await this.convRepo.update(conversationId, { aiPaused: true });
     const updated = await this.getConversation(conversationId);
@@ -850,44 +856,47 @@ export class InstagramAutomationService {
     }
   }
 
-  private async sendDmToUser(senderIgId: string, message: string, buttonLabel?: string, link?: string) {
-    const igUserId = await this.getIgUserId();
-    // Automações antigas ainda têm a URL embutida no texto da mensagem; as
-    // novas mandam o link no campo dedicado. Prioriza o campo — se não vier,
-    // cai pro regex antigo (compatibilidade com automações já criadas).
-    const urlMatch = message.match(/https?:\/\/[^\s]+/);
-    const url = link || urlMatch?.[0];
-
-    let messagePayload: any;
-    if (buttonLabel && url) {
-      const textWithoutUrl = urlMatch ? message.replace(urlMatch[0], '').trim() : message;
-      messagePayload = {
-        attachment: {
-          type: 'template',
-          payload: {
-            template_type: 'button',
-            text: textWithoutUrl || message,
-            buttons: [{ type: 'web_url', url, title: buttonLabel }],
-          },
-        },
-      };
-    } else if (url && !urlMatch) {
-      // Link veio só pelo campo dedicado (não estava embutido no texto) e não
-      // tem label de botão — anexa como texto simples pra não se perder.
-      messagePayload = { text: `${message}\n${url}` };
-    } else {
-      messagePayload = { text: message };
-    }
-
+  /** Retorna `true` se o envio deu certo — usado por `sendOperatorMessage` pra não fingir sucesso quando falha. */
+  private async sendDmToUser(senderIgId: string, message: string, buttonLabel?: string, link?: string): Promise<boolean> {
     try {
+      const igUserId = await this.getIgUserId();
+      // Automações antigas ainda têm a URL embutida no texto da mensagem; as
+      // novas mandam o link no campo dedicado. Prioriza o campo — se não vier,
+      // cai pro regex antigo (compatibilidade com automações já criadas).
+      const urlMatch = message.match(/https?:\/\/[^\s]+/);
+      const url = link || urlMatch?.[0];
+
+      let messagePayload: any;
+      if (buttonLabel && url) {
+        const textWithoutUrl = urlMatch ? message.replace(urlMatch[0], '').trim() : message;
+        messagePayload = {
+          attachment: {
+            type: 'template',
+            payload: {
+              template_type: 'button',
+              text: textWithoutUrl || message,
+              buttons: [{ type: 'web_url', url, title: buttonLabel }],
+            },
+          },
+        };
+      } else if (url && !urlMatch) {
+        // Link veio só pelo campo dedicado (não estava embutido no texto) e não
+        // tem label de botão — anexa como texto simples pra não se perder.
+        messagePayload = { text: `${message}\n${url}` };
+      } else {
+        messagePayload = { text: message };
+      }
+
       await axios.post(
         `${IG_API}/${igUserId}/messages`,
         { recipient: { id: senderIgId }, message: messagePayload },
         { params: { access_token: this.igToken } },
       );
       this.logger.log(`DM enviado para ${senderIgId}`);
-    } catch (err) {
+      return true;
+    } catch (err: any) {
       this.logger.error(`Erro ao enviar DM: ${err.message}`);
+      return false;
     }
   }
 
