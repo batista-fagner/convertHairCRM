@@ -35,7 +35,7 @@ const NAV_GROUPS = [
   {
     label: 'Funil',
     items: [
-      { icon: Megaphone, label: 'Campanhas', path: '/campaigns' },
+      { icon: Megaphone, label: 'Campanhas', path: '/campaigns', disabled: true },
       { icon: FileText, label: 'Formulários', path: '/forms' },
       { icon: Users, label: 'Leads', path: '/leads' },
       { icon: KanbanSquare, label: 'Kanban', path: '/kanban' },
@@ -44,7 +44,7 @@ const NAV_GROUPS = [
   {
     label: 'Automação',
     items: [
-      { icon: Mail, label: 'Email Sequences', path: '/email-sequences' },
+      { icon: Mail, label: 'Email Sequences', path: '/email-sequences', disabled: true },
       { icon: MessageCircle, label: 'WhatsApp', path: '/whatsapp' },
     ],
   },
@@ -65,7 +65,7 @@ const NAV_GROUPS = [
   {
     label: 'Conteúdo',
     items: [
-      { icon: Sparkles, label: 'Carrossel IG', path: '/content' },
+      { icon: Sparkles, label: 'Carrossel IG', path: '/content', disabled: true },
       { icon: Video, label: 'Vídeos', path: '/videos' },
       { icon: Image, label: 'Posts IG', path: '/instagram-posts' },
     ],
@@ -205,8 +205,20 @@ export default function Layout() {
                 </p>
               )}
               <div className="space-y-0.5">
-                {group.items.map(({ icon: Icon, label, path, badgeKey }) => {
+                {group.items.map(({ icon: Icon, label, path, badgeKey, disabled }) => {
                   const badge = badgeKey ? navBadges[badgeKey] : 0
+                  if (disabled) {
+                    return (
+                      <div
+                        key={path}
+                        title={collapsed ? `${label} (em breve)` : 'Em breve'}
+                        className="flex items-center gap-3 px-2 py-2 rounded-lg text-sm text-slate-600 opacity-50 cursor-not-allowed select-none"
+                      >
+                        <Icon className="w-4 h-4 shrink-0" />
+                        {!collapsed && <span>{label}</span>}
+                      </div>
+                    )
+                  }
                   return (
                     <Link
                       key={path}
