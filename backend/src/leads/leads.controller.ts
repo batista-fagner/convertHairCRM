@@ -84,9 +84,14 @@ export class LeadsController {
     return this.leadsService.getLeadsByAd(adId, from, to);
   }
 
+  @Get('kanban/campaigns')
+  async kanbanCampaigns() {
+    return this.leadsService.listCampaigns();
+  }
+
   @Get('kanban')
-  async kanban() {
-    return this.leadsService.findKanban();
+  async kanban(@Query('campaign') campaign?: string) {
+    return this.leadsService.findKanban(campaign);
   }
 
   @Patch(':id/kanban')

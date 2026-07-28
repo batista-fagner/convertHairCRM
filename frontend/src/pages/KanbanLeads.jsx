@@ -1,10 +1,14 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { DndContext, DragOverlay, useDraggable, useDroppable, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { io } from 'socket.io-client'
-import { Flame, Snowflake, UserPlus, XCircle, Phone, Mail, UserCheck, Loader2, X, MessageCircle, PauseCircle, Bot, MoreVertical, Pencil, Trash2, Play, Eye, Handshake, Trophy, HeadphonesIcon, Paperclip, Send, FileText, Video, StickyNote, ChevronDown, ChevronUp, Plus, CheckCircle2, Megaphone, Search } from 'lucide-react'
+import { Flame, Snowflake, UserPlus, XCircle, Phone, Mail, UserCheck, Loader2, X, MessageCircle, PauseCircle, Bot, MoreVertical, Pencil, Trash2, Play, Eye, Handshake, Trophy, HeadphonesIcon, Paperclip, Send, FileText, Video, StickyNote, ChevronDown, ChevronUp, Plus, CheckCircle2, Megaphone, Search, Layers } from 'lucide-react'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3002/api'
 const SOCKET_URL = API.replace(/\/api\/?$/, '') || 'http://localhost:3002'
+
+// Precisa bater com ORPHAN_CAMPAIGN_FILTER do backend (leads.service.ts)
+const ORPHAN_CAMPAIGN = 'orfao'
+const ALL_CAMPAIGNS = '__all__'
 
 const COLUMNS = [
   { id: 'novo',            title: 'Novo Lead',       icon: UserPlus,        accent: 'slate',   dot: 'bg-slate-400' },
@@ -836,11 +840,24 @@ export default function KanbanLeads() {
   const [deleting, setDeleting] = useState(null)
   const [creating, setCreating] = useState(false)
   const [search, setSearch] = useState('')
+  const [campaigns, setCampaigns] = useState([]) // [{ campaign, count, lastLeadAt }]
+  const [campaignFilter, setCampaignFilter] = useState(ALL_CAMPAIGNS)
   const boardRef = useRef(board)
   boardRef.current = board
   const selectedRef = useRef(selected)
   selectedRef.current = selected
+  const campaignFilterRef = useRef(campaignFilter)
+  campaignFilterRef.current = campaignFilter
   const lastDragEnd = useRef(0)
+
+  // Um lead "pertence" ao filtro atual de campanha? Usado tanto no fetch inicial
+  // (via query param) quanto pra decidir se um evento realtime deve entrar no
+  // board ou ser ignorado (lead de outra campanha não deve aparecer no meio).
+  const matchesCampaignFilter = useCallback((lead, filter) => {
+    if (filter === ALL_CAMPAIGNS) return true
+    if (filter === ORPHAN_CAMPAIGN) return !lead.utmCampaign
+    return lead.utmCampaign === filter
+  }, [])
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }))
 
@@ -961,9 +978,28 @@ export default function KanbanLeads() {
     }
   }, [updateLeadInPlace])
 
+  // Carrega a lista de campanhas uma vez pro dropdown, e já seleciona a mais
+  // recente como filtro padrão (evita abrir o board com campanhas antigas
+  // misturadas). Usuário pode trocar pra "Todas" ou "Órfão" quando quiser.
   useEffect(() => {
     let active = true
-    fetch(`${API}/leads/kanban`)
+    fetch(`${API}/leads/kanban/campaigns`)
+      .then((r) => r.json())
+      .then((rows) => {
+        if (!active) return
+        setCampaigns(rows || [])
+        const latestReal = (rows || []).find((r) => r.campaign)
+        if (latestReal) setCampaignFilter(latestReal.campaign)
+      })
+      .catch((e) => console.error('Erro ao carregar campanhas', e))
+    return () => { active = false }
+  }, [])
+
+  useEffect(() => {
+    let active = true
+    setLoading(true)
+    const qs = campaignFilter === ALL_CAMPAIGNS ? '' : `?campaign=${encodeURIComponent(campaignFilter)}`
+    fetch(`${API}/leads/kanban${qs}`)
       .then((r) => r.json())
       .then((data) => {
         if (!active) return
@@ -983,18 +1019,21 @@ export default function KanbanLeads() {
       .catch((e) => console.error('Erro ao carregar Kanban', e))
       .finally(() => active && setLoading(false))
     return () => { active = false }
-  }, [])
+  }, [campaignFilter])
 
   useEffect(() => {
     const socket = io(SOCKET_URL, { transports: ['websocket', 'polling'] })
     socket.on('connect', () => setConnected(true))
     socket.on('disconnect', () => setConnected(false))
-    socket.on('lead:created', (lead) => placeLead(lead))
-    socket.on('lead:updated', (lead) => placeLead(lead))
-    socket.on('lead:handoff', (lead) => placeLead(lead, true))
+    // Só reflete no board eventos de leads que pertencem à campanha filtrada
+    // no momento — sem isso, um lead de outra campanha "vazaria" pro board
+    // filtrado assim que respondesse algo no WhatsApp.
+    socket.on('lead:created', (lead) => { if (matchesCampaignFilter(lead, campaignFilterRef.current)) placeLead(lead) })
+    socket.on('lead:updated', (lead) => { if (matchesCampaignFilter(lead, campaignFilterRef.current)) placeLead(lead) })
+    socket.on('lead:handoff', (lead) => { if (matchesCampaignFilter(lead, campaignFilterRef.current)) placeLead(lead, true) })
     socket.on('lead:deleted', ({ id }) => removeLead(id))
     return () => socket.disconnect()
-  }, [placeLead, removeLead])
+  }, [placeLead, removeLead, matchesCampaignFilter])
 
   const handleDragStart = (event) => setActiveId(event.active.id)
 
@@ -1057,6 +1096,25 @@ export default function KanbanLeads() {
           <p className="text-sm text-slate-500">O agente SDR move os cards automaticamente. Você também pode arrastar.</p>
         </div>
         <div className="flex items-center gap-3">
+          <div className="relative">
+            <Layers className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <select
+              value={campaignFilter}
+              onChange={(e) => setCampaignFilter(e.target.value)}
+              title="Filtrar por campanha"
+              className="pl-9 pr-7 py-2 rounded-lg border border-slate-200 bg-white text-sm outline-none focus:ring-2 focus:ring-violet-300 max-w-[220px] appearance-none"
+            >
+              <option value={ALL_CAMPAIGNS}>Todas as campanhas</option>
+              {campaigns.filter((c) => c.campaign).map((c) => (
+                <option key={c.campaign} value={c.campaign}>{c.campaign} ({c.count})</option>
+              ))}
+              {campaigns.some((c) => !c.campaign) && (
+                <option value={ORPHAN_CAMPAIGN}>
+                  Órfão — sem campanha ({campaigns.find((c) => !c.campaign)?.count || 0})
+                </option>
+              )}
+            </select>
+          </div>
           <div className="relative">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input

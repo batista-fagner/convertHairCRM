@@ -1,7 +1,10 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 import { Lead, LeadClassification, KanbanStage } from '../common/entities/lead.entity';
+
+/** Valor de filtro usado pelo frontend pra pedir só os leads sem campanha atribuída (orgânicos). */
+export const ORPHAN_CAMPAIGN_FILTER = 'orfao';
 
 @Injectable()
 export class LeadsService {
@@ -107,9 +110,15 @@ export class LeadsService {
     return { total, totalMql, byStatus, byWaStage, conversionRate, recent };
   }
 
-  async findKanban(): Promise<Record<KanbanStage, Lead[]>> {
+  async findKanban(campaign?: string): Promise<Record<KanbanStage, Lead[]>> {
+    const where: { agentMode: 'sdr'; utmCampaign?: any } = { agentMode: 'sdr' };
+    if (campaign === ORPHAN_CAMPAIGN_FILTER) {
+      where.utmCampaign = IsNull();
+    } else if (campaign) {
+      where.utmCampaign = campaign;
+    }
     const leads = await this.leadsRepo.find({
-      where: { agentMode: 'sdr' },
+      where,
       order: { updatedAt: 'DESC' },
       take: 400,
     });
@@ -119,6 +128,26 @@ export class LeadsService {
       (board[stage] || board.novo).push(lead);
     }
     return board;
+  }
+
+  /**
+   * Lista as campanhas distintas presentes nos leads do SDR (nome real vindo da
+   * Meta Ads API via `utm_campaign`), pro dropdown de filtro do Kanban. Ordena
+   * pela atividade mais recente (não pela contagem) pra que a campanha "ativa"
+   * no momento apareça primeiro — é o candidato natural a filtro padrão.
+   * `campaign: null` = grupo "Órfão" (leads sem atribuição, ex.: tráfego orgânico).
+   */
+  async listCampaigns(): Promise<{ campaign: string | null; count: number; lastLeadAt: Date }[]> {
+    return this.leadsRepo.query(`
+      SELECT
+        utm_campaign AS "campaign",
+        COUNT(*)::int AS "count",
+        MAX(created_at) AS "lastLeadAt"
+      FROM leads
+      WHERE agent_mode = 'sdr'
+      GROUP BY utm_campaign
+      ORDER BY "lastLeadAt" DESC NULLS LAST
+    `);
   }
 
   async moveKanban(id: string, kanbanStage: KanbanStage): Promise<Lead> {
