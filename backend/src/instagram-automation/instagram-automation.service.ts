@@ -149,6 +149,58 @@ export class InstagramAutomationService {
     return res.data;
   }
 
+  /**
+   * Posts usados como criativo em anúncios ativos, pra cobrir o caso em que o
+   * Meta gera um media_id novo (diferente do post orgânico) ao criar o
+   * anúncio — esse post não aparece em getRecentMedia() porque não está no
+   * feed/grid da conta, só existe como criativo. Sem isso, automação em post
+   * de anúncio só dava pra cadastrar manualmente via banco.
+   */
+  async getAdMedia() {
+    const adAccountId = this.config.get<string>('FB_AD_ACCOUNT_ID');
+    const adsToken = this.config.get<string>('FB_ADS_TOKEN');
+    if (!adAccountId || !adsToken) {
+      throw new HttpException('FB_AD_ACCOUNT_ID ou FB_ADS_TOKEN não configurados', HttpStatus.BAD_REQUEST);
+    }
+
+    const adsRes = await axios.get(`https://graph.facebook.com/v21.0/${adAccountId}/ads`, {
+      params: {
+        fields: 'id,name,effective_status,creative{effective_instagram_media_id}',
+        filtering: JSON.stringify([{ field: 'effective_status', operator: 'IN', value: ['ACTIVE'] }]),
+        limit: 200,
+        access_token: adsToken,
+      },
+    });
+
+    const mediaAdNames = new Map<string, string[]>();
+    for (const ad of adsRes.data?.data || []) {
+      const mediaId: string | undefined = ad.creative?.effective_instagram_media_id;
+      if (!mediaId) continue;
+      const names = mediaAdNames.get(mediaId) || [];
+      names.push(ad.name);
+      mediaAdNames.set(mediaId, names);
+    }
+
+    const mediaIds = Array.from(mediaAdNames.keys());
+    const media = await Promise.all(
+      mediaIds.map(async (id) => {
+        try {
+          const res = await axios.get(`${IG_API}/${id}`, {
+            params: {
+              fields: 'id,media_type,media_url,thumbnail_url,timestamp,caption,permalink',
+              access_token: this.igToken,
+            },
+          });
+          return { ...res.data, adNames: mediaAdNames.get(id) };
+        } catch {
+          return null;
+        }
+      }),
+    );
+
+    return { data: media.filter(Boolean) };
+  }
+
   async subscribeWebhook() {
     const igUserId = await this.getIgUserId();
     await axios.post(

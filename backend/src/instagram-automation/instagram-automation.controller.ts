@@ -40,6 +40,11 @@ export class InstagramAutomationController {
     return this.service.getRecentMedia(after);
   }
 
+  @Get('ad-media')
+  getAdMedia() {
+    return this.service.getAdMedia();
+  }
+
   // ─── IA catch-all: DM direta sem vir de comentário/automação ────────────────
 
   @Get('catchall')

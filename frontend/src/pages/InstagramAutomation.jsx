@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Plus, Trash2, ToggleLeft, ToggleRight, ExternalLink, Zap, Image, ChevronRight, X, Loader2, RefreshCw, Users, Pencil, Sparkles } from 'lucide-react'
+import { Plus, Trash2, ToggleLeft, ToggleRight, ExternalLink, Zap, Image, ChevronRight, X, Loader2, RefreshCw, Users, Pencil, Sparkles, Megaphone } from 'lucide-react'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3001/api'
 
@@ -24,6 +24,11 @@ export default function InstagramAutomation() {
   const [mediaCursor, setMediaCursor] = useState(null)
   const [loadingMore, setLoadingMore] = useState(false)
   const [loadingMedia, setLoadingMedia] = useState(false)
+  const [mediaSource, setMediaSource] = useState('posts') // 'posts' | 'ads'
+  const [adMedia, setAdMedia] = useState([])
+  const [loadingAdMedia, setLoadingAdMedia] = useState(false)
+  const [adMediaError, setAdMediaError] = useState('')
+  const [adMediaLoaded, setAdMediaLoaded] = useState(false)
   const [loadingAutos, setLoadingAutos] = useState(true)
   const [showPanel, setShowPanel] = useState(false)
   const [editingId, setEditingId] = useState(null) // null = criando, uuid = editando
@@ -79,6 +84,27 @@ export default function InstagramAutomation() {
     finally { setLoadingMore(false) }
   }
 
+  async function fetchAdMedia() {
+    setLoadingAdMedia(true)
+    setAdMediaError('')
+    try {
+      const res = await fetch(`${API}/ig-auto/ad-media`)
+      if (!res.ok) throw new Error('Erro ao carregar posts de anúncios. Verifique FB_ADS_TOKEN/FB_AD_ACCOUNT_ID no servidor.')
+      const data = await res.json()
+      setAdMedia(data.data || [])
+      setAdMediaLoaded(true)
+    } catch (err) {
+      setAdMediaError(err.message)
+    } finally {
+      setLoadingAdMedia(false)
+    }
+  }
+
+  function selectMediaTab(tab) {
+    setMediaSource(tab)
+    if (tab === 'ads' && !adMediaLoaded) fetchAdMedia()
+  }
+
   async function openProfiles(auto, e) {
     e.stopPropagation()
     setProfilesAuto(auto)
@@ -100,6 +126,7 @@ export default function InstagramAutomation() {
     setSelectedPost(null)
     setForm(EMPTY_FORM)
     setError('')
+    setMediaSource('posts')
     setShowPanel(true)
     fetchMedia()
   }
@@ -123,6 +150,7 @@ export default function InstagramAutomation() {
       aiPrompt: auto.aiPrompt || '',
     })
     setError('')
+    setMediaSource('posts')
     setShowPanel(true)
     fetchMedia()
   }
@@ -420,10 +448,38 @@ export default function InstagramAutomation() {
               <div>
                 <div className="flex items-center justify-between mb-3">
                   <label className="text-sm font-medium text-slate-700">Selecionar Post / Reel</label>
-                  <button onClick={fetchMedia} className="flex items-center gap-1 text-xs text-violet-600 hover:text-violet-700 transition">
+                  <button
+                    onClick={() => mediaSource === 'ads' ? fetchAdMedia() : fetchMedia()}
+                    className="flex items-center gap-1 text-xs text-violet-600 hover:text-violet-700 transition"
+                  >
                     <RefreshCw className="w-3.5 h-3.5" /> Atualizar
                   </button>
                 </div>
+
+                {/* Abas: posts do feed x posts usados em anúncios ativos */}
+                <div className="flex gap-1.5 mb-3 bg-slate-100 p-1 rounded-lg w-fit">
+                  <button
+                    onClick={() => selectMediaTab('posts')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition ${
+                      mediaSource === 'posts' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                    }`}
+                  >
+                    <Image className="w-3.5 h-3.5" /> Posts
+                  </button>
+                  <button
+                    onClick={() => selectMediaTab('ads')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition ${
+                      mediaSource === 'ads' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                    }`}
+                  >
+                    <Megaphone className="w-3.5 h-3.5" /> Anúncios
+                  </button>
+                </div>
+                {mediaSource === 'ads' && (
+                  <p className="text-xs text-slate-400 mb-2">
+                    Posts usados como criativo em anúncios ativos — inclui posts que o Meta cria com um ID novo ao rodar o anúncio, mesmo que sejam repost de um post existente.
+                  </p>
+                )}
 
                 {/* Post atual ao editar */}
                 {editingId && selectedPost && (
@@ -438,56 +494,108 @@ export default function InstagramAutomation() {
                   </div>
                 )}
 
-                {loadingMedia ? (
-                  <div className="flex items-center justify-center py-10 text-slate-400">
-                    <Loader2 className="w-5 h-5 animate-spin mr-2" /> Carregando posts...
-                  </div>
-                ) : media.length === 0 ? (
-                  <div className="text-center py-8 bg-slate-50 rounded-xl text-slate-400 text-sm">
-                    Nenhum post encontrado. Verifique o token.
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-3 gap-2">
-                    {media.map(post => (
-                      <button
-                        key={post.id}
-                        onClick={() => setSelectedPost(post)}
-                        className={`relative aspect-square rounded-xl overflow-hidden border-2 transition ${
-                          selectedPost?.id === post.id
-                            ? 'border-violet-500 ring-2 ring-violet-200'
-                            : 'border-transparent hover:border-violet-300'
-                        }`}
-                      >
-                        {thumbnail(post) ? (
-                          <img src={thumbnail(post)} alt="" className="w-full h-full object-cover" />
-                        ) : (
-                          <div className="w-full h-full bg-slate-100 flex items-center justify-center">
-                            <Image className="w-6 h-6 text-slate-300" />
-                          </div>
-                        )}
-                        {selectedPost?.id === post.id && (
-                          <div className="absolute inset-0 bg-violet-600/20 flex items-center justify-center">
-                            <div className="w-6 h-6 bg-violet-600 rounded-full flex items-center justify-center">
-                              <ChevronRight className="w-4 h-4 text-white" />
-                            </div>
-                          </div>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                )}
+                {mediaSource === 'posts' ? (
+                  <>
+                    {loadingMedia ? (
+                      <div className="flex items-center justify-center py-10 text-slate-400">
+                        <Loader2 className="w-5 h-5 animate-spin mr-2" /> Carregando posts...
+                      </div>
+                    ) : media.length === 0 ? (
+                      <div className="text-center py-8 bg-slate-50 rounded-xl text-slate-400 text-sm">
+                        Nenhum post encontrado. Verifique o token.
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-3 gap-2">
+                        {media.map(post => (
+                          <button
+                            key={post.id}
+                            onClick={() => setSelectedPost(post)}
+                            className={`relative aspect-square rounded-xl overflow-hidden border-2 transition ${
+                              selectedPost?.id === post.id
+                                ? 'border-violet-500 ring-2 ring-violet-200'
+                                : 'border-transparent hover:border-violet-300'
+                            }`}
+                          >
+                            {thumbnail(post) ? (
+                              <img src={thumbnail(post)} alt="" className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="w-full h-full bg-slate-100 flex items-center justify-center">
+                                <Image className="w-6 h-6 text-slate-300" />
+                              </div>
+                            )}
+                            {selectedPost?.id === post.id && (
+                              <div className="absolute inset-0 bg-violet-600/20 flex items-center justify-center">
+                                <div className="w-6 h-6 bg-violet-600 rounded-full flex items-center justify-center">
+                                  <ChevronRight className="w-4 h-4 text-white" />
+                                </div>
+                              </div>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    )}
 
-                {mediaCursor && (
-                  <div className="flex justify-center mt-2">
-                    <button
-                      onClick={fetchMoreMedia}
-                      disabled={loadingMore}
-                      className="flex items-center gap-1.5 text-sm text-violet-600 hover:text-violet-700 disabled:opacity-50 transition"
-                    >
-                      {loadingMore ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-                      {loadingMore ? 'Carregando...' : 'Carregar mais'}
-                    </button>
-                  </div>
+                    {mediaCursor && (
+                      <div className="flex justify-center mt-2">
+                        <button
+                          onClick={fetchMoreMedia}
+                          disabled={loadingMore}
+                          className="flex items-center gap-1.5 text-sm text-violet-600 hover:text-violet-700 disabled:opacity-50 transition"
+                        >
+                          {loadingMore ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                          {loadingMore ? 'Carregando...' : 'Carregar mais'}
+                        </button>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    {adMediaError && (
+                      <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-xs mb-2">{adMediaError}</div>
+                    )}
+                    {loadingAdMedia ? (
+                      <div className="flex items-center justify-center py-10 text-slate-400">
+                        <Loader2 className="w-5 h-5 animate-spin mr-2" /> Carregando posts de anúncios...
+                      </div>
+                    ) : adMedia.length === 0 && !adMediaError ? (
+                      <div className="text-center py-8 bg-slate-50 rounded-xl text-slate-400 text-sm">
+                        Nenhum post em anúncio ativo no momento.
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-3 gap-2">
+                        {adMedia.map(post => (
+                          <button
+                            key={post.id}
+                            onClick={() => setSelectedPost(post)}
+                            title={post.adNames?.join(', ')}
+                            className={`relative aspect-square rounded-xl overflow-hidden border-2 transition ${
+                              selectedPost?.id === post.id
+                                ? 'border-violet-500 ring-2 ring-violet-200'
+                                : 'border-transparent hover:border-violet-300'
+                            }`}
+                          >
+                            {thumbnail(post) ? (
+                              <img src={thumbnail(post)} alt="" className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="w-full h-full bg-slate-100 flex items-center justify-center">
+                                <Image className="w-6 h-6 text-slate-300" />
+                              </div>
+                            )}
+                            <div className="absolute top-1 left-1 bg-black/60 rounded-full p-1">
+                              <Megaphone className="w-3 h-3 text-white" />
+                            </div>
+                            {selectedPost?.id === post.id && (
+                              <div className="absolute inset-0 bg-violet-600/20 flex items-center justify-center">
+                                <div className="w-6 h-6 bg-violet-600 rounded-full flex items-center justify-center">
+                                  <ChevronRight className="w-4 h-4 text-white" />
+                                </div>
+                              </div>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </>
                 )}
 
                 {selectedPost && !selectedPost._thumbnail && (
