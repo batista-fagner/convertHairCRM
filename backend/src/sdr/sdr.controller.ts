@@ -185,7 +185,7 @@ export class SdrController {
     // aqui e preserva no buffer, mesmo que cheguem mais mensagens no debounce.
     const ctwa = extractCtwaReferral(body);
 
-    // Debounce 10s: acumula mensagens antes de processar
+    // Debounce 25s: acumula mensagens antes de processar
     const pending: { timer: NodeJS.Timeout; texts: string[]; ctwa?: CtwaReferral } =
       this.pendingBuffer.get(phone) ?? { timer: null as any, texts: [] };
     pending.texts.push(text);
@@ -198,7 +198,7 @@ export class SdrController {
       this.processMessage(phone, combinedText, pushName, capturedCtwa).catch((err) =>
         this.logger.error(`[SDR] Erro ao processar ${phone}: ${err.message}`),
       );
-    }, 8_000);
+    }, 25_000);
     this.pendingBuffer.set(phone, pending);
 
     return { ok: true };
