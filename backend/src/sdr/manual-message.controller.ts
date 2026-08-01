@@ -83,25 +83,24 @@ export class ManualMessageController {
         await firstValueFrom(
           this.http.post(`${base}/send/text`, { number: phone, text: body.text }, { headers }),
         );
-      } else if (body.type === 'image') {
-        await firstValueFrom(
-          this.http.post(`${base}/send/image`, { number: phone, base64: body.base64, caption: body.caption || '' }, { headers }),
-        );
-      } else if (body.type === 'video') {
-        await firstValueFrom(
-          this.http.post(`${base}/send/video`, { number: phone, base64: body.base64, caption: body.caption || '' }, { headers }),
-        );
-      } else if (body.type === 'document') {
+      } else {
+        // uazapi expõe um único endpoint de mídia (/send/media) com "type"
+        // indicando o formato. Áudio gravado pelo operador vai como "ptt"
+        // pra se comportar como mensagem de voz nativa do WhatsApp.
+        const mediaType = body.type === 'audio' ? 'ptt' : body.type;
         await firstValueFrom(
           this.http.post(
-            `${base}/send/document`,
-            { number: phone, base64: body.base64, filename: body.filename || 'arquivo', mimetype: body.mimeType || 'application/octet-stream', caption: body.caption || '' },
+            `${base}/send/media`,
+            {
+              number: phone,
+              type: mediaType,
+              file: body.base64,
+              text: body.caption || '',
+              mimetype: body.mimeType,
+              ...(body.type === 'document' ? { docName: body.filename || 'arquivo' } : {}),
+            },
             { headers },
           ),
-        );
-      } else if (body.type === 'audio') {
-        await firstValueFrom(
-          this.http.post(`${base}/send/audio`, { number: phone, base64: body.base64 }, { headers }),
         );
       }
     } catch (err: any) {
