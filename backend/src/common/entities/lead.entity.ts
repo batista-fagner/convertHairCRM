@@ -197,6 +197,11 @@ export class Lead {
   @Column({ name: 'notes', type: 'text', nullable: true })
   notes?: string | null;
 
+  // Foto de perfil do WhatsApp (uazapi /chat/details) — exibida no card do
+  // Kanban e no header da conversa no lugar do círculo com iniciais.
+  @Column({ name: 'avatar_url', type: 'varchar', nullable: true })
+  avatarUrl?: string | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

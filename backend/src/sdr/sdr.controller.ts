@@ -236,6 +236,27 @@ export class SdrController {
     }
   }
 
+  /** Busca a foto de perfil do WhatsApp (uazapi /chat/details) e salva no lead — roda em segundo plano, não bloqueia a resposta ao lead. */
+  private async fetchAndSaveAvatar(leadId: string, phone: string) {
+    if (!this.uazapiToken) return;
+    try {
+      const res = await firstValueFrom(
+        this.http.post(
+          `${this.uazapiBaseUrl}/chat/details`,
+          { number: phone, preview: true },
+          { headers: { token: this.uazapiToken } },
+        ),
+      );
+      const data = res.data as { imagePreview?: string; image?: string };
+      const avatarUrl = data.imagePreview || data.image;
+      if (!avatarUrl) return;
+      const updated = await this.leadsService.update(leadId, { avatarUrl });
+      this.realtime.emitLeadUpdated(updated);
+    } catch (err: any) {
+      this.logger.warn(`[SDR] Erro ao buscar foto de perfil de ${phone}: ${err.message}`);
+    }
+  }
+
   /** "opa"/"ok" digitados pelo operador direto no WhatsApp pausam/reativam a IA daquele lead. */
   private async toggleAiByKeyword(phone: string, pause: boolean) {
     const lead = await this.findLeadByPhoneVariants(phone);
@@ -310,6 +331,7 @@ export class SdrController {
         ctwaAdTitle: ctwa?.adTitle,
       });
       isNew = true;
+      this.fetchAndSaveAvatar(lead.id, lead.phone);
       if (fromAd) {
         this.logger.log(`[SDR] Lead ${phone} veio de anúncio CTWA (ctwa_clid=${ctwa!.clid}, ad="${ctwa?.adTitle ?? ctwa?.sourceId ?? '?'}")`);
         // Enriquece com nome real de campanha/conjunto/anúncio via Marketing API,

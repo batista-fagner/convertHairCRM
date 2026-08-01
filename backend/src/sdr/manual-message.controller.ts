@@ -74,6 +74,36 @@ export class ManualMessageController {
     return { ok: true };
   }
 
+  @Post(':id/fetch-avatar')
+  async fetchAvatar(@Param('id') id: string) {
+    const lead = await this.leadsRepo.findOne({ where: { id } });
+    if (!lead) throw new HttpException('Lead not found', HttpStatus.NOT_FOUND);
+    if (!this.uazapiToken) {
+      throw new HttpException('WhatsApp não configurado (SDR_UAZAPI_TOKEN ausente)', HttpStatus.SERVICE_UNAVAILABLE);
+    }
+
+    const phone = lead.phone.startsWith('55') ? lead.phone : `55${lead.phone}`;
+
+    try {
+      const res = await firstValueFrom(
+        this.http.post(
+          `${this.uazapiBaseUrl}/chat/details`,
+          { number: phone, preview: true },
+          { headers: { token: this.uazapiToken } },
+        ),
+      );
+      const data = res.data as { imagePreview?: string; image?: string };
+      const avatarUrl = data.imagePreview || data.image || null;
+      await this.leadsRepo.update(id, { avatarUrl });
+      const fresh = await this.leadsRepo.findOne({ where: { id } });
+      if (fresh) this.realtime.emitLeadUpdated(fresh);
+      return { avatarUrl };
+    } catch (err: any) {
+      this.logger.warn(`[Manual] Falha ao buscar foto de perfil de ${phone}: ${err.message}`);
+      return { avatarUrl: null };
+    }
+  }
+
   private async dispatchToUazapi(phone: string, body: SendMessageDto) {
     const headers = { token: this.uazapiToken };
     const base = this.uazapiBaseUrl;

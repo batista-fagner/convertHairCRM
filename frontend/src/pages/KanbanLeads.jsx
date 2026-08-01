@@ -55,6 +55,23 @@ function getAvatarColor(name) {
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length]
 }
 
+function Avatar({ lead, size = 'w-8 h-8 text-xs' }) {
+  if (lead.avatarUrl) {
+    return (
+      <img
+        src={lead.avatarUrl}
+        alt={lead.name}
+        className={`${size.split(' ').slice(0, 2).join(' ')} rounded-full object-cover shrink-0`}
+      />
+    )
+  }
+  return (
+    <div className={`${size} rounded-full ${getAvatarColor(lead.name)} flex items-center justify-center text-white font-bold shrink-0`}>
+      {getInitials(lead.name)}
+    </div>
+  )
+}
+
 function timeAgo(date) {
   if (!date) return ''
   const diff = Date.now() - new Date(date).getTime()
@@ -101,9 +118,7 @@ function CardContent({ lead, overlay = false }) {
       } ${lead._handoff ? 'ring-2 ring-rose-400' : ''}`}
     >
       <div className="flex items-start gap-2.5">
-        <div className={`w-8 h-8 rounded-full ${getAvatarColor(lead.name)} flex items-center justify-center text-white text-xs font-bold shrink-0`}>
-          {getInitials(lead.name)}
-        </div>
+        <Avatar lead={lead} size="w-8 h-8 text-xs" />
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-1">
             <p className="font-semibold text-slate-800 text-sm truncate">{lead.name}</p>
@@ -175,9 +190,7 @@ function LeadCard({ lead, onOpen, onEdit, onDelete }) {
       className={`bg-white rounded-xl border border-slate-200 p-3 shadow-sm hover:shadow-md cursor-pointer select-none transition ${isDragging ? 'opacity-30' : ''} ${lead._handoff ? 'ring-2 ring-rose-400' : ''}`}
     >
       <div className="flex items-start gap-2.5">
-        <div className={`w-8 h-8 rounded-full ${getAvatarColor(lead.name)} flex items-center justify-center text-white text-xs font-bold shrink-0`}>
-          {getInitials(lead.name)}
-        </div>
+        <Avatar lead={lead} size="w-8 h-8 text-xs" />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1">
             <p className="font-semibold text-slate-800 text-sm truncate flex-1">{lead.name}</p>
@@ -325,6 +338,14 @@ function ConversationModal({ lead, onClose, onTogglePause, onAssign, onSaveNotes
   useEffect(() => {
     chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [ctx.length])
+
+  // Lead ainda sem foto de perfil salva (criado antes dessa feature) — busca
+  // uma vez ao abrir a conversa; o resultado chega via socket (lead:updated).
+  useEffect(() => {
+    if (!lead.avatarUrl) {
+      fetch(`${API}/leads/${lead.id}/fetch-avatar`, { method: 'POST' }).catch(() => {})
+    }
+  }, [lead.id])
 
   const saveAssign = () => {
     const val = assignedTo.trim() || null
@@ -484,9 +505,7 @@ function ConversationModal({ lead, onClose, onTogglePause, onAssign, onSaveNotes
       >
         {/* Header */}
         <div className="flex items-center gap-3 px-5 py-4 border-b border-slate-200">
-          <div className={`w-11 h-11 rounded-full ${getAvatarColor(lead.name)} flex items-center justify-center text-white text-sm font-bold shrink-0`}>
-            {getInitials(lead.name)}
-          </div>
+          <Avatar lead={lead} size="w-11 h-11 text-sm" />
           <div className="min-w-0 flex-1">
             <p className="font-semibold text-slate-800 truncate text-[15px]">{lead.name}</p>
             <p className="text-xs text-slate-500">{formatPhone(lead.phone)}</p>
