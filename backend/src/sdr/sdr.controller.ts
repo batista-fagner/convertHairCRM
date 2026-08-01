@@ -236,8 +236,13 @@ export class SdrController {
     }
   }
 
-  /** Busca a foto de perfil do WhatsApp (uazapi /chat/details) e salva no lead — roda em segundo plano, não bloqueia a resposta ao lead. */
-  private async fetchAndSaveAvatar(leadId: string, phone: string) {
+  /**
+   * Busca foto de perfil + nome real do WhatsApp (uazapi /chat/details) e
+   * salva no lead — roda em segundo plano, não bloqueia a resposta ao lead.
+   * Só sobrescreve o nome se ainda estiver no placeholder "Lead XXXX" (não
+   * pisa em cima de um nome já coletado pela IA ou editado manualmente).
+   */
+  private async fetchAndSaveAvatar(leadId: string, phone: string, currentName?: string) {
     if (!this.uazapiToken) return;
     try {
       const res = await firstValueFrom(
@@ -247,13 +252,19 @@ export class SdrController {
           { headers: { token: this.uazapiToken } },
         ),
       );
-      const data = res.data as { imagePreview?: string; image?: string };
+      const data = res.data as { imagePreview?: string; image?: string; name?: string; wa_contactName?: string; wa_name?: string };
       const avatarUrl = data.imagePreview || data.image;
-      if (!avatarUrl) return;
-      const updated = await this.leadsService.update(leadId, { avatarUrl });
+      const realName = data.name || data.wa_contactName || data.wa_name;
+
+      const patch: Partial<Lead> = {};
+      if (avatarUrl) patch.avatarUrl = avatarUrl;
+      if (realName && currentName && /^Lead \d+$/.test(currentName)) patch.name = realName;
+      if (!Object.keys(patch).length) return;
+
+      const updated = await this.leadsService.update(leadId, patch);
       this.realtime.emitLeadUpdated(updated);
     } catch (err: any) {
-      this.logger.warn(`[SDR] Erro ao buscar foto de perfil de ${phone}: ${err.message}`);
+      this.logger.warn(`[SDR] Erro ao buscar foto/nome de ${phone}: ${err.message}`);
     }
   }
 
@@ -331,7 +342,7 @@ export class SdrController {
         ctwaAdTitle: ctwa?.adTitle,
       });
       isNew = true;
-      this.fetchAndSaveAvatar(lead.id, lead.phone);
+      this.fetchAndSaveAvatar(lead.id, lead.phone, lead.name);
       if (fromAd) {
         this.logger.log(`[SDR] Lead ${phone} veio de anúncio CTWA (ctwa_clid=${ctwa!.clid}, ad="${ctwa?.adTitle ?? ctwa?.sourceId ?? '?'}")`);
         // Enriquece com nome real de campanha/conjunto/anúncio via Marketing API,

@@ -92,12 +92,19 @@ export class ManualMessageController {
           { headers: { token: this.uazapiToken } },
         ),
       );
-      const data = res.data as { imagePreview?: string; image?: string };
+      const data = res.data as { imagePreview?: string; image?: string; name?: string; wa_contactName?: string; wa_name?: string };
       const avatarUrl = data.imagePreview || data.image || null;
-      await this.leadsRepo.update(id, { avatarUrl });
+      const realName = data.name || data.wa_contactName || data.wa_name;
+
+      const patch: Record<string, any> = { avatarUrl };
+      // Só sobrescreve o nome se ainda estiver no placeholder "Lead XXXX" —
+      // não pisa em cima de um nome já coletado pela IA ou editado manualmente.
+      if (realName && /^Lead \d+$/.test(lead.name)) patch.name = realName;
+
+      await this.leadsRepo.update(id, patch);
       const fresh = await this.leadsRepo.findOne({ where: { id } });
       if (fresh) this.realtime.emitLeadUpdated(fresh);
-      return { avatarUrl };
+      return { avatarUrl, name: patch.name };
     } catch (err: any) {
       this.logger.warn(`[Manual] Falha ao buscar foto de perfil de ${phone}: ${err.message}`);
       return { avatarUrl: null };

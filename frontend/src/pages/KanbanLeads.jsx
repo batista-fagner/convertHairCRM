@@ -339,10 +339,10 @@ function ConversationModal({ lead, onClose, onTogglePause, onAssign, onSaveNotes
     chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [ctx.length])
 
-  // Lead ainda sem foto de perfil salva (criado antes dessa feature) — busca
-  // uma vez ao abrir a conversa; o resultado chega via socket (lead:updated).
+  // Lead ainda sem foto de perfil ou com nome placeholder ("Lead 3333") —
+  // busca uma vez ao abrir a conversa; o resultado chega via socket (lead:updated).
   useEffect(() => {
-    if (!lead.avatarUrl) {
+    if (!lead.avatarUrl || /^Lead \d+$/.test(lead.name || '')) {
       fetch(`${API}/leads/${lead.id}/fetch-avatar`, { method: 'POST' }).catch(() => {})
     }
   }, [lead.id])
