@@ -243,8 +243,8 @@ export class SdrController {
    * Só sobrescreve o nome se ainda estiver no placeholder "Lead XXXX" (não
    * pisa em cima de um nome já coletado pela IA ou editado manualmente).
    */
-  private async fetchAndSaveAvatar(leadId: string, phone: string, currentName?: string) {
-    if (!this.uazapiToken) return;
+  private async fetchAndSaveAvatar(leadId: string, phone: string, currentName?: string): Promise<string | undefined> {
+    if (!this.uazapiToken) return undefined;
     try {
       const res = await firstValueFrom(
         this.http.post(
@@ -260,12 +260,14 @@ export class SdrController {
       const patch: Partial<Lead> = {};
       if (avatarUrl) patch.avatarUrl = avatarUrl;
       if (realName && currentName && /^Lead \d+$/.test(currentName)) patch.name = realName;
-      if (!Object.keys(patch).length) return;
+      if (!Object.keys(patch).length) return undefined;
 
       const updated = await this.leadsService.update(leadId, patch);
       this.realtime.emitLeadUpdated(updated);
+      return patch.name;
     } catch (err: any) {
       this.logger.warn(`[SDR] Erro ao buscar foto/nome de ${phone}: ${err.message}`);
+      return undefined;
     }
   }
 
@@ -344,8 +346,17 @@ export class SdrController {
         ctwaAdTitle: ctwa?.adTitle,
       });
       isNew = true;
-      openingGreeting = await buildOpeningGreeting(lead.name);
-      this.fetchAndSaveAvatar(lead.id, lead.phone, lead.name);
+      // Se o WhatsApp não mandou display name no webhook, o lead nasce com o
+      // placeholder "Lead XXXX" — busca o nome real ANTES de calcular a
+      // saudação (senão sai "Oi! 👋" genérico à toa, mesmo o nome existindo).
+      // Quando já tem nome de verdade, só busca a foto em segundo plano.
+      let nameForGreeting = lead.name;
+      if (/^Lead \d+$/.test(lead.name)) {
+        nameForGreeting = (await this.fetchAndSaveAvatar(lead.id, lead.phone, lead.name)) || lead.name;
+      } else {
+        this.fetchAndSaveAvatar(lead.id, lead.phone, lead.name);
+      }
+      openingGreeting = await buildOpeningGreeting(nameForGreeting);
       if (fromAd) {
         this.logger.log(`[SDR] Lead ${phone} veio de anúncio CTWA (ctwa_clid=${ctwa!.clid}, ad="${ctwa?.adTitle ?? ctwa?.sourceId ?? '?'}")`);
         // Enriquece com nome real de campanha/conjunto/anúncio via Marketing API,
@@ -532,6 +543,11 @@ export class SdrController {
         this.logger.warn(`[SDR] Erro ao enriquecer Instagram do lead ${phone}: ${err.message}`),
       );
     }
+
+    // Só na 1ª mensagem: espera um pouco antes de começar a responder, pra não
+    // parecer um bot batendo de volta instantaneamente assim que o lead chega.
+    // As mensagens seguintes da conversa continuam no ritmo normal.
+    if (isNew) await new Promise((r) => setTimeout(r, 10_000));
 
     if (ai.reply) await this.sendReplyAsBubbles(phone, ai.reply);
 
