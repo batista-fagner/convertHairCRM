@@ -122,11 +122,16 @@ export class SdrController {
     // pausa, "ok" reativa. Qualquer outro texto é o closer conversando de
     // verdade com o lead (ex.: pós-handoff) — antes isso era descartado sem
     // ser salvo, o que apagava a conversa do closer do histórico do lead.
+    const isAudioMsg = message.type === 'media' && ['audio', 'ptt', 'myaudio'].includes(message.mediaType);
+
     if (message.fromMe && !message.wasSentByApi && !message.isGroup) {
       const leadPhone: string = (body.chat?.phone ?? '').replace(/\D/g, '');
       const keyword = (message.text ?? '').trim().toLowerCase();
       if (keyword === 'opa' || keyword === 'ok') {
         if (leadPhone) await this.toggleAiByKeyword(leadPhone, keyword === 'opa');
+      } else if (leadPhone && isAudioMsg && message.messageid) {
+        const transcribed = await this.transcribeAudio(message.messageid, leadPhone);
+        if (transcribed?.text) await this.recordHumanReply(leadPhone, transcribed.text, transcribed.media);
       } else if (leadPhone && message.text) {
         await this.recordHumanReply(leadPhone, message.text);
       }
@@ -139,34 +144,16 @@ export class SdrController {
     let text: string = message.text ?? '';
     const messageId: string = message.messageid ?? '';
     const pushName: string = body.chat?.name ?? message.senderName ?? '';
-    const isAudio = message.type === 'media' && ['audio', 'ptt', 'myaudio'].includes(message.mediaType);
     let incomingMedia: { mediaType: string; mediaUrl: string } | undefined;
 
     if (!phone) return { ok: true };
 
     // Áudio/PTT: transcreve via uazapi + Whisper antes de seguir o fluxo normal
-    if (isAudio && messageId) {
-      try {
-        this.logger.log(`[SDR] Áudio recebido de ${phone} — transcrevendo...`);
-        const res = await firstValueFrom(
-          this.http.post(
-            `${this.uazapiBaseUrl}/message/download`,
-            { id: messageId, transcribe: true, generate_mp3: true, return_link: true, openai_apikey: this.config.get('OPENAI_API_KEY') },
-            { headers: { token: this.uazapiToken } },
-          ),
-        );
-        const data = res.data as { transcription?: string; fileURL?: string };
-        text = data.transcription ?? '';
-        if (data.fileURL) incomingMedia = { mediaType: 'audio', mediaUrl: data.fileURL };
-        if (!text) {
-          this.logger.warn(`[SDR] Transcrição vazia de ${phone} — ignorando`);
-          return { ok: true };
-        }
-        this.logger.log(`[SDR] Áudio de ${phone} transcrito: "${text}"`);
-      } catch (err: any) {
-        this.logger.error(`[SDR] Erro ao transcrever áudio de ${phone}: ${err.message}`);
-        return { ok: true };
-      }
+    if (isAudioMsg && messageId) {
+      const transcribed = await this.transcribeAudio(messageId, phone);
+      if (!transcribed) return { ok: true };
+      text = transcribed.text;
+      incomingMedia = transcribed.media;
     }
 
     if (!text) return { ok: true };
@@ -258,14 +245,39 @@ export class SdrController {
     this.logger.log(`[SDR] IA ${pause ? 'pausada' : 'reativada'} via palavra-chave para o lead ${updated.phone}`);
   }
 
-  /** Registra no histórico a mensagem que o closer digitou direto no WhatsApp (fora do CRM). */
-  private async recordHumanReply(phone: string, text: string) {
+  /** Registra no histórico a mensagem que o closer digitou/gravou direto no WhatsApp (fora do CRM). */
+  private async recordHumanReply(phone: string, text: string, media?: { mediaType: string; mediaUrl: string }) {
     const lead = await this.findLeadByPhoneVariants(phone);
     if (!lead) return;
-    const ctx = [...(Array.isArray(lead.aiContext) ? lead.aiContext : []), { role: 'assistant', source: 'operator', content: text, timestamp: new Date().toISOString() }];
+    const ctx = [...(Array.isArray(lead.aiContext) ? lead.aiContext : []), { role: 'assistant', source: 'operator', content: text, timestamp: new Date().toISOString(), ...(media || {}) }];
     const updated = await this.leadsService.update(lead.id, { aiContext: ctx, waLastMessageAt: new Date() });
     this.realtime.emitLeadUpdated(updated);
     this.logger.log(`[SDR] Resposta manual do closer registrada para o lead ${updated.phone}`);
+  }
+
+  /** Baixa + transcreve um áudio via uazapi/Whisper. Retorna null se falhar ou vier vazio. */
+  private async transcribeAudio(messageId: string, phone: string): Promise<{ text: string; media?: { mediaType: string; mediaUrl: string } } | null> {
+    try {
+      this.logger.log(`[SDR] Áudio recebido de ${phone} — transcrevendo...`);
+      const res = await firstValueFrom(
+        this.http.post(
+          `${this.uazapiBaseUrl}/message/download`,
+          { id: messageId, transcribe: true, generate_mp3: true, return_link: true, openai_apikey: this.config.get('OPENAI_API_KEY') },
+          { headers: { token: this.uazapiToken } },
+        ),
+      );
+      const data = res.data as { transcription?: string; fileURL?: string };
+      const text = data.transcription ?? '';
+      if (!text) {
+        this.logger.warn(`[SDR] Transcrição vazia de ${phone} — ignorando`);
+        return null;
+      }
+      this.logger.log(`[SDR] Áudio de ${phone} transcrito: "${text}"`);
+      return { text, media: data.fileURL ? { mediaType: 'audio', mediaUrl: data.fileURL } : undefined };
+    } catch (err: any) {
+      this.logger.error(`[SDR] Erro ao transcrever áudio de ${phone}: ${err.message}`);
+      return null;
+    }
   }
 
   private async processMessage(phone: string, text: string, pushName: string, ctwa?: CtwaReferral, incomingMedia?: { mediaType: string; mediaUrl: string }) {
