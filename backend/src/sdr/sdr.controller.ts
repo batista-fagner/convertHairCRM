@@ -9,6 +9,7 @@ import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { SettingsService } from '../settings/settings.service';
 import { EnrichmentService } from '../enrichment/enrichment.service';
 import { Lead, WaStage } from '../common/entities/lead.entity';
+import { buildOpeningGreeting } from './name-gender.util';
 
 export const SDR_NOTIFY_PHONES_KEY = 'sdr_notify_phones';
 
@@ -317,6 +318,7 @@ export class SdrController {
 
     // Lead novo entrando pelo número do SDR → cria card "novo" no Kanban
     let isNew = false;
+    let openingGreeting: string | undefined;
     if (!lead) {
       const fromAd = Boolean(ctwa?.clid);
       // Link do WhatsApp usado no botão da DM da automação de Instagram vem
@@ -342,6 +344,7 @@ export class SdrController {
         ctwaAdTitle: ctwa?.adTitle,
       });
       isNew = true;
+      openingGreeting = await buildOpeningGreeting(lead.name);
       this.fetchAndSaveAvatar(lead.id, lead.phone, lead.name);
       if (fromAd) {
         this.logger.log(`[SDR] Lead ${phone} veio de anúncio CTWA (ctwa_clid=${ctwa!.clid}, ad="${ctwa?.adTitle ?? ctwa?.sourceId ?? '?'}")`);
@@ -381,10 +384,10 @@ export class SdrController {
     await this.sendTyping(phone, 2000);
 
     // Processa com IA (1 retry se falhar)
-    let ai = await this.sdrService.processMessage(lead, text);
+    let ai = await this.sdrService.processMessage(lead, text, openingGreeting);
     if (!ai.success) {
       await new Promise((r) => setTimeout(r, 2000));
-      ai = await this.sdrService.processMessage(lead, text);
+      ai = await this.sdrService.processMessage(lead, text, openingGreeting);
     }
 
     // Loop: a IA respondeu a mesma coisa 3 vezes seguidas (não avança a conversa).

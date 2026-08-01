@@ -28,19 +28,22 @@ const REVENUE_LABELS: Record<string, string> = {
   'acima-300k': 'acima de R$ 300 mil/mês',
 };
 
-function buildLeadContext(lead?: Lead | null): string {
+function buildLeadContext(lead?: Lead | null, openingGreeting?: string): string {
   const lines: string[] = [];
   if (lead?.name) lines.push(`- Nome: ${lead.name}`);
   if (lead?.revenueRange) lines.push(`- Faturamento: ${REVENUE_LABELS[lead.revenueRange] || lead.revenueRange}`);
   if (lead?.aiInsight?.niche) lines.push(`- Nicho: ${lead.aiInsight.niche}`);
   if (lead?.instagram) lines.push(`- Instagram: @${lead.instagram}`);
   if (lead?.aiInsight?.selling_angle) lines.push(`- Gargalo identificado: ${lead.aiInsight.selling_angle}`);
+  // Bolha 1 da abertura já vem PRONTA do código (nome/gênero calculados fora da
+  // IA — ela já errou isso antes). A IA só copia, nunca monta essa parte sozinha.
+  if (openingGreeting) lines.push(`- Saudação de abertura (bolha 1 da PRIMEIRA MENSAGEM): "${openingGreeting}"`);
   return lines.length > 0 ? `\nCONTEXTO DO LEAD (use para não perguntar o que já foi dito):\n${lines.join('\n')}` : '';
 }
 
 // Compõe o prompt final: persona (editável) + contexto do lead + formato JSON obrigatório
-function buildSystemPrompt(basePrompt: string, lead?: Lead | null): string {
-  return `${basePrompt}\n${buildLeadContext(lead)}\n\n${SDR_JSON_FORMAT}`;
+function buildSystemPrompt(basePrompt: string, lead?: Lead | null, openingGreeting?: string): string {
+  return `${basePrompt}\n${buildLeadContext(lead, openingGreeting)}\n\n${SDR_JSON_FORMAT}`;
 }
 
 /** Volume mínimo de mensagens/dia pra ser considerado qualificado — abaixo disso, desqualifica mesmo vendendo cabelo. */
@@ -86,7 +89,7 @@ export class SdrService {
     this.model = config.get('SDR_OPENAI_MODEL') || 'gpt-5.4-mini';
   }
 
-  async processMessage(lead: Lead, incomingText: string): Promise<SdrResponse> {
+  async processMessage(lead: Lead, incomingText: string, openingGreeting?: string): Promise<SdrResponse> {
     // Sanitiza roles inválidos de versões anteriores (ex.: 'lead', 'gabi')
     const rawHistory: any[] = (lead.aiContext as any[]) ?? [];
     const history: OpenAI.Chat.ChatCompletionMessageParam[] = rawHistory.map((m) => ({
@@ -99,7 +102,7 @@ export class SdrService {
     const model = (await this.settings.get(SDR_MODEL_KEY)) || this.model;
 
     const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
-      { role: 'system', content: buildSystemPrompt(basePrompt, lead) },
+      { role: 'system', content: buildSystemPrompt(basePrompt, lead, openingGreeting) },
       ...history,
       { role: 'user', content: incomingText },
     ];
