@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { DndContext, DragOverlay, useDraggable, useDroppable, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { io } from 'socket.io-client'
-import { Flame, Snowflake, UserPlus, XCircle, Phone, Mail, UserCheck, Loader2, X, MessageCircle, PauseCircle, Bot, MoreVertical, Pencil, Trash2, Play, Eye, Handshake, Trophy, HeadphonesIcon, Paperclip, Send, FileText, Video, StickyNote, ChevronDown, ChevronUp, Plus, CheckCircle2, Megaphone, Search, Layers } from 'lucide-react'
+import { Flame, Snowflake, UserPlus, XCircle, Phone, Mail, UserCheck, Loader2, X, MessageCircle, PauseCircle, Bot, MoreVertical, Pencil, Trash2, Play, Eye, Handshake, Trophy, HeadphonesIcon, Paperclip, Send, FileText, Video, StickyNote, ChevronDown, ChevronUp, Plus, CheckCircle2, Megaphone, Search, Layers, Mic, Square } from 'lucide-react'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3002/api'
 const SOCKET_URL = API.replace(/\/api\/?$/, '') || 'http://localhost:3002'
@@ -296,6 +296,7 @@ const MAX_MEDIA_BYTES = 5 * 1024 * 1024 // 5 MB
 function mediaIcon(type) {
   if (type === 'image') return null // rendered as <img>
   if (type === 'video') return <Video className="w-4 h-4" />
+  if (type === 'audio') return <Mic className="w-4 h-4" />
   return <FileText className="w-4 h-4" />
 }
 
@@ -311,9 +312,14 @@ function ConversationModal({ lead, onClose, onTogglePause, onAssign, onSaveNotes
   const [pendingMedia, setPendingMedia] = useState(null) // { type, base64, dataUrl, filename, mimeType }
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState('')
+  const [isRecording, setIsRecording] = useState(false)
+  const [recordSeconds, setRecordSeconds] = useState(0)
   const chatBottomRef = useRef(null)
   const textareaRef = useRef(null)
   const fileInputRef = useRef(null)
+  const mediaRecorderRef = useRef(null)
+  const recordedChunksRef = useRef([])
+  const recordTimerRef = useRef(null)
 
   // Scroll para o final sempre que chegar nova mensagem
   useEffect(() => {
@@ -356,6 +362,62 @@ function ConversationModal({ lead, onClose, onTogglePause, onAssign, onSaveNotes
     }
     reader.readAsDataURL(file)
   }
+
+  const startRecording = async () => {
+    if (isRecording) return
+    setSendError('')
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')
+        ? 'audio/ogg;codecs=opus'
+        : 'audio/webm'
+      const recorder = new MediaRecorder(stream, { mimeType })
+      recordedChunksRef.current = []
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) recordedChunksRef.current.push(e.data)
+      }
+      recorder.onstop = () => {
+        stream.getTracks().forEach(t => t.stop())
+        clearInterval(recordTimerRef.current)
+        const blob = new Blob(recordedChunksRef.current, { type: mimeType })
+        if (blob.size === 0) {
+          setRecordSeconds(0)
+          return
+        }
+        if (blob.size > MAX_MEDIA_BYTES) {
+          setSendError('Áudio muito longo (máx. 5 MB)')
+          setRecordSeconds(0)
+          return
+        }
+        const reader = new FileReader()
+        reader.onload = (ev) => {
+          const dataUrl = ev.target.result
+          const base64 = dataUrl.split(',')[1]
+          const ext = mimeType.includes('ogg') ? 'ogg' : 'webm'
+          setPendingMedia({ type: 'audio', base64, dataUrl, filename: `audio.${ext}`, mimeType })
+        }
+        reader.readAsDataURL(blob)
+        setRecordSeconds(0)
+      }
+      mediaRecorderRef.current = recorder
+      recorder.start()
+      setIsRecording(true)
+      recordTimerRef.current = setInterval(() => setRecordSeconds(s => s + 1), 1000)
+    } catch (err) {
+      setSendError('Não foi possível acessar o microfone')
+    }
+  }
+
+  const stopRecording = () => {
+    mediaRecorderRef.current?.stop()
+    setIsRecording(false)
+  }
+
+  useEffect(() => {
+    return () => clearInterval(recordTimerRef.current)
+  }, [])
 
   const handleSend = async () => {
     if (sending) return
@@ -548,13 +610,21 @@ function ConversationModal({ lead, onClose, onTogglePause, onAssign, onSaveNotes
                       className="rounded-lg mb-1.5 max-w-full max-h-56"
                     />
                   )}
-                  {m.mediaType && !(m.mediaType === 'image' && m.base64) && !(m.mediaType === 'video' && m.mediaUrl) && (
+                  {m.mediaType === 'audio' && (m.base64 || m.mediaUrl) && (
+                    <audio
+                      src={m.mediaUrl || (m.base64.startsWith('data:') ? m.base64 : `data:audio/ogg;base64,${m.base64}`)}
+                      controls
+                      preload="metadata"
+                      className="mb-1.5 max-w-full h-9"
+                    />
+                  )}
+                  {m.mediaType && !(m.mediaType === 'image' && m.base64) && !(m.mediaType === 'video' && m.mediaUrl) && !(m.mediaType === 'audio' && (m.base64 || m.mediaUrl)) && (
                     <div className="flex items-center gap-1.5 mb-1 opacity-90">
                       {mediaIcon(m.mediaType)}
                       <span className="text-xs font-medium truncate max-w-[180px]">{m.filename || m.mediaType}</span>
                     </div>
                   )}
-                  {m.mediaType === 'video' && m.mediaUrl ? (
+                  {(m.mediaType === 'video' || m.mediaType === 'audio') && (m.mediaUrl || m.base64) ? (
                     m.caption && <p className="whitespace-pre-wrap">{m.caption}</p>
                   ) : (
                     m.content && <p className="whitespace-pre-wrap">{m.content}</p>
@@ -581,6 +651,8 @@ function ConversationModal({ lead, onClose, onTogglePause, onAssign, onSaveNotes
             <div className="mb-2 flex items-center gap-2 p-2 bg-slate-50 border border-slate-200 rounded-xl">
               {pendingMedia.type === 'image' ? (
                 <img src={pendingMedia.dataUrl} alt="" className="h-14 w-14 object-cover rounded-lg shrink-0" />
+              ) : pendingMedia.type === 'audio' ? (
+                <audio src={pendingMedia.dataUrl} controls className="h-9 max-w-[220px]" />
               ) : (
                 <div className="flex items-center gap-1.5 text-slate-600">
                   {mediaIcon(pendingMedia.type)}
@@ -604,7 +676,8 @@ function ConversationModal({ lead, onClose, onTogglePause, onAssign, onSaveNotes
             {/* Botão de mídia */}
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="p-2 text-slate-400 hover:text-violet-500 transition shrink-0"
+              disabled={isRecording}
+              className="p-2 text-slate-400 hover:text-violet-500 disabled:opacity-30 disabled:cursor-not-allowed transition shrink-0"
               title="Enviar imagem, vídeo ou documento (máx. 5 MB)"
             >
               <Paperclip className="w-5 h-5" />
@@ -617,22 +690,40 @@ function ConversationModal({ lead, onClose, onTogglePause, onAssign, onSaveNotes
               onChange={handleFileSelect}
             />
 
-            {/* Textarea */}
-            <textarea
-              ref={textareaRef}
-              value={draft}
-              onChange={handleDraftChange}
-              onKeyDown={handleKeyDown}
-              placeholder={pendingMedia ? 'Legenda (opcional)...' : 'Digite uma mensagem... (Enter envia, Shift+Enter quebra linha)'}
-              rows={1}
-              className="flex-1 resize-none bg-slate-100 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300 placeholder:text-slate-400"
-              style={{ minHeight: '40px', maxHeight: '96px' }}
-            />
+            {/* Botão de áudio */}
+            <button
+              onClick={isRecording ? stopRecording : startRecording}
+              disabled={!!pendingMedia}
+              className={`p-2 rounded-full transition shrink-0 disabled:opacity-30 disabled:cursor-not-allowed ${
+                isRecording ? 'text-white bg-red-500 hover:bg-red-600' : 'text-slate-400 hover:text-violet-500'
+              }`}
+              title={isRecording ? 'Parar gravação' : 'Gravar áudio'}
+            >
+              {isRecording ? <Square className="w-4 h-4" /> : <Mic className="w-5 h-5" />}
+            </button>
+
+            {isRecording ? (
+              <div className="flex-1 flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-3.5 py-2.5 text-sm text-red-600 font-medium">
+                <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                Gravando... {Math.floor(recordSeconds / 60)}:{String(recordSeconds % 60).padStart(2, '0')}
+              </div>
+            ) : (
+              <textarea
+                ref={textareaRef}
+                value={draft}
+                onChange={handleDraftChange}
+                onKeyDown={handleKeyDown}
+                placeholder={pendingMedia ? 'Legenda (opcional)...' : 'Digite uma mensagem... (Enter envia, Shift+Enter quebra linha)'}
+                rows={1}
+                className="flex-1 resize-none bg-slate-100 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300 placeholder:text-slate-400"
+                style={{ minHeight: '40px', maxHeight: '96px' }}
+              />
+            )}
 
             {/* Botão enviar */}
             <button
               onClick={handleSend}
-              disabled={sending || (!draft.trim() && !pendingMedia)}
+              disabled={sending || isRecording || (!draft.trim() && !pendingMedia)}
               className="p-2.5 bg-violet-500 hover:bg-violet-600 disabled:bg-slate-200 disabled:cursor-not-allowed text-white rounded-xl transition shrink-0"
               title="Enviar"
             >
