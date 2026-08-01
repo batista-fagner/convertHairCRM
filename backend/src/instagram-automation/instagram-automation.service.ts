@@ -43,12 +43,16 @@ interface AiReplyConfig {
 /** Espera entre cada bloco de mensagem enviado em sequência, simulando alguém digitando. */
 const BLOCK_DELAY_MS = 2000;
 
+/** Debounce: espera esse tempo sem novas mensagens do mesmo contato antes de gerar a resposta da IA. */
+const DM_DEBOUNCE_MS = 20_000;
+
 export type IgConversationFilter = 'all' | 'unread' | 'ai_paused';
 
 @Injectable()
 export class InstagramAutomationService {
   private readonly logger = new Logger(InstagramAutomationService.name);
   private readonly openai: OpenAI;
+  private readonly pendingBuffer = new Map<string, { timer: NodeJS.Timeout; texts: string[] }>();
 
   constructor(
     @InjectRepository(InstagramAutomation)
@@ -407,6 +411,31 @@ export class InstagramAutomationService {
 
     this.logger.log(`DM de ${senderIgId}: "${text}" | payload: ${quickReplyPayload}`);
 
+    // Quick reply (clique num botão Sim/Não) processa na hora — não é texto
+    // livre que possa vir picotado em várias mensagens, então não faz sentido
+    // esperar o debounce.
+    if (quickReplyPayload) {
+      await this.processMessagingEvent(senderIgId, text, quickReplyPayload);
+      return;
+    }
+
+    // Debounce 20s: acumula mensagens rápidas em sequência (a pessoa mandando
+    // várias bolhas seguidas) antes de gerar 1 única resposta da IA — evita a
+    // IA responder a cada bolha isolada e mandar mensagens fora de contexto.
+    const pending = this.pendingBuffer.get(senderIgId) ?? { timer: null as any, texts: [] as string[] };
+    pending.texts.push(text);
+    if (pending.timer) clearTimeout(pending.timer);
+    pending.timer = setTimeout(() => {
+      const combinedText = pending.texts.join('\n');
+      this.pendingBuffer.delete(senderIgId);
+      this.processMessagingEvent(senderIgId, combinedText).catch((err) =>
+        this.logger.error(`Erro ao processar DM de ${senderIgId}: ${err.message}`),
+      );
+    }, DM_DEBOUNCE_MS);
+    this.pendingBuffer.set(senderIgId, pending);
+  }
+
+  private async processMessagingEvent(senderIgId: string, text: string, quickReplyPayload?: string) {
     // Busca conversa ativa mais recente
     const conv = await this.convRepo.findOne({
       where: { senderIgId },
@@ -786,7 +815,7 @@ export class InstagramAutomationService {
   ): Promise<{ blocks: string[]; sendLink: boolean }> {
     try {
       const basePrompt = auto.aiPrompt || DEFAULT_IG_AI_PROMPT;
-      const context = `\n\nCONTEXTO:\n- Mensagem/oferta que você pode usar quando fizer sentido: "${auto.replyMessage || ''}"\n- Link disponível pra mandar quando for a hora certa (nunca invente outro): ${auto.link || 'nenhum'}\n\nResponda SEMPRE em JSON: {"blocks": ["mensagem 1", "mensagem 2 (opcional)"], "sendLink": true|false}. "blocks" é a lista de mensagens a mandar em sequência, como alguém real mandando 2-3 mensagens curtas seguidas em vez de um texto único grande — use 1 bloco só quando a resposta já é curta, e separe em 2-3 blocos quando a resposta natural ficaria longa. Cada bloco deve ser curto (1-2 frases). sendLink=true só no momento certo de mandar o link — não force isso na 1ª mensagem se não fizer sentido.`;
+      const context = `\n\nCONTEXTO:\n- Mensagem/oferta que você pode usar quando fizer sentido: "${auto.replyMessage || ''}"\n- Link disponível pra mandar quando for a hora certa (nunca invente outro): ${auto.link || 'nenhum'}\n\nResponda SEMPRE em JSON: {"blocks": ["mensagem 1", "mensagem 2 (opcional)"], "sendLink": true|false}. "blocks" é APENAS a mesma resposta única quebrada em 2-3 bolhas curtas pra parecer alguém digitando (ex.: separar um cumprimento de uma frase de contexto) — nunca use blocks pra fazer mais de 1 pergunta nova por vez. Faça UMA pergunta de cada vez e espere a resposta antes de perguntar a próxima coisa, mesmo que o roteiro tenha várias perguntas de qualificação pendentes. Cada bloco deve ser curto (1-2 frases). sendLink=true só no momento certo de mandar o link — não force isso na 1ª mensagem se não fizer sentido.`;
 
       const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
         { role: 'system', content: basePrompt + context },
