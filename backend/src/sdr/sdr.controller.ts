@@ -547,7 +547,7 @@ export class SdrController {
     // Só na 1ª mensagem: espera um pouco antes de começar a responder, pra não
     // parecer um bot batendo de volta instantaneamente assim que o lead chega.
     // As mensagens seguintes da conversa continuam no ritmo normal.
-    if (isNew) await new Promise((r) => setTimeout(r, 10_000));
+    if (isNew) await new Promise((r) => setTimeout(r, 5_000));
 
     if (ai.reply) await this.sendReplyAsBubbles(phone, ai.reply);
 
