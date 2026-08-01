@@ -1,5 +1,7 @@
+import { Logger } from '@nestjs/common';
 import axios from 'axios';
 
+const logger = new Logger('NameGender');
 const IBGE_NOMES_URL = 'https://servicodados.ibge.gov.br/api/v2/censos/nomes';
 
 /**
@@ -30,7 +32,10 @@ function sumFrequencia(data: any): number {
  */
 export async function buildOpeningGreeting(rawName: string): Promise<string> {
   const firstName = extractCandidateFirstName(rawName);
-  if (!firstName) return 'Oi! 👋';
+  if (!firstName) {
+    logger.log(`"${rawName}" não parece nome de pessoa — saudação genérica "Oi! 👋"`);
+    return 'Oi! 👋';
+  }
 
   try {
     const [maleRes, femaleRes] = await Promise.all([
@@ -41,14 +46,22 @@ export async function buildOpeningGreeting(rawName: string): Promise<string> {
     const femaleCount = sumFrequencia(femaleRes.data);
     const total = maleCount + femaleCount;
 
-    if (total === 0) return `Fala ${firstName} tudo bem?`; // nome não consta no censo — trata como pessoa, mas neutro
+    if (total === 0) {
+      logger.log(`IBGE sem dados pra "${firstName}" (M=0, F=0) — saudação neutra`);
+      return `Fala ${firstName} tudo bem?`; // nome não consta no censo — trata como pessoa, mas neutro
+    }
     const ratio = Math.max(maleCount, femaleCount) / total;
-    if (ratio < 0.65) return `Fala ${firstName} tudo bem?`; // sem gênero dominante claro
+    if (ratio < 0.65) {
+      logger.log(`IBGE "${firstName}": M=${maleCount} F=${femaleCount} (sem gênero dominante) — saudação neutra`);
+      return `Fala ${firstName} tudo bem?`; // sem gênero dominante claro
+    }
 
-    return maleCount > femaleCount
-      ? `Fala ${firstName}, blz?`
-      : `Olá minha amiga ${firstName}, tudo bem?`;
-  } catch {
+    const gender = maleCount > femaleCount ? 'M' : 'F';
+    const greeting = gender === 'M' ? `Fala ${firstName}, blz?` : `Olá minha amiga ${firstName}, tudo bem?`;
+    logger.log(`IBGE "${firstName}": M=${maleCount} F=${femaleCount} → gênero ${gender} → "${greeting}"`);
+    return greeting;
+  } catch (err: any) {
+    logger.warn(`Erro ao consultar IBGE pra "${firstName}": ${err.message} — saudação neutra`);
     return `Fala ${firstName} tudo bem?`; // IBGE fora do ar/timeout — não trava a saudação por isso
   }
 }
