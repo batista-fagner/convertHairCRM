@@ -160,12 +160,13 @@ export class SdrService {
     lead: Lead | null,
     incomingText: string,
     reply: string,
+    incomingMedia?: { mediaType: string; mediaUrl: string },
   ): any[] {
     const history: any[] = (lead?.aiContext as any[]) ?? [];
     const now = new Date().toISOString();
     return [
       ...history,
-      { role: 'user', content: incomingText, timestamp: now },
+      { role: 'user', content: incomingText, timestamp: now, ...(incomingMedia || {}) },
       { role: 'assistant', content: reply, timestamp: now },
     ];
   }

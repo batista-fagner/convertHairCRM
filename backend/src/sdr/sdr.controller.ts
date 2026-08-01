@@ -74,7 +74,7 @@ export function extractCtwaReferral(body: any): CtwaReferral {
 export class SdrController {
   private readonly logger = new Logger(SdrController.name);
   private readonly processedIds = new Set<string>();
-  private readonly pendingBuffer = new Map<string, { timer: NodeJS.Timeout; texts: string[]; ctwa?: CtwaReferral }>();
+  private readonly pendingBuffer = new Map<string, { timer: NodeJS.Timeout; texts: string[]; ctwa?: CtwaReferral; media?: { mediaType: string; mediaUrl: string } }>();
   private readonly uazapiBaseUrl: string;
   private readonly uazapiToken: string;
   private readonly operatorPhone: string;
@@ -140,6 +140,7 @@ export class SdrController {
     const messageId: string = message.messageid ?? '';
     const pushName: string = body.chat?.name ?? message.senderName ?? '';
     const isAudio = message.type === 'media' && ['audio', 'ptt', 'myaudio'].includes(message.mediaType);
+    let incomingMedia: { mediaType: string; mediaUrl: string } | undefined;
 
     if (!phone) return { ok: true };
 
@@ -150,11 +151,13 @@ export class SdrController {
         const res = await firstValueFrom(
           this.http.post(
             `${this.uazapiBaseUrl}/message/download`,
-            { id: messageId, transcribe: true, generate_mp3: false, return_link: false, openai_apikey: this.config.get('OPENAI_API_KEY') },
+            { id: messageId, transcribe: true, generate_mp3: true, return_link: true, openai_apikey: this.config.get('OPENAI_API_KEY') },
             { headers: { token: this.uazapiToken } },
           ),
         );
-        text = (res.data as any).transcription ?? '';
+        const data = res.data as { transcription?: string; fileURL?: string };
+        text = data.transcription ?? '';
+        if (data.fileURL) incomingMedia = { mediaType: 'audio', mediaUrl: data.fileURL };
         if (!text) {
           this.logger.warn(`[SDR] Transcrição vazia de ${phone} — ignorando`);
           return { ok: true };
@@ -186,16 +189,18 @@ export class SdrController {
     const ctwa = extractCtwaReferral(body);
 
     // Debounce 25s: acumula mensagens antes de processar
-    const pending: { timer: NodeJS.Timeout; texts: string[]; ctwa?: CtwaReferral } =
+    const pending: { timer: NodeJS.Timeout; texts: string[]; ctwa?: CtwaReferral; media?: { mediaType: string; mediaUrl: string } } =
       this.pendingBuffer.get(phone) ?? { timer: null as any, texts: [] };
     pending.texts.push(text);
     if (ctwa.clid && !pending.ctwa?.clid) pending.ctwa = ctwa;
+    if (incomingMedia && !pending.media) pending.media = incomingMedia;
     if (pending.timer) clearTimeout(pending.timer);
     pending.timer = setTimeout(() => {
       const combinedText = pending.texts.join('\n');
       const capturedCtwa = pending.ctwa;
+      const capturedMedia = pending.media;
       this.pendingBuffer.delete(phone);
-      this.processMessage(phone, combinedText, pushName, capturedCtwa).catch((err) =>
+      this.processMessage(phone, combinedText, pushName, capturedCtwa, capturedMedia).catch((err) =>
         this.logger.error(`[SDR] Erro ao processar ${phone}: ${err.message}`),
       );
     }, 25_000);
@@ -263,7 +268,7 @@ export class SdrController {
     this.logger.log(`[SDR] Resposta manual do closer registrada para o lead ${updated.phone}`);
   }
 
-  private async processMessage(phone: string, text: string, pushName: string, ctwa?: CtwaReferral) {
+  private async processMessage(phone: string, text: string, pushName: string, ctwa?: CtwaReferral, incomingMedia?: { mediaType: string; mediaUrl: string }) {
     let lead: Lead | null = await this.findLeadByPhoneVariants(phone);
 
     // Lead novo entrando pelo número do SDR → cria card "novo" no Kanban
@@ -312,7 +317,7 @@ export class SdrController {
     // Mesmo sem a IA responder, a mensagem do lead precisa ser salva — antes era
     // descartada aqui, apagando a conversa do closer com o lead do histórico.
     if (lead.waStage === 'encerrado' && lead.aiPaused !== false) {
-      const ctx = [...(Array.isArray(lead.aiContext) ? lead.aiContext : []), { role: 'user', content: text, timestamp: new Date().toISOString() }];
+      const ctx = [...(Array.isArray(lead.aiContext) ? lead.aiContext : []), { role: 'user', content: text, timestamp: new Date().toISOString(), ...(incomingMedia || {}) }];
       lead = await this.leadsService.update(lead.id, { aiContext: ctx, waLastMessageAt: new Date() });
       this.realtime.emitLeadUpdated(lead);
       this.logger.log(`[SDR] Lead ${phone} encerrado — closer assumiu, mensagem registrada sem resposta automática`);
@@ -321,7 +326,7 @@ export class SdrController {
 
     // IA pausada: humano assumiu. Registra a mensagem recebida mas não responde.
     if (lead.aiPaused) {
-      const ctx = [...(Array.isArray(lead.aiContext) ? lead.aiContext : []), { role: 'user', content: text, timestamp: new Date().toISOString() }];
+      const ctx = [...(Array.isArray(lead.aiContext) ? lead.aiContext : []), { role: 'user', content: text, timestamp: new Date().toISOString(), ...(incomingMedia || {}) }];
       lead = await this.leadsService.update(lead.id, { aiContext: ctx, waLastMessageAt: new Date() });
       this.realtime.emitLeadUpdated(lead);
       this.logger.log(`[SDR] Lead ${phone} com IA pausada — mensagem registrada, sem resposta`);
@@ -342,7 +347,7 @@ export class SdrController {
     // martelando o lead e avisa o operador assumir manualmente.
     if (this.isLoopReply(lead, ai.reply)) {
       this.logger.warn(`[SDR] Loop detectado para ${phone} — IA pausada automaticamente`);
-      const ctx = [...(Array.isArray(lead.aiContext) ? lead.aiContext : []), { role: 'user', content: text, timestamp: new Date().toISOString() }];
+      const ctx = [...(Array.isArray(lead.aiContext) ? lead.aiContext : []), { role: 'user', content: text, timestamp: new Date().toISOString(), ...(incomingMedia || {}) }];
       lead = await this.leadsService.update(lead.id, { aiContext: ctx, waLastMessageAt: new Date(), aiPaused: true });
       this.realtime.emitLeadUpdated(lead);
       await this.notifyOperatorLoop(lead);
@@ -353,7 +358,7 @@ export class SdrController {
     // uma instrução de envio (2 bolhas de WhatsApp), não deve aparecer literal
     // nem no modal de conversa do CRM nem no contexto que a própria IA relê.
     const contextReply = (ai.reply ?? '').replace(/\|\|\|/g, '\n');
-    const updatedContext = this.sdrService.buildUpdatedContext(lead, text, contextReply);
+    const updatedContext = this.sdrService.buildUpdatedContext(lead, text, contextReply, incomingMedia);
 
     // Os 3 sinais da qualificação são persistidos: o sistema guarda o que já foi
     // respondido, então só sobrescreve quando a IA manda algo novo nesta mensagem
