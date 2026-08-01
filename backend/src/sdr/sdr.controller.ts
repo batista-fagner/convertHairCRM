@@ -75,7 +75,7 @@ export function extractCtwaReferral(body: any): CtwaReferral {
 export class SdrController {
   private readonly logger = new Logger(SdrController.name);
   private readonly processedIds = new Set<string>();
-  private readonly pendingBuffer = new Map<string, { timer: NodeJS.Timeout; texts: string[]; ctwa?: CtwaReferral; media?: { mediaType: string; mediaUrl: string } }>();
+  private readonly pendingBuffer = new Map<string, { timer: NodeJS.Timeout; texts: string[]; ctwa?: CtwaReferral; media?: { mediaType: string; mediaUrl: string }; isFirstContact: boolean }>();
   private readonly uazapiBaseUrl: string;
   private readonly uazapiToken: string;
   private readonly operatorPhone: string;
@@ -176,22 +176,30 @@ export class SdrController {
     // aqui e preserva no buffer, mesmo que cheguem mais mensagens no debounce.
     const ctwa = extractCtwaReferral(body);
 
-    // Debounce 25s: acumula mensagens antes de processar
-    const pending: { timer: NodeJS.Timeout; texts: string[]; ctwa?: CtwaReferral; media?: { mediaType: string; mediaUrl: string } } =
-      this.pendingBuffer.get(phone) ?? { timer: null as any, texts: [] };
+    // Debounce: acumula mensagens antes de processar. Na 1ª mensagem de um lead
+    // novo (ex.: veio do anúncio do Facebook com uma mensagem pronta), usa um
+    // debounce bem mais curto (8s) — não faz sentido esperar 25s pra abertura,
+    // já que normalmente é uma mensagem só. Leads já existentes continuam com
+    // 25s (dá tempo do lead mandar mais de uma mensagem seguida antes da IA responder).
+    let pending = this.pendingBuffer.get(phone);
+    if (!pending) {
+      const existingLead = await this.findLeadByPhoneVariants(phone);
+      pending = { timer: null as any, texts: [], isFirstContact: !existingLead };
+    }
     pending.texts.push(text);
     if (ctwa.clid && !pending.ctwa?.clid) pending.ctwa = ctwa;
     if (incomingMedia && !pending.media) pending.media = incomingMedia;
     if (pending.timer) clearTimeout(pending.timer);
+    const debounceMs = pending.isFirstContact ? 8_000 : 25_000;
     pending.timer = setTimeout(() => {
-      const combinedText = pending.texts.join('\n');
-      const capturedCtwa = pending.ctwa;
-      const capturedMedia = pending.media;
+      const combinedText = pending!.texts.join('\n');
+      const capturedCtwa = pending!.ctwa;
+      const capturedMedia = pending!.media;
       this.pendingBuffer.delete(phone);
       this.processMessage(phone, combinedText, pushName, capturedCtwa, capturedMedia).catch((err) =>
         this.logger.error(`[SDR] Erro ao processar ${phone}: ${err.message}`),
       );
-    }, 25_000);
+    }, debounceMs);
     this.pendingBuffer.set(phone, pending);
 
     return { ok: true };
@@ -543,11 +551,6 @@ export class SdrController {
         this.logger.warn(`[SDR] Erro ao enriquecer Instagram do lead ${phone}: ${err.message}`),
       );
     }
-
-    // Só na 1ª mensagem: espera um pouco antes de começar a responder, pra não
-    // parecer um bot batendo de volta instantaneamente assim que o lead chega.
-    // As mensagens seguintes da conversa continuam no ritmo normal.
-    if (isNew) await new Promise((r) => setTimeout(r, 5_000));
 
     if (ai.reply) await this.sendReplyAsBubbles(phone, ai.reply);
 
