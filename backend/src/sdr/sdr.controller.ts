@@ -390,6 +390,16 @@ export class SdrController {
       ai = await this.sdrService.processMessage(lead, text, openingGreeting);
     }
 
+    // A IA já errou a bolha 1 da abertura mesmo recebendo o texto pronto no
+    // contexto (ex.: ignorou "Fala Fagner, blz?" e mandou "Oi! 😊" genérico).
+    // Pra não depender dela copiar certo, força a bolha 1 aqui — determinístico,
+    // sem chance de erro — e preserva as bolhas seguintes exatamente como a IA gerou.
+    if (isNew && openingGreeting && ai.reply) {
+      const bubbles = ai.reply.split('|||');
+      bubbles[0] = openingGreeting;
+      ai.reply = bubbles.join('|||');
+    }
+
     // Loop: a IA respondeu a mesma coisa 3 vezes seguidas (não avança a conversa).
     // Pausa imediatamente em vez de mandar a msg repetida de novo — evita ficar
     // martelando o lead e avisa o operador assumir manualmente.
