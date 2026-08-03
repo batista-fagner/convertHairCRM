@@ -442,6 +442,7 @@ export class SdrController {
     // (senão mantém o valor já salvo — a IA não precisa repetir a cada turno).
     const vendeCabelo = ai.vendeCabelo === true || ai.vendeCabelo === false ? ai.vendeCabelo : lead.vendeCabelo ?? null;
     const mensagensPorDia = typeof ai.mensagensPorDia === 'number' ? ai.mensagensPorDia : lead.mensagensPorDia ?? null;
+    const semEstimativaVolume = ai.semEstimativaVolume === true ? true : lead.semEstimativaVolume ?? null;
     const semInstagram = ai.semInstagram === true ? true : lead.semInstagram ?? null;
     const iniciante = ai.iniciante === true ? true : lead.iniciante ?? null;
     const instagramValue = ai.instagram && typeof ai.instagram === 'string' && ai.instagram !== 'null'
@@ -454,10 +455,12 @@ export class SdrController {
     const derivedStage = deriveKanbanStage(vendeCabelo, ai.stage, lead.status, mensagensPorDia, iniciante);
 
     // Handoff pro especialista só acontece depois das respostas completas
-    // (vende cabelo=true + volume de mensagens/dia conhecido + instagram
-    // conhecido ou confirmado que não tem) — e só dispara uma vez.
+    // (vende cabelo=true + volume de mensagens/dia conhecido OU confirmação de
+    // que o lead não sabe estimar + instagram conhecido ou confirmado que não
+    // tem) — e só dispara uma vez. semEstimativaVolume evita travar a conversa
+    // pra sempre quando o lead genuinamente não sabe dar um número.
     const instagramKnown = Boolean(instagramValue) || semInstagram === true;
-    const mensagensPorDiaKnown = typeof mensagensPorDia === 'number';
+    const mensagensPorDiaKnown = typeof mensagensPorDia === 'number' || semEstimativaVolume === true;
     const readyForHandoff = vendeCabelo === true && mensagensPorDiaKnown && instagramKnown;
     const alreadyHandedOff = lead.waStage === 'encerrado';
     const handoff = readyForHandoff && !alreadyHandedOff;
@@ -473,6 +476,7 @@ export class SdrController {
       followupSentAt: null,
       vendeCabelo,
       mensagensPorDia,
+      semEstimativaVolume,
       semInstagram,
       iniciante,
     };

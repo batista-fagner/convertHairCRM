@@ -14,6 +14,7 @@ export interface SdrResponse {
   nome?: string | null;
   vendeCabelo?: boolean | null;
   mensagensPorDia?: number | null;
+  semEstimativaVolume?: boolean | null;
   instagram?: string | null;
   semInstagram?: boolean | null;
   iniciante?: boolean | null;

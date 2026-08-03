@@ -81,6 +81,12 @@ export class Lead {
   @Column({ name: 'mensagens_por_dia', type: 'int', nullable: true })
   mensagensPorDia?: number | null;
 
+  // true = lead confirmou não conseguir estimar o volume de mensagens mesmo
+  // depois de perguntado com paciência. Libera o handoff pro Lucas sem travar
+  // a conversa, mas NÃO conta como qualificado/MQL (isso o Lucas avalia na call).
+  @Column({ name: 'sem_estimativa_volume', type: 'boolean', nullable: true })
+  semEstimativaVolume?: boolean | null;
+
   // Timestamp de quando o lead virou MQL (entrou em "qualificado" pela 1ª vez).
   // Usado pra calcular tempo médio até qualificar no relatório de anúncios.
   @Column({ name: 'qualified_at', type: 'timestamp', nullable: true })
