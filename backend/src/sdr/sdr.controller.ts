@@ -513,15 +513,25 @@ export class SdrController {
       this.logger.log(`[SDR] Lead ${phone} entrou em atendimento — evento Lead enviado ao Meta`);
     }
 
-    // Vende cabelo = sim → MQL: marca e dispara evento pro Meta (uma única vez).
-    // Independe de investir em anúncio — isso só soma a tag premium abaixo.
-    if (vendeCabelo === true && !lead.isMql) {
+    // Qualificado (vende cabelo, sem ser iniciante/baixo volume) → MQL: marca
+    // e dispara evento pro Meta (uma única vez). Independe de investir em
+    // anúncio — isso só soma a tag premium abaixo. Usa "qualified" (mesma raia
+    // derivada acima) em vez de só vendeCabelo, senão iniciante/baixo volume
+    // vira MQL indevidamente.
+    if (qualified && !lead.isMql) {
       updateData.isMql = true;
       updateData.qualifiedAt = new Date();
       this.facebookService
         .sendMqlEvent({ ...lead, isMql: true }, { fbp: lead.fbp, fbc: lead.fbc })
         .catch((err) => this.logger.error(`[SDR] Erro ao enviar MQL ao Meta: ${err.message}`));
       this.logger.log(`[SDR] Lead ${phone} vende cabelo (MQL) — evento enviado ao Meta`);
+    } else if (!qualified && lead.isMql) {
+      // Corrige lead que tinha sido marcado MQL indevidamente num turno anterior
+      // (ex: vendeCabelo mudou de true pra false, ou iniciante/baixo volume
+      // desqualificou depois). Não há como desfazer o evento já enviado ao Meta,
+      // mas o CRM não deve mais exibir como MQL.
+      updateData.isMql = false;
+      this.logger.log(`[SDR] Lead ${phone} deixou de ser MQL (raia: ${derivedStage}) — corrigindo is_mql`);
     }
 
     // Volume de mensagens/dia define premium (>=30) vs básico (<30) — mesma
