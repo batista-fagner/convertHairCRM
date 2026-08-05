@@ -2,7 +2,7 @@ import { Controller, Post, Body, Logger, Param } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
-import { SdrService, deriveKanbanStage, SdrStage, MIN_MENSAGENS_POR_DIA } from './sdr.service';
+import { SdrService, deriveKanbanStage, MIN_MENSAGENS_POR_DIA } from './sdr.service';
 import { LeadsService } from '../leads/leads.service';
 import { FacebookService } from '../facebook/facebook.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
@@ -450,27 +450,19 @@ export class SdrController {
       : lead.instagram;
     const nomeValue = ai.nome && typeof ai.nome === 'string' && ai.nome !== 'null' ? ai.nome.trim() : null;
 
+    // `lead.aiContext` aqui ainda é o histórico ANTES desta mensagem (o novo é o
+    // updatedContext acima). Se a IA já falou alguma vez, então a mensagem que
+    // estamos processando agora é uma RESPOSTA do lead — card sai de "Novo" na
+    // hora, independente do stage que a IA devolveu neste turno.
+    const leadRespondeu = Array.isArray(lead.aiContext) && lead.aiContext.some((m: any) => m?.role === 'assistant');
+
     // Raia calculada (a "verdade" da qualificação): vende cabelo = qualificado,
     // mas iniciante ou volume baixo (<10 msgs/dia) desqualifica mesmo assim.
-    const derivedStage = deriveKanbanStage(vendeCabelo, ai.stage, lead.status, mensagensPorDia, iniciante);
-
-    // Handoff pro especialista só acontece depois das respostas completas
-    // (vende cabelo=true + volume de mensagens/dia conhecido OU confirmação de
-    // que o lead não sabe estimar + instagram conhecido ou confirmado que não
-    // tem) — e só dispara uma vez. semEstimativaVolume evita travar a conversa
-    // pra sempre quando o lead genuinamente não sabe dar um número.
-    const instagramKnown = Boolean(instagramValue) || semInstagram === true;
-    const mensagensPorDiaKnown = typeof mensagensPorDia === 'number' || semEstimativaVolume === true;
-    const readyForHandoff = vendeCabelo === true && mensagensPorDiaKnown && instagramKnown;
-    const alreadyHandedOff = lead.waStage === 'encerrado';
-    const handoff = readyForHandoff && !alreadyHandedOff;
-
-    // Estágio terminal quando faz handoff
-    const newStage: SdrStage = handoff ? 'encerrado' : ai.stage;
+    const derivedStage = deriveKanbanStage(vendeCabelo, ai.stage, lead.status, mensagensPorDia, iniciante, leadRespondeu);
 
     const updateData: any = {
       aiContext: updatedContext,
-      waStage: newStage as any,
+      waStage: ai.stage as any,
       temperature: ai.temperature,
       waLastMessageAt: new Date(),
       followupSentAt: null,
@@ -484,11 +476,6 @@ export class SdrController {
     if (instagramValue) updateData.instagram = instagramValue;
     if (nomeValue) updateData.name = nomeValue;
     const isNewInstagram = Boolean(instagramValue && !lead.instagram);
-
-    // Handoff → operador assume, IA desliga
-    if (handoff) {
-      updateData.aiPaused = true;
-    }
 
     // Não qualificado (não vende cabelo, iniciante, ou volume baixo de
     // mensagens/dia) → IA desliga automaticamente, a mensagem de encerramento
@@ -521,8 +508,11 @@ export class SdrController {
     // e dispara evento pro Meta (uma única vez). Independe de investir em
     // anúncio — isso só soma a tag premium abaixo. Usa "qualified" (mesma raia
     // derivada acima) em vez de só vendeCabelo, senão iniciante/baixo volume
-    // vira MQL indevidamente.
-    if (qualified && !lead.isMql) {
+    // vira MQL indevidamente. justQualified também é o gatilho da notificação
+    // pro operador (ver abaixo) — não espera mais o Instagram nem pausa a IA,
+    // a conversa segue normal depois de avisar o time.
+    const justQualified = qualified && !lead.isMql;
+    if (justQualified) {
       updateData.isMql = true;
       updateData.qualifiedAt = new Date();
       this.facebookService
@@ -538,13 +528,13 @@ export class SdrController {
       this.logger.log(`[SDR] Lead ${phone} deixou de ser MQL (raia: ${derivedStage}) — corrigindo is_mql`);
     }
 
-    // Volume de mensagens/dia define premium (>=30) vs básico (<30) — mesma
+    // Volume de mensagens/dia define premium (>=50) vs básico (10-49) — mesma
     // raia "qualificado", sem evento novo pro Meta, só diferencia visualmente
     // quem tem mais volume. Remove a tag oposta se o lead corrigir a resposta.
     const existingTags = lead.tags || [];
     if (typeof mensagensPorDia === 'number') {
-      const tag = mensagensPorDia >= 30 ? 'mql_premium' : 'mql_basico';
-      const otherTag = mensagensPorDia >= 30 ? 'mql_basico' : 'mql_premium';
+      const tag = mensagensPorDia >= 50 ? 'mql_premium' : 'mql_basico';
+      const otherTag = mensagensPorDia >= 50 ? 'mql_basico' : 'mql_premium';
       const withoutOther = existingTags.filter((t) => t !== otherTag);
       if (!withoutOther.includes(tag)) {
         updateData.tags = [...withoutOther, tag];
@@ -568,8 +558,9 @@ export class SdrController {
 
     if (ai.reply) await this.sendReplyAsBubbles(phone, ai.reply);
 
-    // Handoff: avisa o closer e destaca o card
-    if (handoff) {
+    // Virou MQL agora: avisa o operador e destaca o card — sem pausar a IA
+    // nem esperar o Instagram, a conversa continua normal depois disso.
+    if (justQualified) {
       await this.notifyOperator(lead);
       this.realtime.emitLeadHandoff(lead);
     } else {

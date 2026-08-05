@@ -61,6 +61,13 @@ export const MIN_MENSAGENS_POR_DIA = 10;
  * vende de verdade, só começando) ou recebe menos de MIN_MENSAGENS_POR_DIA
  * mensagens/dia — não vale a pena pro negócio ainda. Se vende cabelo mas o
  * volume ainda não foi informado, fica em "atendimento" (não é MQL até saber).
+ *
+ * `leadRespondeu` (o lead já mandou pelo menos uma mensagem DEPOIS da IA ter
+ * falado) é o que tira o card de "Novo" — determinístico, não depende da IA
+ * acertar o `stage`. Antes o card só saía de "Novo" quando a IA devolvia um
+ * stage != 'abertura'; quando ela regredia pra 'abertura' no meio da conversa
+ * (lead responde algo fora do script e a IA "reinicia"), o card ficava preso em
+ * "Novo" mesmo com a conversa rolando.
  */
 export function deriveKanbanStage(
   vendeCabelo: boolean | null | undefined,
@@ -68,6 +75,7 @@ export function deriveKanbanStage(
   status: string | undefined,
   mensagensPorDia?: number | null,
   iniciante?: boolean | null,
+  leadRespondeu?: boolean,
 ): KanbanStage {
   if (status === 'perdido' || stage === 'perdido') return 'perdido';
   if (vendeCabelo === false) return 'nao-qualificado';
@@ -76,6 +84,7 @@ export function deriveKanbanStage(
   if (vendeCabelo === true && typeof mensagensPorDia === 'number' && mensagensPorDia >= MIN_MENSAGENS_POR_DIA) {
     return 'qualificado';
   }
+  if (leadRespondeu) return 'atendimento';
   if (stage === 'abertura') return 'novo';
   return 'atendimento';
 }
