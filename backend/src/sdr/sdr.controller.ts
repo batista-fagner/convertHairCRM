@@ -485,6 +485,17 @@ export class SdrController {
       updateData.aiPaused = true;
     }
 
+    // Qualificação completa (já é MQL e o Instagram — ou a confirmação de que
+    // não tem — já foi coletado, a última pergunta do fluxo): a Sofia manda a
+    // mensagem final de transferência e para por aqui, o Lucas assume dali em
+    // diante. Antes disso (ex.: virou MQL mas o Instagram ainda não foi
+    // perguntado) a conversa continua normal — só pausa quando não há mais
+    // nada pendente pra perguntar.
+    const hasInstagramInfo = Boolean(instagramValue) || semInstagram === true;
+    if (derivedStage === 'qualificado' && hasInstagramInfo) {
+      updateData.aiPaused = true;
+    }
+
     // Só atualiza a raia se o operador NÃO travou o card manualmente
     if (!lead.kanbanStageManual) {
       updateData.kanbanStage = derivedStage;
