@@ -1040,6 +1040,23 @@ export default function KanbanLeads() {
     if (selectedRef.current?.id === id) setSelected(null)
   }, [])
 
+  // Handler do socket 'lead:updated'. Só reposiciona (topo da coluna) quando o
+  // lead REALMENTE mudou de raia ou ainda não está no board. Antes chamava
+  // placeLead sempre, então qualquer update — inclusive o fetch-avatar disparado
+  // só de abrir a conversa — jogava o card pro topo da própria raia, fazendo o
+  // card "fugir" do lugar debaixo do cursor.
+  const applyLeadUpdate = useCallback((lead) => {
+    const currentStage = Object.keys(boardRef.current).find((stage) =>
+      boardRef.current[stage].some((l) => l.id === lead.id),
+    )
+    const targetStage = lead.kanbanStage && boardRef.current[lead.kanbanStage] ? lead.kanbanStage : 'novo'
+    if (currentStage && currentStage === targetStage) {
+      updateLeadInPlace(lead)
+    } else {
+      placeLead(lead)
+    }
+  }, [placeLead, updateLeadInPlace])
+
   const saveName = useCallback(async (lead, name) => {
     updateLeadInPlace({ id: lead.id, name }) // otimista
     try {
@@ -1168,11 +1185,11 @@ export default function KanbanLeads() {
     // no momento — sem isso, um lead de outra campanha "vazaria" pro board
     // filtrado assim que respondesse algo no WhatsApp.
     socket.on('lead:created', (lead) => { if (matchesCampaignFilter(lead, campaignFilterRef.current)) placeLead(lead) })
-    socket.on('lead:updated', (lead) => { if (matchesCampaignFilter(lead, campaignFilterRef.current)) placeLead(lead) })
+    socket.on('lead:updated', (lead) => { if (matchesCampaignFilter(lead, campaignFilterRef.current)) applyLeadUpdate(lead) })
     socket.on('lead:handoff', (lead) => { if (matchesCampaignFilter(lead, campaignFilterRef.current)) placeLead(lead, true) })
     socket.on('lead:deleted', ({ id }) => removeLead(id))
     return () => socket.disconnect()
-  }, [placeLead, removeLead, matchesCampaignFilter])
+  }, [placeLead, applyLeadUpdate, removeLead, matchesCampaignFilter])
 
   const handleDragStart = (event) => setActiveId(event.active.id)
 

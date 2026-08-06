@@ -1,10 +1,13 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
-import { Lead, LeadClassification, KanbanStage } from '../common/entities/lead.entity';
+import { Lead, LeadClassification, KanbanStage, KANBAN_STAGES } from '../common/entities/lead.entity';
 
 /** Valor de filtro usado pelo frontend pra pedir só os leads sem campanha atribuída (orgânicos). */
 export const ORPHAN_CAMPAIGN_FILTER = 'orfao';
+
+/** Teto de cards carregados POR RAIA no Kanban (ver findKanban). */
+const KANBAN_PER_STAGE_LIMIT = 300;
 
 @Injectable()
 export class LeadsService {
@@ -110,24 +113,41 @@ export class LeadsService {
     return { total, totalMql, byStatus, byWaStage, conversionRate, recent };
   }
 
+  /**
+   * O limite é POR RAIA, não global. Com um `take` global (era 400) ordenado por
+   * updatedAt DESC, as raias terminais (vendeu, perdido, em-negociacao...) iam
+   * sumindo silenciosamente conforme a base crescia: leads fechados há tempo têm
+   * updatedAt antigo, então caíam fora do corte e o card simplesmente não
+   * aparecia — sem erro, sem aviso. Chegou a esconder 8 leads com 408 na base.
+   * Por raia, cada coluna carrega os seus mais recentes de forma independente e
+   * uma raia movimentada (novo/qualificado) nunca "come" a cota das outras.
+   */
   async findKanban(campaign?: string): Promise<Record<KanbanStage, Lead[]>> {
-    const where: { agentMode: 'sdr'; utmCampaign?: any } = { agentMode: 'sdr' };
+    const where: { agentMode: 'sdr'; utmCampaign?: any; kanbanStage?: any } = { agentMode: 'sdr' };
     if (campaign === ORPHAN_CAMPAIGN_FILTER) {
       where.utmCampaign = IsNull();
     } else if (campaign) {
       where.utmCampaign = campaign;
     }
-    const leads = await this.leadsRepo.find({
-      where,
-      order: { updatedAt: 'DESC' },
-      take: 400,
-    });
-    const board: Record<KanbanStage, Lead[]> = { novo: [], atendimento: [], 'nao-qualificado': [], qualificado: [], contactado: [], 'ja-fez-prompt': [], 'ja-apresentado': [], 'em-negociacao': [], vendeu: [], perdido: [] };
-    for (const lead of leads) {
-      const stage = (lead.kanbanStage as KanbanStage) || 'novo';
-      (board[stage] || board.novo).push(lead);
-    }
-    return board;
+
+    const perStage = await Promise.all(
+      KANBAN_STAGES.map(async (stage) => {
+        // 'novo' também recolhe quem está com kanban_stage nulo/vazio (base
+        // antiga) — mesma regra do agrupamento anterior, que caía no board.novo.
+        const stageWhere =
+          stage === 'novo'
+            ? [{ ...where, kanbanStage: 'novo' }, { ...where, kanbanStage: IsNull() }]
+            : { ...where, kanbanStage: stage };
+        const leads = await this.leadsRepo.find({
+          where: stageWhere as any,
+          order: { updatedAt: 'DESC' },
+          take: KANBAN_PER_STAGE_LIMIT,
+        });
+        return [stage, leads] as const;
+      }),
+    );
+
+    return Object.fromEntries(perStage) as Record<KanbanStage, Lead[]>;
   }
 
   /**

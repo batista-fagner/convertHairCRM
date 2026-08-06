@@ -3,7 +3,8 @@ import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateCol
 export type LeadClassification = 'otimo' | 'bom' | 'frio';
 export type LeadStatus = 'novo' | 'contatado' | 'convertido' | 'perdido';
 export type WaStage = 'aguardando_nome' | 'aguardando_faturamento' | 'abertura' | 'escuta' | 'rapport' | 'video' | 'fechamento' | 'confirmado' | 'perdido' | 'encerrado';
-export type KanbanStage = 'novo' | 'atendimento' | 'nao-qualificado' | 'qualificado' | 'contactado' | 'ja-fez-prompt' | 'ja-apresentado' | 'em-negociacao' | 'vendeu' | 'perdido';
+export const KANBAN_STAGES = ['novo', 'atendimento', 'nao-qualificado', 'qualificado', 'contactado', 'ja-fez-prompt', 'ja-apresentado', 'em-negociacao', 'vendeu', 'perdido'] as const;
+export type KanbanStage = (typeof KANBAN_STAGES)[number];
 export type LeadTemperature = 'quente' | 'morno' | 'frio';
 export type AgentMode = 'efraim' | 'sdr';
 
