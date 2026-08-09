@@ -43,7 +43,7 @@ export class FacebookService {
     userData: Record<string, string>,
     customData?: Record<string, any>,
     eventSourceUrl?: string,
-    opts?: { ctwa?: boolean },
+    opts?: { ctwa?: boolean; eventId?: string },
   ): Promise<void> {
     const pixelId = this.config.get('FB_PIXEL_ID');
     const accessToken = this.config.get('FB_ACCESS_TOKEN');
@@ -64,6 +64,10 @@ export class FacebookService {
         {
           event_name: eventName,
           event_time: Math.floor(Date.now() / 1000),
+          // event_id determinístico (lead.id + tipo de evento) — permite ao Meta
+          // deduplicar reenvios do mesmo evento de negócio (ex.: duplo clique em
+          // "Converter Agora", retry de rede) sem contar a mesma conversão 2x.
+          ...(opts?.eventId ? { event_id: opts.eventId } : {}),
           action_source: isCtwa ? 'business_messaging' : 'website',
           ...(isCtwa ? { messaging_channel: 'whatsapp' } : {}),
           user_data: userData,
@@ -225,12 +229,15 @@ export class FacebookService {
     // WhatsApp CTWA (business_messaging) só aceita "LeadSubmitted"/"Purchase" como
     // nome de evento — "Lead" customizado só é aceito no fluxo de site (LP/form).
     const eventName = ctwa ? 'LeadSubmitted' : 'Lead';
-    await this.sendEvent(eventName, userData, undefined, lead.ctwaSourceUrl, { ctwa });
+    await this.sendEvent(eventName, userData, undefined, lead.ctwaSourceUrl, { ctwa, eventId: `lead-${lead.id}` });
   }
 
   async sendPurchaseEvent(lead: Lead, value: number): Promise<void> {
     const userData = this.buildUserData(lead);
-    await this.sendEvent('Purchase', userData, { value, currency: 'BRL' }, lead.ctwaSourceUrl, { ctwa: Boolean(lead.ctwaClid) });
+    // Discriminador "purchase-" (não "mql-") pra não colidir com o Purchase
+    // simbólico do sendMqlEvent (CTWA) — são 2 eventos de negócio distintos pro
+    // mesmo lead, cada um com seu próprio event_id de dedup.
+    await this.sendEvent('Purchase', userData, { value, currency: 'BRL' }, lead.ctwaSourceUrl, { ctwa: Boolean(lead.ctwaClid), eventId: `purchase-${lead.id}` });
   }
 
   async sendMqlEvent(lead: Lead, extra?: { fbp?: string; fbc?: string; userAgent?: string; clientIp?: string }): Promise<void> {
@@ -247,6 +254,47 @@ export class FacebookService {
     // como sinal de lead qualificado nesse canal. Fluxo de site continua com "MQL".
     const eventName = ctwa ? 'Purchase' : 'MQL';
     const customData = ctwa ? { value: 1, currency: 'BRL' } : undefined;
-    await this.sendEvent(eventName, userData, customData, lead.ctwaSourceUrl ?? 'https://leadscomia.vercel.app/', { ctwa });
+    await this.sendEvent(eventName, userData, customData, lead.ctwaSourceUrl ?? 'https://leadscomia.vercel.app/', { ctwa, eventId: `mql-${lead.id}` });
+  }
+
+  /**
+   * Evento de CRM (action_source: system_generated) — único jeito de mandar um
+   * event_name LIVRE (ex: "MQL+30") pro Meta, ao contrário do CAPI normal, que
+   * pra business_messaging só aceita Purchase/LeadSubmitted. Usado pro funil de
+   * Formulário Instantâneo: o lead_id é o identificador que o próprio Meta gerou
+   * pra esse lead (leadgen_id), não o nosso UUID interno.
+   */
+  async sendCrmLeadEvent(leadgenId: string, phone: string, eventName: string): Promise<void> {
+    const pixelId = this.config.get('FB_PIXEL_ID');
+    const accessToken = this.config.get('FB_ACCESS_TOKEN');
+    if (!pixelId || !accessToken) {
+      this.logger.warn('FB_PIXEL_ID ou FB_ACCESS_TOKEN não configurados — evento de CRM não enviado');
+      return;
+    }
+
+    const payload = {
+      data: [
+        {
+          event_source: 'crm',
+          lead_event_source: 'ConvertHairCRM',
+          event_name: eventName,
+          event_time: Math.floor(Date.now() / 1000),
+          action_source: 'system_generated',
+          event_id: `crm-${eventName}-${leadgenId}`,
+          user_data: {
+            lead_id: leadgenId,
+            ph: phone ? [this.sha256(`55${phone.replace(/\D/g, '')}`)] : undefined,
+          },
+        },
+      ],
+    };
+
+    try {
+      await axios.post(`https://graph.facebook.com/v21.0/${pixelId}/events`, payload, { params: { access_token: accessToken } });
+      this.logger.log(`Evento de CRM "${eventName}" enviado ao Facebook (lead ${leadgenId})`);
+    } catch (err: any) {
+      const metaError = err?.response?.data?.error?.error_user_msg || err?.response?.data?.error?.message;
+      this.logger.error(`Erro ao enviar evento de CRM "${eventName}" ao Facebook: ${err.message}${metaError ? ` — ${metaError}` : ''}`);
+    }
   }
 }

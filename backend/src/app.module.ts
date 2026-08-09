@@ -27,6 +27,7 @@ import { SdrModule } from './sdr/sdr.module';
 import { SettingsModule } from './settings/settings.module';
 import { SmsModule } from './sms/sms.module';
 import { IgPostsModule } from './ig-posts/ig-posts.module';
+import { InstantFormsModule } from './instant-forms/instant-forms.module';
 
 @Module({
   imports: [
@@ -61,6 +62,7 @@ import { IgPostsModule } from './ig-posts/ig-posts.module';
     SettingsModule,
     SmsModule,
     IgPostsModule,
+    InstantFormsModule,
   ],
 })
 export class AppModule {}

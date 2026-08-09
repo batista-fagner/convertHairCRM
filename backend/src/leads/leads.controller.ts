@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Query, Delete, Patch, Post, Body, HttpException, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Param, Query, Delete, Patch, Post, Body, HttpException, HttpStatus, Logger } from '@nestjs/common';
 import { LeadsService } from './leads.service';
 import { FacebookService } from '../facebook/facebook.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
@@ -6,6 +6,8 @@ import { KanbanStage } from '../common/entities/lead.entity';
 
 @Controller('leads')
 export class LeadsController {
+  private readonly logger = new Logger(LeadsController.name);
+
   constructor(
     private leadsService: LeadsService,
     private facebookService: FacebookService,
@@ -127,7 +129,9 @@ export class LeadsController {
   @Patch(':id/convert')
   async convert(@Param('id') id: string, @Body() body: { value?: number }) {
     const lead = await this.leadsService.markAsConverted(id);
-    this.facebookService.sendPurchaseEvent(lead, body.value ?? 3000).catch(() => null);
+    this.facebookService.sendPurchaseEvent(lead, body.value ?? 3000).catch((err) =>
+      this.logger.error(`Erro ao enviar evento Purchase (conversão manual) do lead ${id}: ${err.message}`),
+    );
     return lead;
   }
 
