@@ -209,6 +209,17 @@ export class Lead {
   @Column({ name: 'avatar_url', type: 'varchar', nullable: true })
   avatarUrl?: string | null;
 
+  // Formulário Instantâneo (Meta Lead Ads) — respostas brutas capturadas do
+  // webhook (field_data), pra exibir na tela dedicada sem precisar re-parsear
+  // o texto do `notes`. Só é preenchido pra leads com utmSource='formulario-instantaneo'.
+  @Column({ name: 'form_answers', type: 'jsonb', nullable: true })
+  formAnswers?: { name: string; values: string[] }[] | null;
+
+  // true = resposta da pergunta de volume de WhatsApp no formulário indicou
+  // 30+ mensagens/dia — critério de "MQL+30" (ver instant-forms.service.ts).
+  @Column({ name: 'form_mql_30', type: 'boolean', nullable: true })
+  formMql30?: boolean | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

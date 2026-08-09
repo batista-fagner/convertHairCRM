@@ -75,6 +75,8 @@ export class InstantFormsService {
           ...existing,
           name: fullName,
           email: email || existing.email,
+          formAnswers: fieldData,
+          formMql30: isMql30,
           notes: `[Formulário Instantâneo — ${leadgenId}]\n${answersSummary}`,
         })
       : await this.leadsRepo.save(
@@ -84,6 +86,8 @@ export class InstantFormsService {
             email: email || undefined,
             status: 'novo',
             utmSource: 'formulario-instantaneo',
+            formAnswers: fieldData,
+            formMql30: isMql30,
             notes: `[Formulário Instantâneo — ${leadgenId}]\n${answersSummary}`,
           }),
         );

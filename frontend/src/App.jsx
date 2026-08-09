@@ -15,6 +15,7 @@ import Content from './pages/Content'
 import Videos from './pages/Videos'
 import InstagramPosts from './pages/InstagramPosts'
 import KanbanLeads from './pages/KanbanLeads'
+import InstantFormLeads from './pages/InstantFormLeads'
 import SmsInbox from './pages/sms/SmsInbox'
 import IgInbox from './pages/instagram-inbox/IgInbox'
 import Login from './pages/Login'
@@ -39,6 +40,7 @@ export default function App() {
           <Route path="/campaigns" element={<Campaigns />} />
           <Route path="/leads" element={<Leads />} />
           <Route path="/kanban" element={<KanbanLeads />} />
+          <Route path="/instant-form-leads" element={<InstantFormLeads />} />
           <Route path="/forms" element={<Forms />} />
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/email-sequences" element={<EmailSequences />} />

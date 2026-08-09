@@ -22,6 +22,7 @@ import {
   LogOut,
   MessageSquare,
   Camera,
+  FileSpreadsheet,
 } from 'lucide-react'
 
 const NAV_GROUPS = [
@@ -39,6 +40,7 @@ const NAV_GROUPS = [
       { icon: FileText, label: 'Formulários', path: '/forms' },
       { icon: Users, label: 'Leads', path: '/leads' },
       { icon: KanbanSquare, label: 'Kanban', path: '/kanban' },
+      { icon: FileSpreadsheet, label: 'Formulário Instantâneo', path: '/instant-form-leads' },
     ],
   },
   {
