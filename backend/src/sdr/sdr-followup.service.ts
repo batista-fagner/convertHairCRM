@@ -502,10 +502,18 @@ export class SdrFollowupService {
       // já é o system prompt completo, e o histórico continua indo junto pra IA
       // escrever a mensagem levando em conta o que já foi dito na conversa.
       if (rule?.promptOverride?.trim()) {
+        // Nome vem do contato do WhatsApp (captado quando o lead entrou no grupo),
+        // não foi perguntado na conversa — por isso não dá pra confiar que está no
+        // histórico. Passa explícito pra IA poder personalizar com o nome certo.
+        const nameNote = lead.name?.trim()
+          ? `Nome do lead (puxado do WhatsApp dele, não foi perguntado na conversa): ${lead.name.trim()}. Pode usar o primeiro nome na mensagem pra personalizar, de forma natural — sem exagerar repetindo o nome.`
+          : 'Este lead não tem nome salvo — não invente um nome, escreva sem se dirigir por nome.';
+
         const response = await this.openai.chat.completions.create({
           model,
           messages: [
             { role: 'system', content: rule.promptOverride },
+            { role: 'system', content: nameNote },
             ...history,
             { role: 'system', content: 'Gere agora a mensagem de reativação, considerando todo o histórico acima. Responda APENAS com o texto da mensagem, sem JSON, sem explicações, sem aspas ao redor.' },
           ],
