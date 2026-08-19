@@ -73,6 +73,8 @@ export class FollowupController {
       sendAtMinute: body.sendAtMinute != null ? Math.min(59, Math.max(0, body.sendAtMinute)) : 0,
       mode: body.mode === 'ai' ? 'ai' : 'manual',
       text: body.text || null,
+      promptOverride: body.promptOverride || null,
+      ignoreAiPaused: body.ignoreAiPaused ?? false,
       videoId: body.videoId || null,
       videoCaptionOverride: body.videoCaptionOverride || null,
       priority: body.priority ?? 0,
@@ -96,6 +98,8 @@ export class FollowupController {
     if (body.sendAtMinute !== undefined) rule.sendAtMinute = body.sendAtMinute != null ? Math.min(59, Math.max(0, body.sendAtMinute)) : 0;
     if (body.mode !== undefined) rule.mode = body.mode === 'ai' ? 'ai' : 'manual';
     if (body.text !== undefined) rule.text = body.text || null;
+    if (body.promptOverride !== undefined) rule.promptOverride = body.promptOverride || null;
+    if (body.ignoreAiPaused !== undefined) rule.ignoreAiPaused = body.ignoreAiPaused;
     if (body.videoId !== undefined) rule.videoId = body.videoId || null;
     if (body.videoCaptionOverride !== undefined) rule.videoCaptionOverride = body.videoCaptionOverride || null;
     if (body.priority !== undefined) rule.priority = body.priority;

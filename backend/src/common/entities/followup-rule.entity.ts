@@ -51,6 +51,21 @@ export class FollowupRule {
   @Column({ name: 'text', type: 'text', nullable: true })
   text?: string | null;
 
+  // Modo 'ai': se preenchido, substitui o prompt padrão da Sofia (DEFAULT_SDR_PROMPT)
+  // só nesta regra — usado pra campanhas de reativação com objetivo diferente da
+  // qualificação normal (ex.: puxar de volta quem já foi marcado como qualificado).
+  // O histórico da conversa (lead.aiContext) continua sendo passado normalmente.
+  @Column({ name: 'prompt_override', type: 'text', nullable: true })
+  promptOverride?: string | null;
+
+  // Por padrão o cron só considera leads com ai_paused=false (a Sofia "desligada"
+  // manualmente ou por handoff não recebe follow-up automático). Raias como
+  // "qualificado" pausam a IA no handoff pro operador (ver sdr.controller.ts) —
+  // marcar true permite que esta regra dispare mesmo assim, sem reativar a Sofia
+  // pro fluxo normal de qualificação.
+  @Column({ name: 'ignore_ai_paused', type: 'boolean', default: false })
+  ignoreAiPaused: boolean;
+
   // Se preenchido, a regra manda esse vídeo (com legenda) em vez de texto —
   // o mode/text passam a ser ignorados. FK lógica pro FollowupVideo.
   @Column({ name: 'video_id', type: 'uuid', nullable: true })

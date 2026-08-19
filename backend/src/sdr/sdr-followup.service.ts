@@ -132,11 +132,12 @@ export class SdrFollowupService {
     const minDelayMinutes = Math.min(...rules.map((r) => r.delayMinutes));
     const earliestCutoff = new Date(Date.now() - minDelayMinutes * 60_000);
 
-    // Candidatos: IA ativa (ai_paused=false é o único portão — mesmo critério usado
-    // pro webhook liberar resposta em leads encerrados reativados manualmente, então
-    // não exige mais wa_stage != 'encerrado' aqui) + nunca recebeu follow-up
-    // (followup_sent_at IS NULL garante 1x; reseta quando o lead responde ou quando
-    // o operador reconfigura). O escopo real por raia é aplicado depois, no
+    // Candidatos: nunca recebeu follow-up (followup_sent_at IS NULL garante 1x;
+    // reseta quando o lead responde ou quando o operador reconfigura). ai_paused
+    // NÃO é filtrado aqui em SQL — é checado por lead depois de casar a regra,
+    // porque uma regra pode marcar ignoreAiPaused=true (ex.: raia "qualificado",
+    // que pausa a IA no handoff pro operador mas ainda assim deve receber uma
+    // campanha de reativação pontual). O escopo real por raia é aplicado no
     // matchRule() — só quem casa com uma regra ativa (raia+campanha+criativo) sai
     // daqui com mensagem de fato.
     //
@@ -158,9 +159,9 @@ export class SdrFollowupService {
         'lead.waLastMessageAt',
         'lead.followupSentAt',
         'lead.aiContext',
+        'lead.aiPaused',
       ])
       .where('lead.agent_mode = :mode', { mode: 'sdr' })
-      .andWhere('lead.ai_paused = false')
       .andWhere('lead.wa_last_message_at IS NOT NULL')
       .andWhere('lead.wa_last_message_at <= :earliestCutoff', { earliestCutoff })
       .andWhere('lead.followup_sent_at IS NULL')
@@ -174,6 +175,8 @@ export class SdrFollowupService {
 
       const rule = this.matchRule(lead, rules);
       if (!rule) continue;
+
+      if (lead.aiPaused && !rule.ignoreAiPaused) continue;
 
       const cutoff = Date.now() - rule.delayMinutes * 60 * 1000;
       if (new Date(lead.waLastMessageAt!).getTime() > cutoff) continue;
@@ -215,7 +218,7 @@ export class SdrFollowupService {
 
       let message: string;
       if (rule.mode === 'ai') {
-        message = await this.generateAiFollowup(lead, rule.delayMinutes);
+        message = await this.generateAiFollowup(lead, rule.delayMinutes, rule);
         if (!message) continue;
       } else {
         if (!rule.text) continue;
@@ -411,9 +414,8 @@ export class SdrFollowupService {
     return last?.role === 'assistant';
   }
 
-  private async generateAiFollowup(lead: Lead, delayMinutes: number): Promise<string> {
+  private async generateAiFollowup(lead: Lead, delayMinutes: number, rule?: FollowupRule): Promise<string> {
     try {
-      const basePrompt = await this.settings.getSdrPrompt();
       const model = (await this.settings.get(SDR_MODEL_KEY)) || 'gpt-5.4-mini';
 
       const history: OpenAI.Chat.ChatCompletionMessageParam[] = (Array.isArray(lead.aiContext) ? lead.aiContext : []).map((m) => ({
@@ -421,6 +423,25 @@ export class SdrFollowupService {
         content: m.content ?? '',
       }));
 
+      // Regra com prompt próprio (ex.: campanha de reativação de "qualificado") não
+      // usa o DEFAULT_SDR_PROMPT nem a instrução de SPIN abaixo — o texto da regra
+      // já é o system prompt completo, e o histórico continua indo junto pra IA
+      // escrever a mensagem levando em conta o que já foi dito na conversa.
+      if (rule?.promptOverride?.trim()) {
+        const response = await this.openai.chat.completions.create({
+          model,
+          messages: [
+            { role: 'system', content: rule.promptOverride },
+            ...history,
+            { role: 'system', content: 'Gere agora a mensagem de reativação, considerando todo o histórico acima. Responda APENAS com o texto da mensagem, sem JSON, sem explicações, sem aspas ao redor.' },
+          ],
+          temperature: 0.8,
+          max_completion_tokens: 150,
+        });
+        return response.choices[0].message.content?.trim() ?? '';
+      }
+
+      const basePrompt = await this.settings.getSdrPrompt();
       const hours = delayMinutes >= 60 ? `${Math.round(delayMinutes / 60)}h` : `${delayMinutes}min`;
       // A 1ª mensagem do lead é só o "clique" que abre a conversa (texto do
       // anúncio/CTWA ou "oi" genérico) — não conta como resposta à abertura da

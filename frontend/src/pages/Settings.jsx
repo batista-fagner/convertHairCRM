@@ -506,7 +506,7 @@ function IgCatchallEditor() {
   )
 }
 
-const EMPTY_RULE = { name: '', enabled: true, kanbanStage: '', utmCampaign: '', adTitle: '', createdAfter: '', delayMinutes: 60, sendAtHour: '', sendAtMinute: 0, mode: 'manual', text: '', videoId: '', videoCaptionOverride: '' }
+const EMPTY_RULE = { name: '', enabled: true, kanbanStage: '', utmCampaign: '', adTitle: '', createdAfter: '', delayMinutes: 60, sendAtHour: '', sendAtMinute: 0, mode: 'manual', text: '', promptOverride: '', ignoreAiPaused: false, videoId: '', videoCaptionOverride: '' }
 
 // 'YYYY-MM-DDTHH:mm' no fuso local, pro valor inicial do <input type="datetime-local">.
 function todayStartLocal() {
@@ -548,6 +548,8 @@ function FollowupRuleForm({ initial, campaignOptions, adTitleOptions, videos, on
         sendAtMinute: rule.sendAtMinute === '' ? 0 : parseInt(rule.sendAtMinute, 10),
         mode: rule.mode,
         text: rule.text || null,
+        promptOverride: rule.promptOverride || null,
+        ignoreAiPaused: rule.ignoreAiPaused,
         videoId: rule.videoId || null,
         videoCaptionOverride: rule.videoCaptionOverride || null,
         resetCycle,
@@ -777,10 +779,32 @@ function FollowupRuleForm({ initial, campaignOptions, adTitleOptions, videos, on
                 <Sparkles className="w-3.5 h-3.5 text-violet-500" />
                 <p className="text-xs font-medium text-violet-700">A Sofia vai gerar</p>
               </div>
-              <p className="text-xs text-violet-600">
-                A IA analisa toda a conversa até aquele ponto e cria uma mensagem personalizada para reativar o interesse do lead, sem pressão e de forma natural.
+              <p className="text-xs text-violet-600 mb-3">
+                Por padrão a IA usa o prompt geral da Sofia + histórico da conversa pra reativar o lead. Pra uma campanha com objetivo diferente (ex: reativar quem já está em "Qualificado"), escreva abaixo um prompt específico — ele substitui o prompt padrão só nesta regra, mas o histórico da conversa continua sendo considerado.
               </p>
+              <label className="block text-[11px] font-medium text-violet-700 mb-1.5">Prompt customizado desta regra (opcional)</label>
+              <textarea
+                value={rule.promptOverride}
+                onChange={e => setRule(r => ({ ...r, promptOverride: e.target.value }))}
+                rows={6}
+                placeholder={'Ex: Você é a Sofia. O lead abaixo já foi qualificado e conversou com o especialista, mas sumiu. Sua missão é reativar o interesse dele com uma mensagem curta, mencionando algo específico do histórico da conversa. Tom de zap real, sem pressão de vendedor...'}
+                className="w-full text-sm text-slate-700 border border-violet-200 rounded-lg p-3 font-mono leading-relaxed resize-none focus:outline-none focus:ring-2 focus:ring-violet-300 bg-white"
+              />
             </div>
+          )}
+
+          {rule.mode === 'ai' && rule.kanbanStage === 'qualificado' && (
+            <label className="flex items-start gap-2 mb-4 cursor-pointer bg-amber-50/60 border border-amber-100 rounded-lg p-3">
+              <input
+                type="checkbox"
+                checked={rule.ignoreAiPaused}
+                onChange={e => setRule(r => ({ ...r, ignoreAiPaused: e.target.checked }))}
+                className="mt-0.5 accent-violet-600"
+              />
+              <span className="text-[11px] text-slate-600">
+                <span className="font-medium text-slate-700">Disparar mesmo com a IA pausada</span> — leads em "Qualificado" ficam com a IA desligada automaticamente após o handoff pro operador. Marque isso pra essa regra alcançar esses leads mesmo assim (a IA continua pausada pro fluxo normal, só essa mensagem de reativação é enviada).
+              </span>
+            </label>
           )}
         </>
       )}
@@ -948,6 +972,8 @@ function FollowupRules() {
                 sendAtHour: rule.sendAtHour != null ? rule.sendAtHour : '',
                 sendAtMinute: rule.sendAtMinute ?? 0,
                 text: rule.text || '',
+                promptOverride: rule.promptOverride || '',
+                ignoreAiPaused: rule.ignoreAiPaused ?? false,
                 videoId: rule.videoId || '',
                 videoCaptionOverride: rule.videoCaptionOverride || '',
               }}
