@@ -205,7 +205,7 @@ export class SdrFollowupService {
         }
 
         if (sent > 0) {
-          const waitMs = 5000 + Math.random() * 5000;
+          const waitMs = 10000 + Math.random() * 30000;
           await this.sleep(waitMs);
         }
 
@@ -228,7 +228,7 @@ export class SdrFollowupService {
       // Espaçamento aleatório entre envios (5-10s) para reduzir risco de
       // bloqueio do número por disparo em rajada.
       if (sent > 0) {
-        const waitMs = 5000 + Math.random() * 5000;
+        const waitMs = 10000 + Math.random() * 30000;
         await this.sleep(waitMs);
       }
 
@@ -236,6 +236,80 @@ export class SdrFollowupService {
       sent++;
     }
     this.lastSentCount = sent;
+  }
+
+  /**
+   * Disparo único de campanha: manda a mensagem da regra pra TODOS os leads que
+   * casam com o filtro dela (raia/campanha/criativo/data), sem os portões do
+   * cron normal — não importa se respondeu, se a última msg foi da IA, se está
+   * com ai_paused, ou se já recebeu follow-up antes. É uma ação manual (botão
+   * "Disparar agora"), não repete sozinho.
+   */
+  async broadcastNow(ruleId: string): Promise<{ sent: number; total: number }> {
+    const rule = await this.rulesRepo.findOne({ where: { id: ruleId } });
+    if (!rule) throw new Error('Regra não encontrada');
+
+    const qb = this.leadsRepo
+      .createQueryBuilder('lead')
+      .select([
+        'lead.id',
+        'lead.name',
+        'lead.phone',
+        'lead.kanbanStage',
+        'lead.utmCampaign',
+        'lead.ctwaAdTitle',
+        'lead.createdAt',
+        'lead.waLastMessageAt',
+        'lead.followupSentAt',
+        'lead.aiContext',
+        'lead.aiPaused',
+      ])
+      .where('lead.agent_mode = :mode', { mode: 'sdr' });
+    if (rule.kanbanStage) qb.andWhere('lead.kanban_stage = :stage', { stage: rule.kanbanStage });
+    if (rule.utmCampaign) qb.andWhere('lead.utm_campaign = :campaign', { campaign: rule.utmCampaign });
+    if (rule.adTitle) qb.andWhere('lead.ctwa_ad_title = :adTitle', { adTitle: rule.adTitle });
+    if (rule.createdAfter) qb.andWhere('lead.created_at >= :createdAfter', { createdAfter: rule.createdAfter });
+
+    const leads = await qb.getMany();
+    const videoLimit = await this.getVideoLimit();
+
+    let sent = 0;
+    for (const lead of leads) {
+      if (rule.videoId) {
+        const video = await this.videoRepo.findOne({ where: { id: rule.videoId } });
+        if (!video) {
+          this.logger.warn(`[Broadcast] Regra ${rule.id} aponta pra vídeo inexistente (${rule.videoId}) — pulando`);
+          continue;
+        }
+        this.rollVideoDayIfNeeded();
+        if (this.videoSentToday >= videoLimit) {
+          this.logger.log(`[Broadcast] Teto diário de vídeo atingido (${videoLimit}) — parando o disparo`);
+          break;
+        }
+        if (sent > 0) await this.sleep(10000 + Math.random() * 30000);
+        const caption = rule.videoCaptionOverride ?? video.caption ?? '';
+        await this.sendFollowupVideo(lead, video.publicUrl, caption, video.name);
+        this.videoSentToday++;
+        sent++;
+        continue;
+      }
+
+      let message: string;
+      if (rule.mode === 'ai') {
+        message = await this.generateAiFollowup(lead, rule.delayMinutes, rule);
+        if (!message) continue;
+      } else {
+        if (!rule.text) continue;
+        message = rule.text;
+      }
+
+      if (sent > 0) await this.sleep(10000 + Math.random() * 30000);
+      await this.sendFollowup(lead, message);
+      sent++;
+    }
+
+    this.logger.log(`[Broadcast] Regra "${rule.name}": ${sent}/${leads.length} mensagens enviadas`);
+    return { sent, total: leads.length };
   }
 
   // Data de hoje no fuso de Brasília ('YYYY-MM-DD').

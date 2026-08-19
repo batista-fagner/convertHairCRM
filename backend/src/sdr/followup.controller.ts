@@ -119,9 +119,12 @@ export class FollowupController {
         .update(Lead)
         .set({ followupSentAt: null })
         .where('agent_mode = :mode', { mode: 'sdr' })
-        .andWhere('ai_paused = false')
         .andWhere("wa_stage != 'encerrado'")
         .andWhere('followup_sent_at IS NOT NULL');
+      // Raias com IA pausada (ex.: "qualificado", pausada no handoff) só entram
+      // no reset se a própria regra ignora esse portão — senão manteria o mesmo
+      // bug do cron: regra pra reativar quem está pausado nunca liberava ninguém.
+      if (!rule.ignoreAiPaused) qb.andWhere('ai_paused = false');
       if (rule.kanbanStage) qb.andWhere('kanban_stage = :stage', { stage: rule.kanbanStage });
       if (rule.utmCampaign) qb.andWhere('utm_campaign = :campaign', { campaign: rule.utmCampaign });
       if (rule.adTitle) qb.andWhere('ctwa_ad_title = :adTitle', { adTitle: rule.adTitle });
@@ -137,6 +140,15 @@ export class FollowupController {
   async deleteRule(@Param('id') id: string) {
     await this.rulesRepo.delete(id);
     return { ok: true };
+  }
+
+  // Disparo manual único: manda a mensagem da regra pra todos os leads que
+  // casam com o filtro dela agora, ignorando os portões do cron automático
+  // (respondeu ou não, IA pausada, já recebeu follow-up antes). Usado pra
+  // campanhas de reativação pontuais (ex.: raia "qualificado" inteira).
+  @Post('rules/:id/broadcast-now')
+  async broadcastNow(@Param('id') id: string) {
+    return this.followupService.broadcastNow(id);
   }
 
   // ─── Biblioteca de vídeos ───────────────────────────────────────────

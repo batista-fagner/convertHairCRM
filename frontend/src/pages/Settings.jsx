@@ -903,6 +903,26 @@ function FollowupRules() {
     load()
   }
 
+  const [broadcasting, setBroadcasting] = useState(null) // id da regra disparando agora
+
+  const broadcastNow = async (rule) => {
+    const alvo = rule.kanbanStage ? KANBAN_STAGE_LABEL[rule.kanbanStage] || rule.kanbanStage : 'TODAS as raias'
+    if (!confirm(`Disparar "${rule.name}" agora pra TODOS os leads de "${alvo}" (respondendo ou não)? Isso manda WhatsApp de verdade pra cada um.`)) return
+    setBroadcasting(rule.id)
+    try {
+      const res = await fetch(`${API}/followup/rules/${rule.id}/broadcast-now`, { method: 'POST' })
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.message || 'Erro ao disparar') }
+      const d = await res.json()
+      setToast(`"${rule.name}": ${d.sent}/${d.total} mensagens enviadas`)
+      setTimeout(() => setToast(''), 5000)
+    } catch (e) {
+      setToast(`Erro: ${e.message}`)
+      setTimeout(() => setToast(''), 5000)
+    } finally {
+      setBroadcasting(null)
+    }
+  }
+
   const onSaved = (msg) => {
     setEditingId(null)
     if (msg) { setToast(msg); setTimeout(() => setToast(''), 4000) }
@@ -1029,6 +1049,14 @@ function FollowupRules() {
                 </div>
               </div>
               <div className="flex items-center gap-1 flex-shrink-0">
+                <button
+                  onClick={() => broadcastNow(rule)}
+                  disabled={broadcasting === rule.id}
+                  title="Disparar agora pra todos os leads desta raia (respondendo ou não)"
+                  className="p-1.5 text-slate-400 hover:text-emerald-600 disabled:opacity-40 transition"
+                >
+                  {broadcasting === rule.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                </button>
                 <button onClick={() => toggleEnabled(rule)} title={rule.enabled ? 'Desativar' : 'Ativar'} className="transition">
                   {rule.enabled ? <ToggleRight className="w-7 h-7 text-violet-600" /> : <ToggleLeft className="w-7 h-7 text-slate-300" />}
                 </button>
