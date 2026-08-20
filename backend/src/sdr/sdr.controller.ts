@@ -468,6 +468,10 @@ export class SdrController {
       temperature: ai.temperature,
       waLastMessageAt: new Date(),
       followupSentAt: null,
+      // Lead voltou a falar: a cadência de follow-up recomeça do primeiro toque
+      // (followupNextAt null tira ele da fila até ficar em silêncio de novo).
+      followupStep: 0,
+      followupNextAt: null,
       vendeCabelo,
       mensagensPorDia,
       semEstimativaVolume,

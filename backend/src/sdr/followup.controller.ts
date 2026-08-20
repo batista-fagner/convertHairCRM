@@ -6,7 +6,7 @@ import { SdrFollowupService, VIDEO_LIMIT_KEY, DEFAULT_VIDEO_LIMIT } from './sdr-
 import { FollowupVideoService } from './followup-video.service';
 import type { UploadedVideoFile } from './followup-video.service';
 import { SettingsService } from '../settings/settings.service';
-import { FollowupRule } from '../common/entities/followup-rule.entity';
+import { FollowupRule, CadenceStep } from '../common/entities/followup-rule.entity';
 import { Lead } from '../common/entities/lead.entity';
 
 @Controller('followup')
@@ -53,12 +53,39 @@ export class FollowupController {
     return rows.map((r) => r.adTitle).filter(Boolean).sort();
   }
 
+  /**
+   * Normaliza a cadência vinda da tela: descarta toques em branco, garante
+   * delay mínimo de 1 min. Retorna null quando não sobra nada — aí a regra
+   * volta a ser de disparo único.
+   */
+  private sanitizeCadence(steps: unknown): CadenceStep[] | null {
+    if (!Array.isArray(steps)) return null;
+    const clean = steps
+      .map((s: any) => ({
+        delayMinutes: Math.max(1, Math.floor(Number(s?.delayMinutes) || 1440)),
+        objective: String(s?.objective ?? '').trim(),
+        text: s?.text ? String(s.text).trim() : null,
+      }))
+      .filter((s) => s.objective || s.text);
+    return clean.length ? clean : null;
+  }
+
+  /** Modo manual manda o texto literal — sem texto, o toque não teria o que enviar. */
+  private assertCadenceTexts(steps: CadenceStep[], mode?: string) {
+    if (mode === 'manual' && steps.some((s) => !s.text?.trim())) {
+      throw new BadRequestException('No modo manual, todo toque da cadência precisa de um texto');
+    }
+  }
+
   @Post('rules')
   async createRule(@Body() body: Partial<FollowupRule>) {
     if (!body?.name?.trim()) throw new BadRequestException('Nome da regra é obrigatório');
     const hasVideo = Boolean(body.videoId);
+    const cadenceSteps = this.sanitizeCadence(body.cadenceSteps);
+    if (cadenceSteps) this.assertCadenceTexts(cadenceSteps, body.mode);
     // Regra com vídeo manda só o vídeo — modo/texto ficam irrelevantes.
-    if (!hasVideo && body.mode === 'manual' && !body.text?.trim()) {
+    // Regra com cadência tira o texto único de cena (cada toque tem o seu).
+    if (!cadenceSteps && !hasVideo && body.mode === 'manual' && !body.text?.trim()) {
       throw new BadRequestException('Texto é obrigatório no modo manual');
     }
     const rule = this.rulesRepo.create({
@@ -69,6 +96,7 @@ export class FollowupController {
       adTitle: body.adTitle || null,
       createdAfter: body.createdAfter ? new Date(body.createdAfter) : null,
       delayMinutes: Math.max(1, body.delayMinutes || 60),
+      cadenceSteps,
       sendAtHour: body.sendAtHour != null ? Math.min(23, Math.max(0, body.sendAtHour)) : null,
       sendAtMinute: body.sendAtMinute != null ? Math.min(59, Math.max(0, body.sendAtMinute)) : 0,
       mode: body.mode === 'ai' ? 'ai' : 'manual',
@@ -94,6 +122,7 @@ export class FollowupController {
     if (body.adTitle !== undefined) rule.adTitle = body.adTitle || null;
     if (body.createdAfter !== undefined) rule.createdAfter = body.createdAfter ? new Date(body.createdAfter) : null;
     if (body.delayMinutes !== undefined) rule.delayMinutes = Math.max(1, body.delayMinutes);
+    if (body.cadenceSteps !== undefined) rule.cadenceSteps = this.sanitizeCadence(body.cadenceSteps);
     if (body.sendAtHour !== undefined) rule.sendAtHour = body.sendAtHour != null ? Math.min(23, Math.max(0, body.sendAtHour)) : null;
     if (body.sendAtMinute !== undefined) rule.sendAtMinute = body.sendAtMinute != null ? Math.min(59, Math.max(0, body.sendAtMinute)) : 0;
     if (body.mode !== undefined) rule.mode = body.mode === 'ai' ? 'ai' : 'manual';
@@ -104,8 +133,11 @@ export class FollowupController {
     if (body.videoCaptionOverride !== undefined) rule.videoCaptionOverride = body.videoCaptionOverride || null;
     if (body.priority !== undefined) rule.priority = body.priority;
 
-    // Só exige texto quando não tem vídeo (com vídeo, manda só o vídeo).
-    if (!rule.videoId && rule.mode === 'manual' && !rule.text?.trim() && rule.enabled) {
+    if (rule.cadenceSteps?.length) this.assertCadenceTexts(rule.cadenceSteps, rule.mode);
+
+    // Só exige texto quando não tem vídeo nem cadência (nesses casos o conteúdo
+    // vem do vídeo ou de cada toque, não do campo único).
+    if (!rule.videoId && !rule.cadenceSteps?.length && rule.mode === 'manual' && !rule.text?.trim() && rule.enabled) {
       throw new BadRequestException('Texto é obrigatório no modo manual');
     }
 
@@ -117,7 +149,7 @@ export class FollowupController {
       const qb = this.leadsRepo
         .createQueryBuilder()
         .update(Lead)
-        .set({ followupSentAt: null })
+        .set({ followupSentAt: null, followupStep: 0, followupNextAt: null })
         .where('agent_mode = :mode', { mode: 'sdr' })
         .andWhere("wa_stage != 'encerrado'")
         .andWhere('followup_sent_at IS NOT NULL');

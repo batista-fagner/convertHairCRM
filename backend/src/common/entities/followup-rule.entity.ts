@@ -3,6 +3,24 @@ import { KanbanStage } from './lead.entity';
 
 export type FollowupMode = 'manual' | 'ai';
 
+/**
+ * Um toque da cadência de follow-up. A regra vira uma sequência de N toques
+ * (ex.: 7 dias, 1 mensagem por dia), cada um com objetivo próprio.
+ *
+ * - `delayMinutes`: espera desde a ÚLTIMA mensagem nossa até este toque (não é
+ *   tempo absoluto desde o início) — 1440 = 1 dia depois do toque anterior.
+ * - `objective`: o que este toque específico precisa fazer (quebrar o gelo,
+ *   trazer prova social, provocar a dor, última chamada...). É o que muda de um
+ *   dia pro outro.
+ * - `text`: no modo manual é a mensagem enviada literalmente; no modo IA é o
+ *   TEXTO BASE que a IA usa como referência pra escrever a mensagem do dia.
+ */
+export interface CadenceStep {
+  delayMinutes: number;
+  objective: string;
+  text?: string | null;
+}
+
 // kanbanStage/utmCampaign nulos = curinga (casa com qualquer raia/campanha).
 // O matching escolhe a regra mais específica pra cada lead (ver sdr-followup.service.ts).
 @Entity('followup_rules')
@@ -34,6 +52,14 @@ export class FollowupRule {
 
   @Column({ name: 'delay_minutes', type: 'int', default: 60 })
   delayMinutes: number;
+
+  // Cadência multi-toque: quando preenchido, a regra deixa de mandar 1 mensagem
+  // só e passa a percorrer esta sequência (1 toque por vez, na ordem, cada um
+  // esperando o próprio delayMinutes desde o toque anterior). Nulo/vazio =
+  // comportamento antigo de disparo único usando delayMinutes/text/promptOverride.
+  // O progresso de cada lead fica em lead.followupStep / lead.followupNextAt.
+  @Column({ name: 'cadence_steps', type: 'jsonb', nullable: true })
+  cadenceSteps?: CadenceStep[] | null;
 
   // Horário preferido de disparo (fuso America/Sao_Paulo). Nulo = sem restrição,
   // dispara assim que o prazo de inatividade vencer (comportamento padrão).

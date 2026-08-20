@@ -7,7 +7,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import OpenAI from 'openai';
 import { Lead } from '../common/entities/lead.entity';
-import { FollowupRule } from '../common/entities/followup-rule.entity';
+import { FollowupRule, CadenceStep } from '../common/entities/followup-rule.entity';
 import { FollowupVideo } from '../common/entities/followup-video.entity';
 import { SettingsService } from '../settings/settings.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
@@ -116,6 +116,58 @@ export class SdrFollowupService {
     return best;
   }
 
+  /** Passos da cadência da regra, ou null se ela é de disparo único (comportamento antigo). */
+  private cadenceStepsOf(rule: FollowupRule): CadenceStep[] | null {
+    const steps = rule.cadenceSteps;
+    if (!Array.isArray(steps) || steps.length === 0) return null;
+    return steps;
+  }
+
+  /** Menor espera possível da regra — 1º toque da cadência, ou o delay único. */
+  private minDelayOf(rule: FollowupRule): number {
+    const steps = this.cadenceStepsOf(rule);
+    if (!steps) return rule.delayMinutes;
+    return Math.min(...steps.map((s) => Math.max(1, s.delayMinutes)));
+  }
+
+  /**
+   * Decide o que a regra deve mandar pro lead AGORA. Retorna undefined quando
+   * ainda não está na hora, quando a cadência já terminou ou quando a regra de
+   * disparo único já foi usada. Concentra num lugar só a diferença entre os
+   * dois modos, pra o cron e o painel não divergirem.
+   */
+  private resolveDueTouch(lead: Lead, rule: FollowupRule):
+    | { step: CadenceStep; index: number; total: number; nextAt: Date | null }
+    | { step: null }
+    | undefined {
+    const lastMs = new Date(lead.waLastMessageAt!).getTime();
+    const steps = this.cadenceStepsOf(rule);
+
+    if (!steps) {
+      // Disparo único: só quem nunca recebeu follow-up.
+      if (lead.followupSentAt) return undefined;
+      if (lastMs > Date.now() - rule.delayMinutes * 60_000) return undefined;
+      return { step: null };
+    }
+
+    const index = lead.followupStep ?? 0;
+    if (index >= steps.length) return undefined; // cadência concluída
+    // A partir do 2º toque o lead precisa estar de fato dentro de uma cadência
+    // em andamento — sem isso, um lead que já recebeu follow-up por outra regra
+    // entraria no meio da sequência.
+    if (index > 0 && !lead.followupNextAt) return undefined;
+
+    const step = steps[index];
+    const delay = Math.max(1, step.delayMinutes);
+    if (lastMs > Date.now() - delay * 60_000) return undefined;
+
+    const nextIndex = index + 1;
+    const nextAt = nextIndex < steps.length
+      ? new Date(Date.now() + Math.max(1, steps[nextIndex].delayMinutes) * 60_000)
+      : null;
+    return { step, index, total: steps.length, nextAt };
+  }
+
   @Cron('*/5 * * * *')
   async checkFollowups() {
     this.lastRunAt = new Date();
@@ -129,7 +181,7 @@ export class SdrFollowupService {
     // que a MENOR regra nunca poderia estar due ainda — filtra isso direto no
     // SQL em vez de trazer o lead pra descartar em memória. O filtro exato por
     // regra (que pode ser mais rígido que esse mínimo) continua abaixo, por lead.
-    const minDelayMinutes = Math.min(...rules.map((r) => r.delayMinutes));
+    const minDelayMinutes = Math.min(...rules.map((r) => this.minDelayOf(r)));
     const earliestCutoff = new Date(Date.now() - minDelayMinutes * 60_000);
 
     // Candidatos: nunca recebeu follow-up (followup_sent_at IS NULL garante 1x;
@@ -158,13 +210,18 @@ export class SdrFollowupService {
         'lead.createdAt',
         'lead.waLastMessageAt',
         'lead.followupSentAt',
+        'lead.followupStep',
+        'lead.followupNextAt',
         'lead.aiContext',
         'lead.aiPaused',
       ])
       .where('lead.agent_mode = :mode', { mode: 'sdr' })
       .andWhere('lead.wa_last_message_at IS NOT NULL')
       .andWhere('lead.wa_last_message_at <= :earliestCutoff', { earliestCutoff })
-      .andWhere('lead.followup_sent_at IS NULL')
+      // Nunca recebeu follow-up (candidato ao 1º toque) OU está no meio de uma
+      // cadência (followup_next_at preenchido). Quando a cadência termina, o
+      // followup_next_at volta a null e o lead sai daqui de vez.
+      .andWhere('(lead.followup_sent_at IS NULL OR lead.followup_next_at IS NOT NULL)')
       .getMany();
 
     const videoLimit = await this.getVideoLimit();
@@ -178,20 +235,24 @@ export class SdrFollowupService {
 
       if (lead.aiPaused && !rule.ignoreAiPaused) continue;
 
-      const cutoff = Date.now() - rule.delayMinutes * 60 * 1000;
-      if (new Date(lead.waLastMessageAt!).getTime() > cutoff) continue;
+      // Decide qual toque está devido (cadência) ou se o disparo único já venceu.
+      const due = this.resolveDueTouch(lead, rule);
+      if (!due) continue;
+      const cadence = 'index' in due ? due : null;
 
       // Horário preferido: mesmo com o prazo de inatividade vencido há muito
       // tempo, só dispara dentro da janela do horário configurado (hoje).
       // Não pode comparar contra o momento em que o lead ficou elegível — se
       // esse momento já passou há dias, "a partir de agora" ficaria sempre
       // verdadeiro e dispararia na hora em vez de esperar o horário certo.
+      // Numa cadência diária isso é o que impede o toque de sair de madrugada.
       if (rule.sendAtHour != null && !this.isWithinSendWindow(rule.sendAtHour, rule.sendAtMinute ?? 0)) {
         continue;
       }
 
       // Regra com vídeo: manda o vídeo (com legenda), respeitando o teto diário.
-      if (rule.videoId) {
+      // Só vale no disparo único — numa cadência cada toque é texto/IA próprio.
+      if (!cadence && rule.videoId) {
         const video = await this.videoRepo.findOne({ where: { id: rule.videoId } });
         if (!video) {
           this.logger.warn(`[Followup] Regra ${rule.id} aponta pra vídeo inexistente (${rule.videoId}) — pulando`);
@@ -218,11 +279,17 @@ export class SdrFollowupService {
 
       let message: string;
       if (rule.mode === 'ai') {
-        message = await this.generateAiFollowup(lead, rule.delayMinutes, rule);
+        message = await this.generateAiFollowup(
+          lead,
+          cadence ? Math.max(1, cadence.step.delayMinutes) : rule.delayMinutes,
+          rule,
+          cadence ?? undefined,
+        );
         if (!message) continue;
       } else {
-        if (!rule.text) continue;
-        message = rule.text;
+        const text = cadence ? cadence.step.text : rule.text;
+        if (!text?.trim()) continue;
+        message = text;
       }
 
       // Espaçamento aleatório entre envios (5-10s) para reduzir risco de
@@ -232,7 +299,11 @@ export class SdrFollowupService {
         await this.sleep(waitMs);
       }
 
-      await this.sendFollowup(lead, message);
+      await this.sendFollowup(
+        lead,
+        message,
+        cadence ? { nextStep: cadence.index + 1, nextAt: cadence.nextAt } : undefined,
+      );
       sent++;
     }
     this.lastSentCount = sent;
@@ -294,13 +365,23 @@ export class SdrFollowupService {
         continue;
       }
 
+      // Disparo é sempre 1 mensagem só — numa regra de cadência usa o 1º toque
+      // como conteúdo (o resto da sequência é papel do cron, não do botão).
+      const firstStep = this.cadenceStepsOf(rule)?.[0];
+
       let message: string;
       if (rule.mode === 'ai') {
-        message = await this.generateAiFollowup(lead, rule.delayMinutes, rule);
+        message = await this.generateAiFollowup(
+          lead,
+          rule.delayMinutes,
+          rule,
+          firstStep ? { step: firstStep, index: 0, total: this.cadenceStepsOf(rule)!.length } : undefined,
+        );
         if (!message) continue;
       } else {
-        if (!rule.text) continue;
-        message = rule.text;
+        const text = firstStep ? firstStep.text : rule.text;
+        if (!text?.trim()) continue;
+        message = text;
       }
 
       if (sent > 0) await this.sleep(10000 + Math.random() * 30000);
@@ -422,7 +503,8 @@ export class SdrFollowupService {
       .where('lead.agent_mode = :mode', { mode: 'sdr' })
       .andWhere('lead.ai_paused = false')
       .andWhere('lead.wa_last_message_at IS NOT NULL')
-      .andWhere('lead.followup_sent_at IS NULL')
+      // Mesma condição do cron: quem nunca recebeu + quem está no meio da cadência.
+      .andWhere('(lead.followup_sent_at IS NULL OR lead.followup_next_at IS NOT NULL)')
       .orderBy('lead.wa_last_message_at', 'ASC')
       .getMany();
 
@@ -436,7 +518,12 @@ export class SdrFollowupService {
     const noRuleCount = withRule.filter((x) => !x.rule).length;
 
     const dueAtMs = (l: Lead, rule: FollowupRule) => {
-      const eligibleAt = new Date(l.waLastMessageAt!).getTime() + rule.delayMinutes * 60 * 1000;
+      // Numa cadência a espera é a do toque atual, não o delay único da regra.
+      const steps = this.cadenceStepsOf(rule);
+      const stepDelay = steps
+        ? Math.max(1, (steps[Math.min(l.followupStep ?? 0, steps.length - 1)]).delayMinutes)
+        : rule.delayMinutes;
+      const eligibleAt = new Date(l.waLastMessageAt!).getTime() + stepDelay * 60 * 1000;
       if (rule.sendAtHour == null) return eligibleAt;
       // Referência = o que vier depois: se a elegibilidade é futura, calcula a
       // ocorrência a partir dela; se já passou (mesmo há dias), calcula a partir
@@ -445,9 +532,15 @@ export class SdrFollowupService {
     };
 
     const waiting = withRule
-      .filter((x) => x.rule)
+      // Lead que já terminou a cadência inteira não está "aguardando" nada.
+      .filter((x) => {
+        if (!x.rule) return false;
+        const steps = this.cadenceStepsOf(x.rule);
+        return !steps || (x.lead.followupStep ?? 0) < steps.length;
+      })
       .sort((a, b) => dueAtMs(a.lead, a.rule!) - dueAtMs(b.lead, b.rule!))
       .map(({ lead: l, rule }) => {
+        const steps = this.cadenceStepsOf(rule!);
         return {
           id: l.id,
           name: l.name,
@@ -458,6 +551,9 @@ export class SdrFollowupService {
           waLastMessageAt: l.waLastMessageAt,
           ruleId: rule!.id,
           ruleName: rule!.name,
+          // Numa cadência mostra em que toque o lead está (1-based pra exibição).
+          step: steps ? (l.followupStep ?? 0) + 1 : null,
+          totalSteps: steps ? steps.length : null,
           dueAt: new Date(dueAtMs(l, rule!)),
         };
       });
@@ -488,7 +584,12 @@ export class SdrFollowupService {
     return last?.role === 'assistant';
   }
 
-  private async generateAiFollowup(lead: Lead, delayMinutes: number, rule?: FollowupRule): Promise<string> {
+  private async generateAiFollowup(
+    lead: Lead,
+    delayMinutes: number,
+    rule?: FollowupRule,
+    cadence?: { step: CadenceStep; index: number; total: number },
+  ): Promise<string> {
     try {
       const model = (await this.settings.get(SDR_MODEL_KEY)) || 'gpt-5.4-mini';
 
@@ -496,6 +597,34 @@ export class SdrFollowupService {
         role: m.role === 'assistant' ? 'assistant' : 'user',
         content: m.content ?? '',
       }));
+
+      const tomBlock = `TOM (isso é o mais importante, não soa como isso hoje):
+- Comece a mensagem com algo que quebre o gelo de forma empática (reconhecendo a correria, o sumiço, sem soar como cobrança) antes de ir pro conteúdo — nunca entre direto na pergunta fria.
+- Escreva como alguém mandando um zap de verdade pra um conhecido, não como um script de vendas. Sem "Olá! Tudo bem?" genérico, sem parecer disparo automático.
+- Trate por "vc", nunca "você" por extenso.
+- Pode usar 1 emoji no máximo, só se soar natural — nunca fileira de emoji.
+- Curta (1-3 frases). Sem parágrafo, sem lista, sem "!" em excesso.
+- Nunca use frase de vendedor pressionando ("não perca essa oportunidade", "última chance") — o tom é de interesse genuíno na dor dela, não de cobrança.
+
+Responda APENAS com o texto da mensagem, sem JSON, sem explicações, sem aspas ao redor.`;
+
+      // Toque de uma cadência: o objetivo do dia manda no conteúdo, e o texto
+      // base da etapa entra como REFERÊNCIA (não é pra copiar — a IA reescreve
+      // adaptando ao que já foi conversado com aquele lead).
+      const cadenceBlock = cadence ? `\n\nIMPORTANTE — ISSO NÃO É QUALIFICAÇÃO, IGNORE O FLUXO/ORDEM DE PERGUNTAS ACIMA: o lead parou de responder e esta é a mensagem ${cadence.index + 1} de ${cadence.total} de uma sequência de follow-up. Não tente qualificar nem seguir a ordem de perguntas do prompt.
+
+OBJETIVO DESTE TOQUE (só ele — não tente cumprir o objetivo dos outros dias):
+${cadence.step.objective?.trim() || 'Reacender a conversa e fazer o lead voltar a responder.'}
+${cadence.step.text?.trim() ? `
+TEXTO BASE (referência de conteúdo e intenção — NÃO copie literalmente):
+"""
+${cadence.step.text.trim()}
+"""
+Reescreva com suas palavras, adaptando ao histórico deste lead. Se o texto base não fizer sentido pro que já foi conversado, mantenha o OBJETIVO acima e escreva do zero.` : ''}
+
+Olhe o histórico e NÃO repita mensagem que você já mandou nos toques anteriores — nem o mesmo ângulo, nem a mesma pergunta com outras palavras.
+
+${tomBlock}` : '';
 
       // Regra com prompt próprio (ex.: campanha de reativação de "qualificado") não
       // usa o DEFAULT_SDR_PROMPT nem a instrução de SPIN abaixo — o texto da regra
@@ -515,7 +644,11 @@ export class SdrFollowupService {
             { role: 'system', content: rule.promptOverride },
             { role: 'system', content: nameNote },
             ...history,
-            { role: 'system', content: 'Gere agora a mensagem de reativação, considerando todo o histórico acima. Responda APENAS com o texto da mensagem, sem JSON, sem explicações, sem aspas ao redor.' },
+            {
+              role: 'system',
+              content: cadenceBlock
+                || 'Gere agora a mensagem de reativação, considerando todo o histórico acima. Responda APENAS com o texto da mensagem, sem JSON, sem explicações, sem aspas ao redor.',
+            },
           ],
           temperature: 0.8,
           max_completion_tokens: 150,
@@ -536,23 +669,15 @@ export class SdrFollowupService {
         ? false
         : !history.slice(firstAssistantIdx + 1).some((m) => m.role === 'user');
 
-      const tomBlock = `TOM (isso é o mais importante, não soa como isso hoje):
-- Comece a mensagem com algo que quebre o gelo de forma empática (reconhecendo a correria, o sumiço, sem soar como cobrança) antes de ir pro conteúdo — nunca entre direto na pergunta fria.
-- Escreva como alguém mandando um zap de verdade pra um conhecido, não como um script de vendas. Sem "Olá! Tudo bem?" genérico, sem parecer disparo automático.
-- Trate por "vc", nunca "você" por extenso.
-- Pode usar 1 emoji no máximo, só se soar natural — nunca fileira de emoji.
-- Curta (1-3 frases). Sem parágrafo, sem lista, sem "!" em excesso.
-- Nunca use frase de vendedor pressionando ("não perca essa oportunidade", "última chance") — o tom é de interesse genuíno na dor dela, não de cobrança.
-
-Responda APENAS com o texto da mensagem, sem JSON, sem explicações, sem aspas ao redor.`;
-
       // Caso especial isolado (SEM o bloco SPIN abaixo): testado que, com o bloco
       // "COMO PENSAR" de SPIN presente, o modelo ignora a exceção e pula direto pra
       // uma pergunta de Problema/Implicação mesmo sem a qualificação básica ter
       // sido respondida (ver lead 4168 e 4289) — a lista de SPIN "puxa" o modelo
       // de volta pro padrão. Removendo o bloco inteiro nesse caso, sobra só a
       // instrução de retomar a pergunta inicial, sem concorrência.
-      const followupInstruction = leadNeverResponded
+      // Numa cadência quem manda é o objetivo do toque (escrito pelo operador),
+      // não o raciocínio automático de SPIN/retomada — por isso substitui os dois.
+      const followupInstruction = cadenceBlock ? cadenceBlock : leadNeverResponded
         ? `\n\nIMPORTANTE — ISSO NÃO É QUALIFICAÇÃO: o lead nunca respondeu NADA nesta conversa, só recebeu sua abertura há ${hours}. Você não sabe se ele vende cabelo/mega hair, nem nada sobre o negócio dele.
 
 PROIBIDO nesta mensagem: perguntar sobre perder vendas, mensagens escapando, custo de não responder, ou qualquer variação de pergunta de Problema/Implicação/Necessidade — isso pressupõe uma qualificação que não existe ainda.
@@ -596,7 +721,7 @@ ${tomBlock}`;
     }
   }
 
-  private async sendFollowup(lead: Lead, text: string) {
+  private async sendFollowup(lead: Lead, text: string, cadence?: { nextStep: number; nextAt: Date | null }) {
     if (!this.uazapiToken) {
       this.logger.warn(`[Followup] Token SDR não configurado — follow-up não enviado para ${lead.phone}`);
       return;
@@ -617,6 +742,9 @@ ${tomBlock}`;
       const ctx = Array.isArray(lead.aiContext) ? lead.aiContext : [];
       await this.leadsRepo.update(lead.id, {
         followupSentAt: new Date(),
+        // Avança a cadência: nextAt null = era o último toque, o lead sai da
+        // sequência (e da consulta do cron) até responder ou ser resetado.
+        ...(cadence ? { followupStep: cadence.nextStep, followupNextAt: cadence.nextAt } : {}),
         aiContext: [...ctx, { role: 'assistant', content: text, timestamp: new Date().toISOString() }],
         waLastMessageAt: new Date(),
       });
@@ -624,7 +752,8 @@ ${tomBlock}`;
       const fresh = await this.leadsRepo.findOne({ where: { id: lead.id } });
       if (fresh) this.realtime.emitLeadUpdated(fresh);
 
-      this.logger.log(`[Followup] Enviado para ${lead.phone}: "${text.slice(0, 60)}..."`);
+      const tag = cadence ? ` [toque ${cadence.nextStep}]` : '';
+      this.logger.log(`[Followup]${tag} Enviado para ${lead.phone}: "${text.slice(0, 60)}..."`);
     } catch (err: any) {
       this.logger.error(`[Followup] Erro ao enviar para ${lead.phone}: ${err.message}`);
     }

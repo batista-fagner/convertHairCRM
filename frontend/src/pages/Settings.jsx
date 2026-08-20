@@ -506,7 +506,27 @@ function IgCatchallEditor() {
   )
 }
 
-const EMPTY_RULE = { name: '', enabled: true, kanbanStage: '', utmCampaign: '', adTitle: '', createdAfter: '', delayMinutes: 60, sendAtHour: '', sendAtMinute: 0, mode: 'manual', text: '', promptOverride: '', ignoreAiPaused: false, videoId: '', videoCaptionOverride: '' }
+const EMPTY_RULE = { name: '', enabled: true, kanbanStage: '', utmCampaign: '', adTitle: '', createdAfter: '', delayMinutes: 60, cadenceSteps: null, sendAtHour: '', sendAtMinute: 0, mode: 'manual', text: '', promptOverride: '', ignoreAiPaused: false, videoId: '', videoCaptionOverride: '' }
+
+// Cadência: cada toque guarda a espera em minutos, mas a tela edita em
+// dias/horas/minutos — estes helpers convertem nos dois sentidos.
+const DELAY_UNITS = { minutos: 1, horas: 60, dias: 1440 }
+
+function splitDelay(minutes) {
+  const m = Math.max(1, Number(minutes) || 1440)
+  if (m % 1440 === 0) return { value: m / 1440, unit: 'dias' }
+  if (m % 60 === 0) return { value: m / 60, unit: 'horas' }
+  return { value: m, unit: 'minutos' }
+}
+
+function emptyStep() {
+  return { delayMinutes: 1440, objective: '', text: '' }
+}
+
+/** Sequência de N dias, 1 toque por dia — ponto de partida dos presets. */
+function makeDailyCadence(days) {
+  return Array.from({ length: days }, () => emptyStep())
+}
 
 // 'YYYY-MM-DDTHH:mm' no fuso local, pro valor inicial do <input type="datetime-local">.
 function todayStartLocal() {
@@ -530,10 +550,25 @@ function FollowupRuleForm({ initial, campaignOptions, adTitleOptions, videos, on
   const hasVideo = Boolean(rule.videoId)
   const selectedVideo = videos.find(v => v.id === rule.videoId)
 
+  // Cadência ativa = array de toques. null = regra de disparo único (padrão antigo).
+  const cadence = Array.isArray(rule.cadenceSteps) && rule.cadenceSteps.length ? rule.cadenceSteps : null
+  const setSteps = (steps) => setRule(r => ({ ...r, cadenceSteps: steps }))
+  const patchStep = (i, patch) => setSteps(cadence.map((s, idx) => idx === i ? { ...s, ...patch } : s))
+  const removeStep = (i) => {
+    const next = cadence.filter((_, idx) => idx !== i)
+    setSteps(next.length ? next : null)
+  }
+
   const save = async () => {
     setError('')
     if (!rule.name.trim()) { setError('Dê um nome pra regra'); return }
-    if (!hasVideo && rule.mode === 'manual' && !rule.text.trim()) { setError('Texto é obrigatório no modo manual'); return }
+    if (cadence && rule.mode === 'manual' && cadence.some(s => !s.text?.trim())) {
+      setError('No modo texto fixo, todo toque da cadência precisa de uma mensagem'); return
+    }
+    if (cadence && cadence.some(s => !s.objective?.trim() && !s.text?.trim())) {
+      setError('Cada toque precisa de um objetivo (ou de um texto)'); return
+    }
+    if (!cadence && !hasVideo && rule.mode === 'manual' && !rule.text.trim()) { setError('Texto é obrigatório no modo manual'); return }
     setSaving(true)
     try {
       const payload = {
@@ -544,6 +579,7 @@ function FollowupRuleForm({ initial, campaignOptions, adTitleOptions, videos, on
         adTitle: rule.adTitle || null,
         createdAfter: rule.createdAfter ? new Date(rule.createdAfter).toISOString() : null,
         delayMinutes: rule.delayMinutes,
+        cadenceSteps: cadence,
         sendAtHour: rule.sendAtHour === '' ? null : parseInt(rule.sendAtHour, 10),
         sendAtMinute: rule.sendAtMinute === '' ? 0 : parseInt(rule.sendAtMinute, 10),
         mode: rule.mode,
@@ -649,35 +685,143 @@ function FollowupRuleForm({ initial, campaignOptions, adTitleOptions, videos, on
         </div>
       </div>
 
-      {/* Delay */}
+      {/* Disparo único x cadência de vários dias */}
       <div className="mb-4">
-        <label className="block text-xs font-medium text-slate-600 mb-1.5">Tempo de inatividade</label>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <input
-              type="number"
-              min={1}
-              max={9999}
-              value={rule.delayMinutes}
-              onChange={e => setRule(r => ({ ...r, delayMinutes: Math.max(1, parseInt(e.target.value) || 1) }))}
-              className="w-20 text-sm border border-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-violet-300 text-center"
-            />
-            <span className="text-xs text-slate-500">minutos</span>
-          </div>
-          <span className="text-xs text-slate-400">= {hoursDisplay}</span>
-          <div className="flex gap-1 ml-auto">
-            {[30, 60, 120, 360, 720].map(m => (
-              <button
-                key={m}
-                onClick={() => setRule(r => ({ ...r, delayMinutes: m }))}
-                className={`text-[10px] px-2 py-1 rounded-md border transition ${rule.delayMinutes === m ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-slate-500 border-slate-200 hover:border-violet-300'}`}
-              >
-                {m >= 60 ? `${m / 60}h` : `${m}min`}
-              </button>
-            ))}
-          </div>
+        <label className="block text-xs font-medium text-slate-600 mb-1.5">Formato do follow-up</label>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setSteps(null)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition ${!cadence ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-slate-600 border-slate-200 hover:border-violet-300'}`}
+          >
+            <Clock className="w-3 h-3" /> Uma mensagem só
+          </button>
+          <button
+            onClick={() => setRule(r => ({
+              ...r,
+              // Cadência e vídeo não convivem — cada toque manda o próprio texto.
+              videoId: '',
+              cadenceSteps: r.cadenceSteps?.length ? r.cadenceSteps : makeDailyCadence(7),
+            }))}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition ${cadence ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-slate-600 border-slate-200 hover:border-violet-300'}`}
+          >
+            <Layers className="w-3 h-3" /> Cadência de vários dias
+          </button>
         </div>
       </div>
+
+      {!cadence ? (
+        /* Delay */
+        <div className="mb-4">
+          <label className="block text-xs font-medium text-slate-600 mb-1.5">Tempo de inatividade</label>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min={1}
+                max={9999}
+                value={rule.delayMinutes}
+                onChange={e => setRule(r => ({ ...r, delayMinutes: Math.max(1, parseInt(e.target.value) || 1) }))}
+                className="w-20 text-sm border border-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-violet-300 text-center"
+              />
+              <span className="text-xs text-slate-500">minutos</span>
+            </div>
+            <span className="text-xs text-slate-400">= {hoursDisplay}</span>
+            <div className="flex gap-1 ml-auto">
+              {[30, 60, 120, 360, 720].map(m => (
+                <button
+                  key={m}
+                  onClick={() => setRule(r => ({ ...r, delayMinutes: m }))}
+                  className={`text-[10px] px-2 py-1 rounded-md border transition ${rule.delayMinutes === m ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-slate-500 border-slate-200 hover:border-violet-300'}`}
+                >
+                  {m >= 60 ? `${m / 60}h` : `${m}min`}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="mb-4">
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-xs font-medium text-slate-600">
+              Sequência de toques <span className="text-slate-400 font-normal">({cadence.length} mensagens)</span>
+            </label>
+            <div className="flex gap-1">
+              {[3, 5, 7].map(d => (
+                <button
+                  key={d}
+                  onClick={() => setSteps(makeDailyCadence(d))}
+                  className="text-[10px] px-2 py-1 rounded-md border bg-white text-slate-500 border-slate-200 hover:border-violet-300 transition"
+                >
+                  {d} dias
+                </button>
+              ))}
+            </div>
+          </div>
+          <p className="text-[10px] text-slate-400 mb-2.5">
+            Um toque por vez, na ordem. Cada espera conta a partir da última mensagem enviada — 1 dia em todos = 1 mensagem por dia. Se o lead responder, a sequência reinicia do primeiro toque.
+          </p>
+
+          <div className="space-y-2">
+            {cadence.map((step, i) => {
+              const { value, unit } = splitDelay(step.delayMinutes)
+              return (
+                <div key={i} className="border border-slate-200 rounded-lg p-3 bg-slate-50/60">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-violet-600 text-white text-[10px] font-semibold shrink-0">
+                      {i + 1}
+                    </span>
+                    <span className="text-[11px] text-slate-500">depois de</span>
+                    <input
+                      type="number"
+                      min={1}
+                      value={value}
+                      onChange={e => patchStep(i, { delayMinutes: Math.max(1, parseInt(e.target.value) || 1) * DELAY_UNITS[unit] })}
+                      className="w-16 text-xs border border-slate-200 rounded-md px-2 py-1 text-center focus:outline-none focus:ring-2 focus:ring-violet-300"
+                    />
+                    <select
+                      value={unit}
+                      onChange={e => patchStep(i, { delayMinutes: value * DELAY_UNITS[e.target.value] })}
+                      className="text-xs border border-slate-200 rounded-md px-1.5 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-violet-300"
+                    >
+                      {Object.keys(DELAY_UNITS).map(u => <option key={u} value={u}>{u}</option>)}
+                    </select>
+                    <button
+                      onClick={() => removeStep(i)}
+                      className="ml-auto text-slate-300 hover:text-red-500 transition"
+                      title="Remover toque"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  <input
+                    value={step.objective || ''}
+                    onChange={e => patchStep(i, { objective: e.target.value })}
+                    placeholder="Objetivo deste toque — ex: provocar a dor de perder cliente por demora na resposta"
+                    className="w-full text-xs border border-slate-200 rounded-md px-2.5 py-1.5 mb-2 focus:outline-none focus:ring-2 focus:ring-violet-300"
+                  />
+                  <textarea
+                    value={step.text || ''}
+                    onChange={e => patchStep(i, { text: e.target.value })}
+                    rows={2}
+                    placeholder={rule.mode === 'ai'
+                      ? 'Texto base (opcional) — a IA usa como referência de conteúdo e reescreve adaptando ao histórico do lead'
+                      : 'Mensagem enviada exatamente assim'}
+                    className="w-full text-xs border border-slate-200 rounded-md p-2 resize-none focus:outline-none focus:ring-2 focus:ring-violet-300"
+                  />
+                </div>
+              )
+            })}
+          </div>
+
+          <button
+            onClick={() => setSteps([...cadence, emptyStep()])}
+            className="mt-2 flex items-center gap-1.5 text-[11px] font-medium text-violet-600 hover:text-violet-700 transition"
+          >
+            <Plus className="w-3.5 h-3.5" /> Adicionar toque
+          </button>
+        </div>
+      )}
 
       {/* Horário preferido de envio — opcional */}
       <div className="mb-4">
@@ -710,8 +854,9 @@ function FollowupRuleForm({ initial, campaignOptions, adTitleOptions, videos, on
         </p>
       </div>
 
-      {/* Vídeo (opcional) — se escolhido, manda só o vídeo com legenda */}
-      <div className="mb-4">
+      {/* Vídeo (opcional) — se escolhido, manda só o vídeo com legenda.
+          Não aparece em cadência: lá o conteúdo vem de cada toque. */}
+      <div className={`mb-4 ${cadence ? 'hidden' : ''}`}>
         <label className="block text-xs font-medium text-slate-600 mb-1.5">Anexar vídeo (opcional)</label>
         <select
           value={rule.videoId}
@@ -760,7 +905,7 @@ function FollowupRuleForm({ initial, campaignOptions, adTitleOptions, videos, on
             </div>
           </div>
 
-          {rule.mode === 'manual' && (
+          {rule.mode === 'manual' && !cadence && (
             <div className="mb-4">
               <label className="block text-xs font-medium text-slate-600 mb-1.5">Mensagem de follow-up</label>
               <textarea
@@ -781,6 +926,7 @@ function FollowupRuleForm({ initial, campaignOptions, adTitleOptions, videos, on
               </div>
               <p className="text-xs text-violet-600 mb-3">
                 Por padrão a IA usa o prompt geral da Sofia + histórico da conversa pra reativar o lead. Pra uma campanha com objetivo diferente (ex: reativar quem já está em "Qualificado"), escreva abaixo um prompt específico — ele substitui o prompt padrão só nesta regra, mas o histórico da conversa continua sendo considerado.
+                {cadence && ' Em cada toque, a IA segue o objetivo daquele dia e usa o texto base como referência (reescreve, não copia).'}
               </p>
               <label className="block text-[11px] font-medium text-violet-700 mb-1.5">Prompt customizado desta regra (opcional)</label>
               <textarea
@@ -989,6 +1135,7 @@ function FollowupRules() {
                 utmCampaign: rule.utmCampaign || '',
                 adTitle: rule.adTitle || '',
                 createdAfter: rule.createdAfter ? rule.createdAfter.slice(0, 16) : '',
+                cadenceSteps: Array.isArray(rule.cadenceSteps) && rule.cadenceSteps.length ? rule.cadenceSteps : null,
                 sendAtHour: rule.sendAtHour != null ? rule.sendAtHour : '',
                 sendAtMinute: rule.sendAtMinute ?? 0,
                 text: rule.text || '',
@@ -1029,9 +1176,15 @@ function FollowupRules() {
                       desde {new Date(rule.createdAfter).toLocaleDateString('pt-BR')}
                     </span>
                   )}
-                  <span className="px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-500">
-                    {rule.delayMinutes >= 60 ? `${(rule.delayMinutes / 60).toFixed(rule.delayMinutes % 60 === 0 ? 0 : 1)}h` : `${rule.delayMinutes}min`}
-                  </span>
+                  {rule.cadenceSteps?.length ? (
+                    <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-violet-100 text-violet-700 font-medium">
+                      <Layers className="w-2.5 h-2.5" /> cadência · {rule.cadenceSteps.length} toques
+                    </span>
+                  ) : (
+                    <span className="px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-500">
+                      {rule.delayMinutes >= 60 ? `${(rule.delayMinutes / 60).toFixed(rule.delayMinutes % 60 === 0 ? 0 : 1)}h` : `${rule.delayMinutes}min`}
+                    </span>
+                  )}
                   {rule.sendAtHour != null && (
                     <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-600">
                       <Clock className="w-2.5 h-2.5" /> {String(rule.sendAtHour).padStart(2, '0')}:{String(rule.sendAtMinute ?? 0).padStart(2, '0')}
@@ -1254,7 +1407,12 @@ function FollowupStatus() {
                   <div className="min-w-0">
                     <p className="text-xs font-medium text-slate-700 truncate">{firstName(l.name)}</p>
                     <p className="text-[10px] text-slate-400">última msg {timeAgo(l.waLastMessageAt, now)}</p>
-                    {l.ruleName && <p className="text-[10px] text-violet-500 truncate">regra: {l.ruleName}</p>}
+                    {l.ruleName && (
+                      <p className="text-[10px] text-violet-500 truncate">
+                        regra: {l.ruleName}
+                        {l.totalSteps ? ` · toque ${l.step}/${l.totalSteps}` : ''}
+                      </p>
+                    )}
                   </div>
                   {cd ? (
                     <span className={`text-xs font-mono font-semibold tabular-nums px-2 py-1 rounded-md flex-shrink-0 ${cd.overdue ? 'bg-violet-100 text-violet-700' : 'bg-white text-amber-700 border border-amber-200'}`}>

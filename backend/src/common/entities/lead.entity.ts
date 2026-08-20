@@ -201,6 +201,18 @@ export class Lead {
   @Column({ name: 'followup_sent_at', type: 'timestamp', nullable: true })
   followupSentAt?: Date | null;
 
+  // Progresso na cadência multi-toque (FollowupRule.cadenceSteps): quantos
+  // toques já foram enviados = índice do PRÓXIMO toque a enviar. Zera quando o
+  // lead responde (o ciclo recomeça do primeiro toque).
+  @Column({ name: 'followup_step', type: 'int', default: 0 })
+  followupStep: number;
+
+  // Quando o próximo toque da cadência fica devido. Null = não está no meio de
+  // uma cadência (nunca entrou, já terminou, ou o lead respondeu). É o que tira
+  // o lead da consulta do cron quando a sequência acaba.
+  @Column({ name: 'followup_next_at', type: 'timestamp', nullable: true })
+  followupNextAt?: Date | null;
+
   @Column({ name: 'notes', type: 'text', nullable: true })
   notes?: string | null;
 
