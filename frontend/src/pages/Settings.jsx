@@ -939,7 +939,7 @@ function FollowupRuleForm({ initial, campaignOptions, adTitleOptions, videos, on
             </div>
           )}
 
-          {rule.mode === 'ai' && rule.kanbanStage === 'qualificado' && (
+          {rule.mode === 'ai' && (
             <label className="flex items-start gap-2 mb-4 cursor-pointer bg-amber-50/60 border border-amber-100 rounded-lg p-3">
               <input
                 type="checkbox"
@@ -948,7 +948,7 @@ function FollowupRuleForm({ initial, campaignOptions, adTitleOptions, videos, on
                 className="mt-0.5 accent-violet-600"
               />
               <span className="text-[11px] text-slate-600">
-                <span className="font-medium text-slate-700">Disparar mesmo com a IA pausada</span> — leads em "Qualificado" ficam com a IA desligada automaticamente após o handoff pro operador. Marque isso pra essa regra alcançar esses leads mesmo assim (a IA continua pausada pro fluxo normal, só essa mensagem de reativação é enviada).
+                <span className="font-medium text-slate-700">Disparar mesmo com a IA pausada</span> — leads em raias avançadas ("Qualificado", "Em negociação", etc.) ficam com a IA desligada após o handoff pro operador. Marque isso pra essa regra alcançar esses leads mesmo assim (a IA continua pausada pro fluxo normal, só essa mensagem de reativação é enviada).
               </span>
             </label>
           )}

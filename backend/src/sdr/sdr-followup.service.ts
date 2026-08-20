@@ -214,6 +214,7 @@ export class SdrFollowupService {
         'lead.followupNextAt',
         'lead.aiContext',
         'lead.aiPaused',
+        'lead.notes',
       ])
       .where('lead.agent_mode = :mode', { mode: 'sdr' })
       .andWhere('lead.wa_last_message_at IS NOT NULL')
@@ -334,6 +335,7 @@ export class SdrFollowupService {
         'lead.followupSentAt',
         'lead.aiContext',
         'lead.aiPaused',
+        'lead.notes',
       ])
       .where('lead.agent_mode = :mode', { mode: 'sdr' });
     if (rule.kanbanStage) qb.andWhere('lead.kanban_stage = :stage', { stage: rule.kanbanStage });
@@ -608,6 +610,20 @@ export class SdrFollowupService {
 
 Responda APENAS com o texto da mensagem, sem JSON, sem explicações, sem aspas ao redor.`;
 
+      // Anotações que o operador escreveu no card. Nas raias mais quentes
+      // ("em negociação", "já apresentado") é onde fica o combinado da última
+      // conversa por ligação/áudio, que não existe no histórico do WhatsApp —
+      // é o contexto mais atual que temos pra escrever um follow-up que faça
+      // sentido pro lead. O lead nunca viu esse texto, então a IA não pode
+      // citá-lo nem deixar transparecer que ele existe.
+      const notesBlock = lead.notes?.trim()
+        ? `ANOTAÇÕES INTERNAS sobre este lead (escritas por quem falou com ele; NÃO estão na conversa do WhatsApp e o lead NUNCA viu esse texto):
+"""
+${lead.notes.trim()}
+"""
+Trate isso como a informação mais atual sobre onde a negociação parou — retome o que ficou combinado aí, com naturalidade. Nunca mencione que existe uma anotação, nunca cite o texto: escreva como quem simplesmente lembra da conversa.`
+        : '';
+
       // Toque de uma cadência: o objetivo do dia manda no conteúdo, e o texto
       // base da etapa entra como REFERÊNCIA (não é pra copiar — a IA reescreve
       // adaptando ao que já foi conversado com aquele lead).
@@ -643,6 +659,7 @@ ${tomBlock}` : '';
           messages: [
             { role: 'system', content: rule.promptOverride },
             { role: 'system', content: nameNote },
+            ...(notesBlock ? [{ role: 'system' as const, content: notesBlock }] : []),
             ...history,
             {
               role: 'system',
@@ -707,6 +724,7 @@ ${tomBlock}`;
         model,
         messages: [
           { role: 'system', content: basePrompt },
+          ...(notesBlock ? [{ role: 'system' as const, content: notesBlock }] : []),
           ...history,
           { role: 'system', content: followupInstruction },
         ],
