@@ -7,6 +7,7 @@ import { ManualMessageController } from './manual-message.controller';
 import { SdrService } from './sdr.service';
 import { SdrFollowupService } from './sdr-followup.service';
 import { FollowupVideoService } from './followup-video.service';
+import { AvatarStorageService } from './avatar-storage.service';
 import { Lead } from '../common/entities/lead.entity';
 import { FollowupRule } from '../common/entities/followup-rule.entity';
 import { FollowupVideo } from '../common/entities/followup-video.entity';
@@ -27,6 +28,6 @@ import { EnrichmentModule } from '../enrichment/enrichment.module';
     EnrichmentModule,
   ],
   controllers: [SdrController, FollowupController, ManualMessageController],
-  providers: [SdrService, SdrFollowupService, FollowupVideoService],
+  providers: [SdrService, SdrFollowupService, FollowupVideoService, AvatarStorageService],
 })
 export class SdrModule {}

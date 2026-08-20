@@ -6,6 +6,7 @@ import { Repository } from 'typeorm';
 import { firstValueFrom } from 'rxjs';
 import { Lead } from '../common/entities/lead.entity';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { AvatarStorageService } from './avatar-storage.service';
 
 type MediaType = 'image' | 'video' | 'document' | 'audio';
 
@@ -30,6 +31,7 @@ export class ManualMessageController {
     private http: HttpService,
     private config: ConfigService,
     private realtime: RealtimeGateway,
+    private avatarStorage: AvatarStorageService,
   ) {
     this.uazapiBaseUrl = config.get('SDR_UAZAPI_BASE_URL') || config.get('UAZAPI_BASE_URL') || '';
     this.uazapiToken = config.get('SDR_UAZAPI_TOKEN') || '';
@@ -93,9 +95,10 @@ export class ManualMessageController {
         ),
       );
       const data = res.data as { imagePreview?: string; image?: string; name?: string; wa_contactName?: string; wa_name?: string };
-      const avatarUrl = data.imagePreview || data.image || null;
+      const rawAvatarUrl = data.imagePreview || data.image || null;
       const realName = data.name || data.wa_contactName || data.wa_name;
 
+      const avatarUrl = rawAvatarUrl ? await this.avatarStorage.persistFromUrl(id, rawAvatarUrl) : null;
       const patch: Record<string, any> = { avatarUrl };
       // Só sobrescreve o nome se ainda estiver no placeholder "Lead XXXX" —
       // não pisa em cima de um nome já coletado pela IA ou editado manualmente.

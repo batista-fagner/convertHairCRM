@@ -8,6 +8,7 @@ import { FacebookService } from '../facebook/facebook.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { SettingsService } from '../settings/settings.service';
 import { EnrichmentService } from '../enrichment/enrichment.service';
+import { AvatarStorageService } from './avatar-storage.service';
 import { Lead, WaStage } from '../common/entities/lead.entity';
 import { buildOpeningGreeting } from './name-gender.util';
 
@@ -89,6 +90,7 @@ export class SdrController {
     private readonly config: ConfigService,
     private readonly settings: SettingsService,
     private readonly enrichmentService: EnrichmentService,
+    private readonly avatarStorage: AvatarStorageService,
   ) {
     this.uazapiBaseUrl = config.get('SDR_UAZAPI_BASE_URL') || config.get('UAZAPI_BASE_URL') || 'https://free.uazapi.com';
     this.uazapiToken = config.get('SDR_UAZAPI_TOKEN') || '';
@@ -262,11 +264,11 @@ export class SdrController {
         ),
       );
       const data = res.data as { imagePreview?: string; image?: string; name?: string; wa_contactName?: string; wa_name?: string };
-      const avatarUrl = data.imagePreview || data.image;
+      const rawAvatarUrl = data.imagePreview || data.image;
       const realName = data.name || data.wa_contactName || data.wa_name;
 
       const patch: Partial<Lead> = {};
-      if (avatarUrl) patch.avatarUrl = avatarUrl;
+      if (rawAvatarUrl) patch.avatarUrl = await this.avatarStorage.persistFromUrl(leadId, rawAvatarUrl);
       if (realName && currentName && /^Lead \d+$/.test(currentName)) patch.name = realName;
       if (!Object.keys(patch).length) return undefined;
 
