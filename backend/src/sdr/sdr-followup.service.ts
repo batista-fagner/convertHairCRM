@@ -499,11 +499,14 @@ export class SdrFollowupService {
       .take(20)
       .getMany();
 
-    // Leads aguardando follow-up (IA ativa, última msg da IA, ainda não recebeu)
+    // Leads aguardando follow-up (última msg da IA, ainda não recebeu). Não filtra
+    // ai_paused aqui — igual ao cron, quem está pausado só é descartado DEPOIS de
+    // casar com uma regra (uma regra com ignoreAiPaused alcança esses leads
+    // mesmo pausados; filtrar antes escondia esse público do painel mesmo quando
+    // a regra estava configurada certinho pra atingi-los).
     const activeLeads = await this.leadsRepo
       .createQueryBuilder('lead')
       .where('lead.agent_mode = :mode', { mode: 'sdr' })
-      .andWhere('lead.ai_paused = false')
       .andWhere('lead.wa_last_message_at IS NOT NULL')
       // Mesma condição do cron: quem nunca recebeu + quem está no meio da cadência.
       .andWhere('(lead.followup_sent_at IS NULL OR lead.followup_next_at IS NOT NULL)')
@@ -516,8 +519,13 @@ export class SdrFollowupService {
       .map((l) => ({ lead: l, rule: this.matchRule(l, enabledRules) }));
 
     // Só entra na fila quem tem regra ativa de verdade te dando follow-up —
-    // lead sem regra correspondente nunca vai disparar, não faz sentido poluir a lista.
-    const noRuleCount = withRule.filter((x) => !x.rule).length;
+    // lead sem regra correspondente (ou pausado sem uma regra que ignore isso)
+    // nunca vai disparar, não faz sentido poluir a lista de "aguardando".
+    const noRuleCount = withRule.filter((x) => !x.rule || (x.lead.aiPaused && !x.rule.ignoreAiPaused)).length;
+
+    // A partir daqui só quem tem chance real de disparar: tem regra E (não está
+    // pausado OU a regra ignora pausa) — igual ao portão do cron de verdade.
+    const eligible = withRule.filter((x) => x.rule && (!x.lead.aiPaused || x.rule.ignoreAiPaused)) as { lead: Lead; rule: FollowupRule }[];
 
     const dueAtMs = (l: Lead, rule: FollowupRule) => {
       // Numa cadência a espera é a do toque atual, não o delay único da regra.
@@ -533,16 +541,15 @@ export class SdrFollowupService {
       return this.nextSendTime(Math.max(eligibleAt, Date.now()), rule.sendAtHour, rule.sendAtMinute ?? 0);
     };
 
-    const waiting = withRule
+    const waiting = eligible
       // Lead que já terminou a cadência inteira não está "aguardando" nada.
       .filter((x) => {
-        if (!x.rule) return false;
         const steps = this.cadenceStepsOf(x.rule);
         return !steps || (x.lead.followupStep ?? 0) < steps.length;
       })
-      .sort((a, b) => dueAtMs(a.lead, a.rule!) - dueAtMs(b.lead, b.rule!))
+      .sort((a, b) => dueAtMs(a.lead, a.rule) - dueAtMs(b.lead, b.rule))
       .map(({ lead: l, rule }) => {
-        const steps = this.cadenceStepsOf(rule!);
+        const steps = this.cadenceStepsOf(rule);
         return {
           id: l.id,
           name: l.name,
@@ -551,12 +558,12 @@ export class SdrFollowupService {
           utmCampaign: l.utmCampaign,
           adTitle: l.ctwaAdTitle,
           waLastMessageAt: l.waLastMessageAt,
-          ruleId: rule!.id,
-          ruleName: rule!.name,
+          ruleId: rule.id,
+          ruleName: rule.name,
           // Numa cadência mostra em que toque o lead está (1-based pra exibição).
           step: steps ? (l.followupStep ?? 0) + 1 : null,
           totalSteps: steps ? steps.length : null,
-          dueAt: new Date(dueAtMs(l, rule!)),
+          dueAt: new Date(dueAtMs(l, rule)),
         };
       });
 
