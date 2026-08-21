@@ -151,12 +151,18 @@ export class FollowupController {
         .update(Lead)
         .set({ followupSentAt: null, followupStep: 0, followupNextAt: null })
         .where('agent_mode = :mode', { mode: 'sdr' })
-        .andWhere("wa_stage != 'encerrado'")
         .andWhere('followup_sent_at IS NOT NULL');
       // Raias com IA pausada (ex.: "qualificado", pausada no handoff) só entram
       // no reset se a própria regra ignora esse portão — senão manteria o mesmo
       // bug do cron: regra pra reativar quem está pausado nunca liberava ninguém.
-      if (!rule.ignoreAiPaused) qb.andWhere('ai_paused = false');
+      // wa_stage='encerrado' é o MESMO momento (fim do handoff) que pausa a IA —
+      // por isso segue a mesma exceção: sem ela, o próprio filtro do reset
+      // excluía sempre o público-alvo de uma campanha de reativação pós-handoff
+      // (nenhum cron real filtra por wa_stage, então essa trava não tinha origem
+      // funcional, só sobrou de um filtro antigo mais restritivo).
+      if (!rule.ignoreAiPaused) {
+        qb.andWhere('ai_paused = false').andWhere("wa_stage != 'encerrado'");
+      }
       if (rule.kanbanStage) qb.andWhere('kanban_stage = :stage', { stage: rule.kanbanStage });
       if (rule.utmCampaign) qb.andWhere('utm_campaign = :campaign', { campaign: rule.utmCampaign });
       if (rule.adTitle) qb.andWhere('ctwa_ad_title = :adTitle', { adTitle: rule.adTitle });
