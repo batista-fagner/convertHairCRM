@@ -432,13 +432,17 @@ export class SdrFollowupService {
   }
 
   /**
-   * True quando o horário atual (America/Sao_Paulo) está dentro de uma janela curta
-   * logo após hour:minute — ex. 13:00 a 13:10. Não compara contra quando o lead
-   * ficou elegível (isso causava disparo imediato quando a elegibilidade era muito
-   * antiga): compara contra o relógio de agora, então só dispara de fato perto do
-   * horário configurado, todo dia, até o followupSentAt travar o reenvio.
+   * True a partir de hour:minute (horário de Brasília) até o fim do dia — não é
+   * mais uma janela curta de 10min. Antes fechava rápido demais: uma campanha
+   * com muita gente elegível de uma vez (ex.: cadência de 107 leads, ~10-40s de
+   * espaço entre cada envio) não cabia numa janela de 10min, e quem ficava de
+   * fora só era tentado de novo no dia seguinte — sobrando cada vez mais gente
+   * pra trás. Agora, a partir do horário configurado o envio segue até dar conta
+   * de todo mundo elegível daquele tick, ou até o dia virar. Não compara contra
+   * quando o lead ficou elegível (isso causava disparo imediato quando a
+   * elegibilidade era muito antiga): compara contra o relógio de agora.
    */
-  private isWithinSendWindow(hour: number, minute: number, windowMinutes = 10): boolean {
+  private isWithinSendWindow(hour: number, minute: number): boolean {
     const parts = new Intl.DateTimeFormat('en-CA', {
       timeZone: 'America/Sao_Paulo',
       hour: '2-digit',
@@ -448,7 +452,7 @@ export class SdrFollowupService {
     const get = (type: string) => parseInt(parts.find((p) => p.type === type)!.value, 10);
     const minutesNow = get('hour') * 60 + get('minute');
     const minutesTarget = hour * 60 + minute;
-    return minutesNow >= minutesTarget && minutesNow < minutesTarget + windowMinutes;
+    return minutesNow >= minutesTarget;
   }
 
   private brDateParts(date: Date): { year: number; month: number; day: number } {
