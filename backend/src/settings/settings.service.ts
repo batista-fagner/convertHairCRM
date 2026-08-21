@@ -31,6 +31,32 @@ export class SettingsService {
     return this.settingsRepo.findOne({ where: { key } });
   }
 
+  /**
+   * Lock por lease numa linha de `settings` — evita 2 instâncias do mesmo
+   * processo (deploy no Railway sobrepondo o container antigo e o novo por
+   * alguns segundos) rodando o mesmo @Cron ao mesmo tempo e duplicando envio
+   * de WhatsApp. Não usa advisory lock do Postgres de propósito: não é
+   * confiável através do pooler em modo transaction (Supavisor), que pode
+   * trocar de conexão física entre statements. Um INSERT..ON CONFLICT..WHERE
+   * é atômico e funciona em qualquer modo de pooling.
+   * Retorna true se conseguiu o lock (deve prosseguir), false se outra
+   * instância já está com o lock ainda válido (deve pular este tick).
+   */
+  async tryAcquireLock(key: string, leaseMs: number): Promise<boolean> {
+    const now = new Date();
+    const leaseExpiredBefore = new Date(now.getTime() - leaseMs);
+    const result = await this.settingsRepo.manager.query(
+      `INSERT INTO settings (key, value, updated_at)
+       VALUES ($1, $2, now())
+       ON CONFLICT (key) DO UPDATE
+         SET value = EXCLUDED.value, updated_at = now()
+         WHERE settings.value IS NULL OR settings.value::timestamptz < $3
+       RETURNING key`,
+      [key, now.toISOString(), leaseExpiredBefore.toISOString()],
+    );
+    return result.length > 0;
+  }
+
   async set(key: string, value: string): Promise<Setting> {
     await this.settingsRepo.upsert({ key, value }, ['key']);
     return this.settingsRepo.findOneOrFail({ where: { key } });

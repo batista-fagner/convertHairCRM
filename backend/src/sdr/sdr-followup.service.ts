@@ -170,6 +170,16 @@ export class SdrFollowupService {
 
   @Cron('*/5 * * * *')
   async checkFollowups() {
+    // Lease de 4min pra um cron de 5 em 5 — impede 2 instâncias (deploy no
+    // Railway sobrepondo container antigo/novo) processarem o mesmo tick e
+    // duplicarem envio de WhatsApp pro mesmo lead. Expira sozinho antes do
+    // próximo tick legítimo, então não atrasa a execução normal.
+    const gotLock = await this.settings.tryAcquireLock('followup_cron_lock', 4 * 60_000);
+    if (!gotLock) {
+      this.logger.warn('[Followup] Outra instância já está processando este tick — pulando (evita duplicidade em deploy sobreposto)');
+      return;
+    }
+
     this.lastRunAt = new Date();
     await this.ensureRulesSeeded();
 
