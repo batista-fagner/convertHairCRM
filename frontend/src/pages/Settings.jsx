@@ -1309,21 +1309,26 @@ function firstName(name) {
 function FollowupStatus() {
   const [status, setStatus] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [now, setNow] = useState(Date.now())
 
+  // Sem polling de propósito: cada chamada aqui trazia ai_context de ~250 leads
+  // e era o maior consumidor de egress do projeto (ver sdr-followup.service.ts).
+  // Atualiza só quando o operador pede, no botão "Atualizar".
   const fetchStatus = () => {
+    setRefreshing(true)
     fetch(`${API}/followup/status`)
       .then(r => r.json())
       .then(d => setStatus(d))
       .catch(() => {})
-      .finally(() => setLoading(false))
+      .finally(() => { setLoading(false); setRefreshing(false) })
   }
 
   useEffect(() => {
     fetchStatus()
-    const refetch = setInterval(fetchStatus, 15000) // recarrega dados do servidor
-    const tick = setInterval(() => setNow(Date.now()), 1000) // contador ao vivo
-    return () => { clearInterval(refetch); clearInterval(tick) }
+    // Só o contador regressivo é ao vivo (client-side, sem chamada ao servidor).
+    const tick = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(tick)
   }, [])
 
   if (loading) return (
@@ -1344,8 +1349,13 @@ function FollowupStatus() {
           <Activity className="w-4 h-4 text-violet-600" />
           <p className="font-semibold text-slate-800 text-sm">Status do Follow-up</p>
         </div>
-        <button onClick={fetchStatus} className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-violet-600 transition" title="Atualizar agora">
-          <RefreshCw className="w-3.5 h-3.5" /> Atualizar
+        <button
+          onClick={fetchStatus}
+          disabled={refreshing}
+          className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-violet-600 disabled:opacity-50 transition"
+          title="Atualizar agora"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} /> Atualizar
         </button>
       </div>
 
