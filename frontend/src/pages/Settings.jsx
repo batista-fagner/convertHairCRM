@@ -538,7 +538,6 @@ function todayStartLocal() {
 
 function FollowupRuleForm({ initial, campaignOptions, adTitleOptions, videos, onCancel, onSaved }) {
   const [rule, setRule] = useState(initial)
-  const [resetCycle, setResetCycle] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const isEditing = Boolean(initial.id)
@@ -588,7 +587,6 @@ function FollowupRuleForm({ initial, campaignOptions, adTitleOptions, videos, on
         ignoreAiPaused: rule.ignoreAiPaused,
         videoId: rule.videoId || null,
         videoCaptionOverride: rule.videoCaptionOverride || null,
-        resetCycle,
       }
       const res = await fetch(`${API}/followup/rules${isEditing ? `/${rule.id}` : ''}`, {
         method: isEditing ? 'PATCH' : 'POST',
@@ -955,20 +953,6 @@ function FollowupRuleForm({ initial, campaignOptions, adTitleOptions, videos, on
         </>
       )}
 
-      {isEditing && (
-        <label className="flex items-start gap-2 mb-3 cursor-pointer bg-amber-50/60 border border-amber-100 rounded-lg p-3">
-          <input
-            type="checkbox"
-            checked={resetCycle}
-            onChange={e => setResetCycle(e.target.checked)}
-            className="mt-0.5 accent-violet-600"
-          />
-          <span className="text-[11px] text-slate-600">
-            <span className="font-medium text-slate-700">Disparar novo ciclo</span> — reenvia pros leads desta raia/campanha que já receberam follow-up e ainda não responderam. Marque ao reconfigurar.
-          </span>
-        </label>
-      )}
-
       <div className="flex items-center justify-end gap-3">
         {error && <span className="text-xs text-red-600 font-medium">{error}</span>}
         <button onClick={onCancel} className="text-xs font-medium text-slate-500 hover:text-slate-700 px-3 py-2 transition">
@@ -1066,6 +1050,31 @@ function FollowupRules() {
       setTimeout(() => setToast(''), 5000)
     } finally {
       setBroadcasting(null)
+    }
+  }
+
+  const [resettingId, setResettingId] = useState(null) // id da regra resetando agora
+
+  const resetCycleNow = async (rule) => {
+    const alvo = rule.kanbanStage ? KANBAN_STAGE_LABEL[rule.kanbanStage] || rule.kanbanStage : 'TODAS as raias'
+    if (!confirm(`Liberar novo ciclo de "${rule.name}" pra leads de "${alvo}" que já receberam follow-up e ainda não responderam? Eles voltam pro toque 1 (ou reenviam, se for disparo único).`)) return
+    setResettingId(rule.id)
+    try {
+      const res = await fetch(`${API}/followup/rules/${rule.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resetCycle: true }),
+      })
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.message || 'Erro ao resetar') }
+      const d = await res.json()
+      setToast(d.resetCount > 0 ? `${d.resetCount} lead(s) liberados para novo ciclo` : 'Nenhum lead elegível pra resetar agora')
+      setTimeout(() => setToast(''), 5000)
+      load()
+    } catch (e) {
+      setToast(`Erro: ${e.message}`)
+      setTimeout(() => setToast(''), 5000)
+    } finally {
+      setResettingId(null)
     }
   }
 
@@ -1209,6 +1218,14 @@ function FollowupRules() {
                   className="p-1.5 text-slate-400 hover:text-emerald-600 disabled:opacity-40 transition"
                 >
                   {broadcasting === rule.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                </button>
+                <button
+                  onClick={() => resetCycleNow(rule)}
+                  disabled={resettingId === rule.id}
+                  title="Liberar novo ciclo — reenvia pros leads desta raia/campanha que já receberam follow-up e ainda não responderam"
+                  className="p-1.5 text-slate-400 hover:text-violet-600 disabled:opacity-40 transition"
+                >
+                  {resettingId === rule.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
                 </button>
                 <button onClick={() => toggleEnabled(rule)} title={rule.enabled ? 'Desativar' : 'Ativar'} className="transition">
                   {rule.enabled ? <ToggleRight className="w-7 h-7 text-violet-600" /> : <ToggleLeft className="w-7 h-7 text-slate-300" />}
