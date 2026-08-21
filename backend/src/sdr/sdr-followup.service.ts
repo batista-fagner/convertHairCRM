@@ -194,10 +194,14 @@ export class SdrFollowupService {
     // daqui com mensagem de fato.
     //
     // .select() explícito: traz só as colunas que o loop abaixo (matchRule,
-    // lastMessageWasFromAI, generateAiFollowup, sendFollowup) realmente usa —
-    // evita puxar enrichment_data/ai_insight/tags/form_answers (jsonb pesados,
-    // não usados aqui) pra cada linha a cada 5 minutos. Isso sozinho já era o
-    // maior consumidor de egress do Supabase nesse cron.
+    // resolveDueTouch) realmente usa pra FILTRAR — evita puxar enrichment_data/
+    // ai_insight/tags/form_answers (jsonb pesados, não usados aqui). ai_context
+    // e notes (os dois mais pesados, ~2-3KB por lead) ficam de fora também: o
+    // filtro de "última msg foi da IA" vira uma checagem em SQL (lê só o role
+    // do último elemento do array, não o array inteiro), e o conteúdo completo
+    // só é buscado depois, lá embaixo, para os poucos leads que passam em TODOS
+    // os portões e vão receber algo de fato neste tick — não para os ~250
+    // candidatos elegíveis que normalmente só estão "esperando a vez".
     const candidates = await this.leadsRepo
       .createQueryBuilder('lead')
       .select([
@@ -212,9 +216,7 @@ export class SdrFollowupService {
         'lead.followupSentAt',
         'lead.followupStep',
         'lead.followupNextAt',
-        'lead.aiContext',
         'lead.aiPaused',
-        'lead.notes',
       ])
       .where('lead.agent_mode = :mode', { mode: 'sdr' })
       .andWhere('lead.wa_last_message_at IS NOT NULL')
@@ -223,14 +225,13 @@ export class SdrFollowupService {
       // cadência (followup_next_at preenchido). Quando a cadência termina, o
       // followup_next_at volta a null e o lead sai daqui de vez.
       .andWhere('(lead.followup_sent_at IS NULL OR lead.followup_next_at IS NOT NULL)')
+      .andWhere(`"lead"."ai_context" -> -1 ->> 'role' = 'assistant'`)
       .getMany();
 
     const videoLimit = await this.getVideoLimit();
 
     let sent = 0;
     for (const lead of candidates) {
-      if (!this.lastMessageWasFromAI(lead)) continue;
-
       const rule = this.matchRule(lead, rules);
       if (!rule) continue;
 
@@ -250,6 +251,12 @@ export class SdrFollowupService {
       if (rule.sendAtHour != null && !this.isWithinSendWindow(rule.sendAtHour, rule.sendAtMinute ?? 0)) {
         continue;
       }
+
+      // Só a partir daqui o lead vai receber algo de verdade neste tick — busca
+      // o conteúdo pesado (ai_context, notes) que ficou de fora do select acima.
+      const full = await this.leadsRepo.findOne({ where: { id: lead.id }, select: ['id', 'aiContext', 'notes'] });
+      lead.aiContext = full?.aiContext;
+      lead.notes = full?.notes;
 
       // Regra com vídeo: manda o vídeo (com legenda), respeitando o teto diário.
       // Só vale no disparo único — numa cadência cada toque é texto/IA próprio.
@@ -493,6 +500,7 @@ export class SdrFollowupService {
     // Follow-ups já enviados (últimos 20, só para a lista exibida no painel)
     const sentLeads = await this.leadsRepo
       .createQueryBuilder('lead')
+      .select(['lead.id', 'lead.name', 'lead.phone', 'lead.kanbanStage', 'lead.followupSentAt'])
       .where('lead.agent_mode = :mode', { mode: 'sdr' })
       .andWhere('lead.followup_sent_at IS NOT NULL')
       .orderBy('lead.followup_sent_at', 'DESC')
@@ -504,18 +512,38 @@ export class SdrFollowupService {
     // casar com uma regra (uma regra com ignoreAiPaused alcança esses leads
     // mesmo pausados; filtrar antes escondia esse público do painel mesmo quando
     // a regra estava configurada certinho pra atingi-los).
+    //
+    // .select() explícito + filtro de "última msg da IA" em SQL (só o role do
+    // último elemento do array, não o array inteiro): esse endpoint é pollado
+    // a cada 15s pela tela de Configurações — sem isso, cada chamada trazia o
+    // ai_context inteiro de ~250 leads (~500KB), de longe o maior consumidor de
+    // egress do projeto (bem mais que o cron, que roda só a cada 5min).
     const activeLeads = await this.leadsRepo
       .createQueryBuilder('lead')
+      .select([
+        'lead.id',
+        'lead.name',
+        'lead.phone',
+        'lead.kanbanStage',
+        'lead.utmCampaign',
+        'lead.ctwaAdTitle',
+        'lead.createdAt',
+        'lead.waLastMessageAt',
+        'lead.followupSentAt',
+        'lead.followupStep',
+        'lead.followupNextAt',
+        'lead.aiPaused',
+      ])
       .where('lead.agent_mode = :mode', { mode: 'sdr' })
       .andWhere('lead.wa_last_message_at IS NOT NULL')
       // Mesma condição do cron: quem nunca recebeu + quem está no meio da cadência.
       .andWhere('(lead.followup_sent_at IS NULL OR lead.followup_next_at IS NOT NULL)')
+      .andWhere(`"lead"."ai_context" -> -1 ->> 'role' = 'assistant'`)
       .orderBy('lead.wa_last_message_at', 'ASC')
       .getMany();
 
     const enabledRules = rules.filter((r) => r.enabled);
     const withRule = activeLeads
-      .filter((l) => this.lastMessageWasFromAI(l))
       .map((l) => ({ lead: l, rule: this.matchRule(l, enabledRules) }));
 
     // Só entra na fila quem tem regra ativa de verdade te dando follow-up —
@@ -586,12 +614,6 @@ export class SdrFollowupService {
     };
   }
 
-  private lastMessageWasFromAI(lead: Lead): boolean {
-    const ctx = Array.isArray(lead.aiContext) ? lead.aiContext : [];
-    if (ctx.length === 0) return false;
-    const last = ctx[ctx.length - 1];
-    return last?.role === 'assistant';
-  }
 
   private async generateAiFollowup(
     lead: Lead,
