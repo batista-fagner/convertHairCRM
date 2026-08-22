@@ -9,3 +9,10 @@ export const QUEUE_ENGINE_BULLMQ = 'bullmq';
 export const IG_POST_QUEUE_NAME = 'ig-post-publish';
 export const JOB_PUBLISH_POST = 'publish';
 export const JOB_POLL_CONTAINER = 'poll-container';
+
+// --- sdr-followup (Fase 3) ---
+// Só troca o GATILHO do scan (cron -> job repetível) — a query e o lock
+// continuam os mesmos, ver runFollowupScan() em sdr-followup.service.ts.
+export const SDR_FOLLOWUP_QUEUE_NAME = 'sdr-followup-scan';
+export const JOB_SCAN_FOLLOWUPS = 'scan';
+export const SDR_FOLLOWUP_SCHEDULER_ID = 'sdr-followup-scan-scheduler';

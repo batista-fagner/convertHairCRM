@@ -12,6 +12,7 @@ import { FollowupVideo } from '../common/entities/followup-video.entity';
 import { SettingsService } from '../settings/settings.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { SDR_MODEL_KEY } from './sdr.prompt';
+import { QUEUE_ENGINE_BULLMQ } from '../queue/queue.constants';
 
 // Chaves da config global antiga (1 regra só) — usadas só pra migração automática
 // pra 1ª FollowupRule na primeira vez que o sistema roda com a tabela vazia.
@@ -168,8 +169,31 @@ export class SdrFollowupService {
     return { step, index, total: steps.length, nextAt };
   }
 
+  /**
+   * Trigger legado — em modo fila (QUEUE_ENGINE=bullmq) quem dispara o scan é
+   * o job repetível (ver SdrFollowupQueueService/SdrFollowupScanProcessor),
+   * não esse @Cron. A lógica de verdade (runFollowupScan) é a mesma nos dois
+   * caminhos — só muda quem aperta o play a cada 5 minutos.
+   */
   @Cron('*/5 * * * *')
   async checkFollowups() {
+    if (this.queueMode) return;
+    await this.runFollowupScan();
+  }
+
+  private get queueMode(): boolean {
+    return this.config.get<string>('QUEUE_ENGINE') === QUEUE_ENGINE_BULLMQ;
+  }
+
+  /**
+   * O scan de verdade — varre candidatos e manda follow-up pra quem está due.
+   * Chamado pelo @Cron legado OU pelo processor do job repetível; o lock por
+   * lease continua aqui do mesmo jeito nos dois casos — não confiamos cegamente
+   * na garantia de execução única do BullMQ (upsertJobScheduler nunca foi
+   * testado em produção real neste projeto), o Postgres lock fica como
+   * segunda trava independente.
+   */
+  async runFollowupScan() {
     // Lease de 4min pra um cron de 5 em 5 — impede 2 instâncias (deploy no
     // Railway sobrepondo container antigo/novo) processarem o mesmo tick e
     // duplicarem envio de WhatsApp pro mesmo lead. Expira sozinho antes do
