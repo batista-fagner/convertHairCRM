@@ -28,6 +28,7 @@ import { SettingsModule } from './settings/settings.module';
 import { SmsModule } from './sms/sms.module';
 import { IgPostsModule } from './ig-posts/ig-posts.module';
 import { InstantFormsModule } from './instant-forms/instant-forms.module';
+import { QueueModule } from './queue/queue.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { InstantFormsModule } from './instant-forms/instant-forms.module';
       envFilePath: '.env',
     }),
     ScheduleModule.forRoot(),
+    QueueModule,
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
