@@ -6,6 +6,7 @@ import { SmsContact } from '../sms/entities/sms-contact.entity';
 import { SmsMessage } from '../sms/entities/sms-message.entity';
 import { IgConversation } from '../instagram-automation/ig-conversation.entity';
 import { IgMessage } from '../instagram-automation/ig-message.entity';
+import { IgPost } from '../ig-posts/ig-post.entity';
 
 /**
  * Gateway Socket.IO usado pelo Kanban para refletir em tempo real as
@@ -85,5 +86,17 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
 
   emitIgMessageCreated(message: IgMessage) {
     this.server?.emit('ig:message:created', message);
+  }
+
+  // --- Posts do Instagram (ig-posts) ---
+  // Substitui o polling de 15s da tela de Posts — o status muda por ação de
+  // cron/job (scheduled→processing→published|failed), não do próprio usuário.
+
+  emitIgPostCreated(post: IgPost) {
+    this.server?.emit('igpost:created', post);
+  }
+
+  emitIgPostUpdated(post: IgPost) {
+    this.server?.emit('igpost:updated', post);
   }
 }

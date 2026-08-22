@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Image, Video, Upload, Loader2, Trash2, AlertCircle, X, Clock, CheckCircle2, XCircle, RefreshCw, Send } from 'lucide-react'
+import { useIgPostSocket } from '../hooks/useIgPostSocket'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3001/api'
 
@@ -33,11 +34,15 @@ export default function InstagramPosts() {
 
   useEffect(() => {
     load()
-    // Posts em processamento/agendados mudam de status sozinhos via cron no
-    // backend — dá um refresh periódico pra refletir isso sem precisar F5.
-    const interval = setInterval(load, 15000)
-    return () => clearInterval(interval)
   }, [])
+
+  // Posts em processamento/agendados mudam de status sozinhos via cron/job no
+  // backend — antes isso exigia poll de 15s; agora o backend emite o evento
+  // na hora (igpost:created/updated), sem precisar perguntar de novo.
+  useIgPostSocket({
+    onCreated: (post) => setPosts((prev) => [post, ...prev]),
+    onUpdated: (post) => setPosts((prev) => prev.map((p) => (p.id === post.id ? post : p))),
+  })
 
   return (
     <div className="p-6">
