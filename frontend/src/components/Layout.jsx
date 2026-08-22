@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom'
+import { io } from 'socket.io-client'
 import {
   LayoutDashboard,
   Megaphone,
@@ -100,51 +101,61 @@ const PAGE_TITLES = {
 }
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3001/api'
+const SOCKET_URL = API.replace(/\/api\/?$/, '') || 'http://localhost:3002'
 
+/**
+ * Sem polling de propósito: essa combinação de 3 fetches rodava a cada 60s em
+ * TODA página do CRM (Layout envolve todas as rotas) e era o maior consumidor
+ * de egress do projeto — `/leads/stats` em particular hidratava a tabela
+ * `leads` inteira a cada chamada. Agora busca 1x ao montar e depois só reage
+ * a eventos que o backend já emite (lead:created, sms:contact:updated,
+ * ig:conversation:updated) — os re-fetches de sms/ig são disparados por
+ * evento, não por relógio, então não contam como polling.
+ */
 function useHeaderStats() {
   const [leadsHoje, setLeadsHoje] = useState(null)
   const [smsUnread, setSmsUnread] = useState(0)
   const [igUnread, setIgUnread] = useState(0)
 
+  const fetchSmsStats = async () => {
+    try {
+      const res = await fetch(`${API}/sms/stats`)
+      const data = await res.json()
+      setSmsUnread(data?.unreadConversations || 0)
+    } catch { /* mantém o valor anterior — falha pontual não deve zerar o badge */ }
+  }
+
+  const fetchIgStats = async () => {
+    try {
+      const res = await fetch(`${API}/ig-auto/stats`)
+      const data = await res.json()
+      setIgUnread(data?.unreadTotal || 0)
+    } catch { /* idem */ }
+  }
+
+  const handlersRef = useRef()
+  handlersRef.current = { fetchSmsStats, fetchIgStats }
+
   useEffect(() => {
-    const fetchStats = async () => {
+    (async () => {
       try {
         const res = await fetch(`${API}/leads/stats`)
         const data = await res.json()
-
-        // Leads criados hoje
-        const hoje = new Date()
-        hoje.setHours(0, 0, 0, 0)
-        const todayCount = (data.recent || []).filter(l =>
-          new Date(l.createdAt) >= hoje
-        ).length
-        setLeadsHoje(todayCount)
+        setLeadsHoje(data.todayCount ?? 0)
       } catch {
         setLeadsHoje(0)
       }
+    })()
+    fetchSmsStats()
+    fetchIgStats()
 
-      // Badge de não-lidas do canal de SMS (independente das stats de lead —
-      // uma falha aqui não pode zerar a outra).
-      try {
-        const res = await fetch(`${API}/sms/stats`)
-        const data = await res.json()
-        setSmsUnread(data?.unreadConversations || 0)
-      } catch {
-        setSmsUnread(0)
-      }
-
-      // Badge de não-lidas do canal de Instagram DM — mesmo isolamento acima.
-      try {
-        const res = await fetch(`${API}/ig-auto/stats`)
-        const data = await res.json()
-        setIgUnread(data?.unreadTotal || 0)
-      } catch {
-        setIgUnread(0)
-      }
-    }
-    fetchStats()
-    const t = setInterval(fetchStats, 60000) // atualiza a cada 1 min
-    return () => clearInterval(t)
+    const socket = io(SOCKET_URL, { transports: ['websocket', 'polling'] })
+    socket.on('lead:created', () => setLeadsHoje(n => (n ?? 0) + 1))
+    socket.on('sms:contact:created', () => handlersRef.current.fetchSmsStats())
+    socket.on('sms:contact:updated', () => handlersRef.current.fetchSmsStats())
+    socket.on('ig:conversation:created', () => handlersRef.current.fetchIgStats())
+    socket.on('ig:conversation:updated', () => handlersRef.current.fetchIgStats())
+    return () => socket.disconnect()
   }, [])
 
   return { leadsHoje, smsUnread, igUnread }

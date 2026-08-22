@@ -87,30 +87,56 @@ export class LeadsService {
     return new Map(leads.map(l => [l.phone, l.name]));
   }
 
+  /**
+   * Agregados via SQL (COUNT/GROUP BY) em vez de `find()` da tabela inteira —
+   * esse endpoint é pollado a cada 60s pelo header em TODA página do CRM (ver
+   * Layout.jsx), então hidratar todo lead a cada chamada era o maior
+   * consumidor de egress do projeto. `todayCount` é novo: antes o frontend
+   * derivava "leads hoje" filtrando o array `recent` (só 5 itens), o que
+   * travava a contagem em 5 mesmo com mais leads no dia — agora é um COUNT real.
+   */
   async getStats(): Promise<{
     total: number;
     totalMql: number;
+    todayCount: number;
     byStatus: Record<string, number>;
     byWaStage: Record<string, number>;
     conversionRate: number;
     recent: Lead[];
   }> {
-    const all = await this.leadsRepo.find({ order: { createdAt: 'DESC' } });
-    const total = all.length;
-    const totalMql = all.filter(l => l.isMql).length;
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
 
-    const byStatus: Record<string, number> = {};
-    const byWaStage: Record<string, number> = {};
-    for (const lead of all) {
-      byStatus[lead.status] = (byStatus[lead.status] || 0) + 1;
-      if (lead.waStage) byWaStage[lead.waStage] = (byWaStage[lead.waStage] || 0) + 1;
-    }
+    const [[totals], byStatusRows, byWaStageRows, recent] = await Promise.all([
+      this.leadsRepo.query(
+        `
+        SELECT
+          COUNT(*)::int AS "total",
+          COUNT(*) FILTER (WHERE is_mql)::int AS "totalMql",
+          COUNT(*) FILTER (WHERE status = 'convertido')::int AS "convertido",
+          COUNT(*) FILTER (WHERE created_at >= $1)::int AS "todayCount"
+        FROM leads
+      `,
+        [startOfDay.toISOString()],
+      ),
+      this.leadsRepo.query(`SELECT status AS "status", COUNT(*)::int AS "count" FROM leads GROUP BY status`),
+      this.leadsRepo.query(`SELECT wa_stage AS "waStage", COUNT(*)::int AS "count" FROM leads WHERE wa_stage IS NOT NULL GROUP BY wa_stage`),
+      this.leadsRepo.find({ order: { createdAt: 'DESC' }, take: 5 }),
+    ]);
 
-    const convertido = byStatus['convertido'] || 0;
-    const conversionRate = total > 0 ? Math.round((convertido / total) * 1000) / 10 : 0;
-    const recent = all.slice(0, 5);
+    const byStatus: Record<string, number> = Object.fromEntries(byStatusRows.map((r: any) => [r.status, r.count]));
+    const byWaStage: Record<string, number> = Object.fromEntries(byWaStageRows.map((r: any) => [r.waStage, r.count]));
+    const conversionRate = totals.total > 0 ? Math.round((totals.convertido / totals.total) * 1000) / 10 : 0;
 
-    return { total, totalMql, byStatus, byWaStage, conversionRate, recent };
+    return {
+      total: totals.total,
+      totalMql: totals.totalMql,
+      todayCount: totals.todayCount,
+      byStatus,
+      byWaStage,
+      conversionRate,
+      recent,
+    };
   }
 
   /**
