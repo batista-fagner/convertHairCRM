@@ -104,21 +104,20 @@ export class LeadsService {
     conversionRate: number;
     recent: Lead[];
   }> {
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
-
     const [[totals], byStatusRows, byWaStageRows, recent] = await Promise.all([
-      this.leadsRepo.query(
-        `
+      this.leadsRepo.query(`
         SELECT
           COUNT(*)::int AS "total",
           COUNT(*) FILTER (WHERE is_mql)::int AS "totalMql",
           COUNT(*) FILTER (WHERE status = 'convertido')::int AS "convertido",
-          COUNT(*) FILTER (WHERE created_at >= $1)::int AS "todayCount"
+          -- "Hoje" em horário de Brasília, não UTC (o servidor roda em UTC sem
+          -- TZ setada) — senão o corte do dia fica 3h adiantado, igual ao bug
+          -- já documentado em appendDateFilter() logo abaixo neste arquivo.
+          COUNT(*) FILTER (
+            WHERE created_at >= (date_trunc('day', now() AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo')
+          )::int AS "todayCount"
         FROM leads
-      `,
-        [startOfDay.toISOString()],
-      ),
+      `),
       this.leadsRepo.query(`SELECT status AS "status", COUNT(*)::int AS "count" FROM leads GROUP BY status`),
       this.leadsRepo.query(`SELECT wa_stage AS "waStage", COUNT(*)::int AS "count" FROM leads WHERE wa_stage IS NOT NULL GROUP BY wa_stage`),
       this.leadsRepo.find({ order: { createdAt: 'DESC' }, take: 5 }),
