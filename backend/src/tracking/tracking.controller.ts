@@ -6,7 +6,7 @@ export class TrackingController {
   constructor(private readonly trackingService: TrackingService) {}
 
   @Post('click')
-  registerClick(@Body() body: {
+  async registerClick(@Body() body: {
     utmSource?: string;
     utmMedium?: string;
     utmCampaign?: string;
@@ -17,7 +17,7 @@ export class TrackingController {
     fbp?: string;
     clickId?: string;
   }) {
-    this.trackingService.registerClick(body);
+    await this.trackingService.registerClick(body);
     return { ok: true };
   }
 }

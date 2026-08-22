@@ -23,6 +23,13 @@ export class GroupJoinService implements OnModuleInit {
   private readonly uazapiToken: string;
   private reconnecting = false;
   private readonly recentJoins = new Set<string>();
+  // Backoff exponencial de reconexão (5s→10s→20s→40s→60s teto) em vez do
+  // 5s fixo de antes — evita martelar o uazapi se o SSE cair de forma
+  // persistente (token morto, instabilidade prolongada). Reseta pra 5s só
+  // depois de receber um evento de verdade (não só abrir a conexão TCP) —
+  // uma conexão que abre mas nunca streama nada não devia "contar" como saudável.
+  private reconnectDelayMs = 5000;
+  private readonly MAX_RECONNECT_DELAY_MS = 60_000;
 
   constructor(
     private readonly http: HttpService,
@@ -89,13 +96,19 @@ export class GroupJoinService implements OnModuleInit {
   private scheduleReconnect() {
     if (this.reconnecting) return;
     this.reconnecting = true;
+    const delay = this.reconnectDelayMs;
+    this.logger.warn(`[SSE] Reconectando em ${delay / 1000}s...`);
     setTimeout(() => {
       this.reconnecting = false;
       this.connect();
-    }, 5000);
+    }, delay);
+    this.reconnectDelayMs = Math.min(this.reconnectDelayMs * 2, this.MAX_RECONNECT_DELAY_MS);
   }
 
   private handleEvent(json: string) {
+    // Chegou dado de verdade pelo stream — conexão está saudável, não só aberta.
+    this.reconnectDelayMs = 5000;
+
     let evt: any;
     try {
       evt = JSON.parse(json);
@@ -136,7 +149,7 @@ export class GroupJoinService implements OnModuleInit {
     const leadName = waName || 'Novo Lead';
 
     // Consome UTMs do clique mais recente na LP (FIFO)
-    const utm = this.trackingService.consumeNextUtm();
+    const utm = await this.trackingService.consumeNextUtm();
 
     // Cria lead no banco
     const lead = await this.leadsService.create({
