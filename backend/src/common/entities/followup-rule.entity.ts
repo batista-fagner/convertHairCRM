@@ -101,6 +101,16 @@ export class FollowupRule {
   @Column({ name: 'video_caption_override', type: 'text', nullable: true })
   videoCaptionOverride?: string | null;
 
+  // Botão de link (opcional) — quando preenchido (com buttonUrl), a regra manda a
+  // mensagem como botão interativo (uazapi /send/menu, type=button) em vez de texto
+  // puro. Uso típico: campanha de disparo em massa com botão "Entrar no grupo".
+  // Não combina com vídeo/cadência — só se aplica ao disparo único de texto/IA.
+  @Column({ name: 'button_label', type: 'varchar', nullable: true })
+  buttonLabel?: string | null;
+
+  @Column({ name: 'button_url', type: 'text', nullable: true })
+  buttonUrl?: string | null;
+
   // Desempate manual quando duas regras têm a mesma especificidade pro mesmo lead (menor = prioridade maior).
   @Column({ name: 'priority', type: 'int', default: 0 })
   priority: number;

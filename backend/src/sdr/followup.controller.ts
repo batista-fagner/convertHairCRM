@@ -105,6 +105,8 @@ export class FollowupController {
       ignoreAiPaused: body.ignoreAiPaused ?? false,
       videoId: body.videoId || null,
       videoCaptionOverride: body.videoCaptionOverride || null,
+      buttonLabel: body.buttonLabel?.trim() || null,
+      buttonUrl: body.buttonUrl?.trim() || null,
       priority: body.priority ?? 0,
     });
     return this.rulesRepo.save(rule);
@@ -131,6 +133,8 @@ export class FollowupController {
     if (body.ignoreAiPaused !== undefined) rule.ignoreAiPaused = body.ignoreAiPaused;
     if (body.videoId !== undefined) rule.videoId = body.videoId || null;
     if (body.videoCaptionOverride !== undefined) rule.videoCaptionOverride = body.videoCaptionOverride || null;
+    if (body.buttonLabel !== undefined) rule.buttonLabel = body.buttonLabel?.trim() || null;
+    if (body.buttonUrl !== undefined) rule.buttonUrl = body.buttonUrl?.trim() || null;
     if (body.priority !== undefined) rule.priority = body.priority;
 
     if (rule.cadenceSteps?.length) this.assertCadenceTexts(rule.cadenceSteps, rule.mode);

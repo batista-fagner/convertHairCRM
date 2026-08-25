@@ -341,6 +341,14 @@ export class SdrFollowupService {
         await this.sleep(waitMs);
       }
 
+      // Regra com botão (link, ex: "Entrar no grupo") — só no disparo único, mesma
+      // regra do vídeo: numa cadência cada toque já é texto/IA próprio.
+      if (!cadence && rule.buttonUrl) {
+        await this.sendFollowupButton(lead, message, rule.buttonLabel || 'Saiba mais', rule.buttonUrl);
+        sent++;
+        continue;
+      }
+
       await this.sendFollowup(
         lead,
         message,
@@ -428,7 +436,11 @@ export class SdrFollowupService {
       }
 
       if (sent > 0) await this.sleep(10000 + Math.random() * 30000);
-      await this.sendFollowup(lead, message);
+      if (rule.buttonUrl) {
+        await this.sendFollowupButton(lead, message, rule.buttonLabel || 'Saiba mais', rule.buttonUrl);
+      } else {
+        await this.sendFollowup(lead, message);
+      }
       sent++;
     }
 
@@ -841,6 +853,41 @@ ${tomBlock}`;
       this.logger.log(`[Followup]${tag} Enviado para ${lead.phone}: "${text.slice(0, 60)}..."`);
     } catch (err: any) {
       this.logger.error(`[Followup] Erro ao enviar para ${lead.phone}: ${err.message}`);
+    }
+  }
+
+  // Envia a mensagem como botão de link (uazapi /send/menu, type=button) em vez de
+  // texto puro — usado por regras com buttonUrl configurado (ex: campanha "Entrar
+  // no grupo"). Sempre disparo único (sem avanço de cadência, igual ao broadcastNow).
+  private async sendFollowupButton(lead: Lead, text: string, buttonLabel: string, buttonUrl: string) {
+    if (!this.uazapiToken) {
+      this.logger.warn(`[Followup] Token SDR não configurado — follow-up (botão) não enviado para ${lead.phone}`);
+      return;
+    }
+
+    try {
+      const phone = lead.phone.startsWith('55') ? lead.phone : `55${lead.phone}`;
+      await firstValueFrom(
+        this.http.post(
+          `${this.uazapiBaseUrl}/send/menu`,
+          { number: phone, type: 'button', text, choices: [`${buttonLabel}|url:${buttonUrl}`] },
+          { headers: { token: this.uazapiToken } },
+        ),
+      );
+
+      const ctx = Array.isArray(lead.aiContext) ? lead.aiContext : [];
+      await this.leadsRepo.update(lead.id, {
+        followupSentAt: new Date(),
+        aiContext: [...ctx, { role: 'assistant', content: `${text}\n[botão: ${buttonLabel} → ${buttonUrl}]`, timestamp: new Date().toISOString() }],
+        waLastMessageAt: new Date(),
+      });
+
+      const fresh = await this.leadsRepo.findOne({ where: { id: lead.id } });
+      if (fresh) this.realtime.emitLeadUpdated(fresh);
+
+      this.logger.log(`[Followup][botão] Enviado para ${lead.phone}: "${text.slice(0, 60)}..." → ${buttonUrl}`);
+    } catch (err: any) {
+      this.logger.error(`[Followup] Erro ao enviar botão para ${lead.phone}: ${err.message}`);
     }
   }
 

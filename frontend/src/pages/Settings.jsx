@@ -506,7 +506,7 @@ function IgCatchallEditor() {
   )
 }
 
-const EMPTY_RULE = { name: '', enabled: true, kanbanStage: '', utmCampaign: '', adTitle: '', createdAfter: '', delayMinutes: 60, cadenceSteps: null, sendAtHour: '', sendAtMinute: 0, mode: 'manual', text: '', promptOverride: '', ignoreAiPaused: false, videoId: '', videoCaptionOverride: '' }
+const EMPTY_RULE = { name: '', enabled: true, kanbanStage: '', utmCampaign: '', adTitle: '', createdAfter: '', delayMinutes: 60, cadenceSteps: null, sendAtHour: '', sendAtMinute: 0, mode: 'manual', text: '', promptOverride: '', ignoreAiPaused: false, videoId: '', videoCaptionOverride: '', buttonLabel: '', buttonUrl: '' }
 
 // Cadência: cada toque guarda a espera em minutos, mas a tela edita em
 // dias/horas/minutos — estes helpers convertem nos dois sentidos.
@@ -587,6 +587,8 @@ function FollowupRuleForm({ initial, campaignOptions, adTitleOptions, videos, on
         ignoreAiPaused: rule.ignoreAiPaused,
         videoId: rule.videoId || null,
         videoCaptionOverride: rule.videoCaptionOverride || null,
+        buttonLabel: rule.buttonLabel?.trim() || null,
+        buttonUrl: rule.buttonUrl?.trim() || null,
       }
       const res = await fetch(`${API}/followup/rules${isEditing ? `/${rule.id}` : ''}`, {
         method: isEditing ? 'PATCH' : 'POST',
@@ -696,8 +698,10 @@ function FollowupRuleForm({ initial, campaignOptions, adTitleOptions, videos, on
           <button
             onClick={() => setRule(r => ({
               ...r,
-              // Cadência e vídeo não convivem — cada toque manda o próprio texto.
+              // Cadência não convive com vídeo/botão — cada toque manda o próprio texto.
               videoId: '',
+              buttonLabel: '',
+              buttonUrl: '',
               cadenceSteps: r.cadenceSteps?.length ? r.cadenceSteps : makeDailyCadence(7),
             }))}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition ${cadence ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-slate-600 border-slate-200 hover:border-violet-300'}`}
@@ -858,7 +862,7 @@ function FollowupRuleForm({ initial, campaignOptions, adTitleOptions, videos, on
         <label className="block text-xs font-medium text-slate-600 mb-1.5">Anexar vídeo (opcional)</label>
         <select
           value={rule.videoId}
-          onChange={e => setRule(r => ({ ...r, videoId: e.target.value }))}
+          onChange={e => setRule(r => ({ ...r, videoId: e.target.value, buttonLabel: e.target.value ? '' : r.buttonLabel, buttonUrl: e.target.value ? '' : r.buttonUrl }))}
           className="w-full text-sm border border-slate-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-violet-300 bg-white"
         >
           <option value="">Nenhum (mandar texto)</option>
@@ -867,6 +871,34 @@ function FollowupRuleForm({ initial, campaignOptions, adTitleOptions, videos, on
         {hasVideo && (
           <p className="text-[10px] text-slate-400 mt-1">
             Com vídeo, a regra manda só o vídeo com legenda — a mensagem de texto (IA/fixa) é ignorada. Respeita o teto diário de vídeos.
+          </p>
+        )}
+      </div>
+
+      {/* Botão de link (opcional) — manda a mensagem como botão interativo em vez de
+          texto puro. Ex: campanha de disparo em massa com "Entrar no grupo". Não
+          combina com vídeo/cadência — só no disparo único de texto/IA. */}
+      <div className={`mb-4 ${cadence || hasVideo ? 'hidden' : ''}`}>
+        <label className="block text-xs font-medium text-slate-600 mb-1.5">Botão de link (opcional)</label>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={rule.buttonLabel}
+            onChange={e => setRule(r => ({ ...r, buttonLabel: e.target.value }))}
+            placeholder="Texto do botão (ex: Entrar no grupo)"
+            className="w-1/3 text-sm border border-slate-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-violet-300"
+          />
+          <input
+            type="text"
+            value={rule.buttonUrl}
+            onChange={e => setRule(r => ({ ...r, buttonUrl: e.target.value }))}
+            placeholder="https://chat.whatsapp.com/..."
+            className="flex-1 text-sm border border-slate-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-violet-300"
+          />
+        </div>
+        {rule.buttonUrl?.trim() && (
+          <p className="text-[10px] text-slate-400 mt-1">
+            A mensagem sai com um botão clicável levando pro link acima, em vez de texto simples.
           </p>
         )}
       </div>
@@ -1152,6 +1184,8 @@ function FollowupRules() {
                 ignoreAiPaused: rule.ignoreAiPaused ?? false,
                 videoId: rule.videoId || '',
                 videoCaptionOverride: rule.videoCaptionOverride || '',
+                buttonLabel: rule.buttonLabel || '',
+                buttonUrl: rule.buttonUrl || '',
               }}
               campaignOptions={campaignOptions}
               adTitleOptions={adTitleOptions}
