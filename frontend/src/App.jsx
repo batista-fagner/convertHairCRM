@@ -19,6 +19,7 @@ import InstantFormLeads from './pages/InstantFormLeads'
 import SmsInbox from './pages/sms/SmsInbox'
 import IgInbox from './pages/instagram-inbox/IgInbox'
 import Login from './pages/Login'
+import GroupWorkshop from './pages/GroupWorkshop'
 
 function RequireAuth({ children }) {
   // Em dev (npm run dev / localhost) pula o login pra agilizar teste local —
@@ -41,6 +42,7 @@ export default function App() {
           <Route path="/leads" element={<Leads />} />
           <Route path="/kanban" element={<KanbanLeads />} />
           <Route path="/instant-form-leads" element={<InstantFormLeads />} />
+          <Route path="/group-workshop" element={<GroupWorkshop />} />
           <Route path="/forms" element={<Forms />} />
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/email-sequences" element={<EmailSequences />} />

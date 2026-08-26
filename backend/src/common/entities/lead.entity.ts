@@ -232,6 +232,13 @@ export class Lead {
   @Column({ name: 'form_mql_30', type: 'boolean', nullable: true })
   formMql30?: boolean | null;
 
+  // Resumo gerado por IA a partir do ai_context (conversa) — dores mencionadas,
+  // volume de mensagens/dia se citado em texto livre, e outras infos relevantes
+  // pra venda. Usado na tela "Entraram no Grupo" (ver GroupWorkshopService).
+  // Cache: só recalcula quando o operador pede (botão), não a cada leitura.
+  @Column({ name: 'conversation_insights', type: 'jsonb', nullable: true })
+  conversationInsights?: { painPoints: string | null; messagesPerDayMentioned: number | null; otherNotes: string | null; generatedAt: string } | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
