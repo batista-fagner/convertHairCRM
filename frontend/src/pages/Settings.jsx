@@ -808,7 +808,7 @@ function FollowupRuleForm({ initial, campaignOptions, adTitleOptions, videos, on
                     rows={2}
                     placeholder={rule.mode === 'ai'
                       ? 'Texto base (opcional) — a IA usa como referência de conteúdo e reescreve adaptando ao histórico do lead'
-                      : 'Mensagem enviada exatamente assim'}
+                      : 'Mensagem enviada exatamente assim (use {{nome}} pra puxar o nome do lead)'}
                     className="w-full text-xs border border-slate-200 rounded-md p-2 resize-none focus:outline-none focus:ring-2 focus:ring-violet-300"
                   />
                 </div>
@@ -942,9 +942,10 @@ function FollowupRuleForm({ initial, campaignOptions, adTitleOptions, videos, on
                 value={rule.text}
                 onChange={e => setRule(r => ({ ...r, text: e.target.value }))}
                 rows={4}
-                placeholder="Ex: Oi! Vi que você não respondeu ainda. Ainda tem interesse em conhecer a Convert Hair AI? 😊"
+                placeholder="Ex: Oi {{nome}}! Vi que você não respondeu ainda. Ainda tem interesse em conhecer a Convert Hair AI? 😊"
                 className="w-full text-sm border border-slate-200 rounded-lg p-3 resize-none focus:outline-none focus:ring-2 focus:ring-violet-300"
               />
+              <p className="text-[10px] text-slate-400 mt-1">Use <code className="bg-slate-100 px-1 rounded">{'{{nome}}'}</code> pra puxar o primeiro nome do lead automaticamente (cai pra "tudo bem" se ele não tiver nome salvo).</p>
             </div>
           )}
 

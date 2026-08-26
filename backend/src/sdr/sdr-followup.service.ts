@@ -124,6 +124,16 @@ export class SdrFollowupService {
     return steps;
   }
 
+  /**
+   * Substitui {{nome}} pelo primeiro nome do lead (puxado do WhatsApp dele, ver
+   * lead.name). Sem nome capturado, cai pra "tudo bem" ao invés de deixar o
+   * placeholder aparecer literal na mensagem.
+   */
+  private applyLeadPlaceholders(text: string, lead: Lead): string {
+    const firstName = lead.name?.trim()?.split(/\s+/)[0];
+    return text.replace(/\{\{\s*nome\s*\}\}/gi, firstName || 'tudo bem');
+  }
+
   /** Menor espera possível da regra — 1º toque da cadência, ou o delay único. */
   private minDelayOf(rule: FollowupRule): number {
     const steps = this.cadenceStepsOf(rule);
@@ -331,7 +341,7 @@ export class SdrFollowupService {
       } else {
         const text = cadence ? cadence.step.text : rule.text;
         if (!text?.trim()) continue;
-        message = text;
+        message = this.applyLeadPlaceholders(text, lead);
       }
 
       // Espaçamento aleatório entre envios (5-10s) para reduzir risco de
@@ -432,7 +442,7 @@ export class SdrFollowupService {
       } else {
         const text = firstStep ? firstStep.text : rule.text;
         if (!text?.trim()) continue;
-        message = text;
+        message = this.applyLeadPlaceholders(text, lead);
       }
 
       if (sent > 0) await this.sleep(10000 + Math.random() * 30000);
