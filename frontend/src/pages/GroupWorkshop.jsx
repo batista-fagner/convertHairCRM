@@ -148,7 +148,7 @@ export default function GroupWorkshop() {
   const analyzedCount = leads.filter(l => l.conversationInsights).length
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
+    <div className="p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-xl font-bold text-slate-800 flex items-center gap-2">
@@ -177,7 +177,7 @@ export default function GroupWorkshop() {
       ) : leads.length === 0 ? (
         <p className="text-sm text-slate-400 text-center py-20">Ninguém entrou no grupo ainda.</p>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="flex flex-col gap-4">
           {leads.map(lead => (
             <LeadCard key={lead.id} lead={lead} onAnalyze={handleAnalyze} analyzing={analyzingId === lead.id} />
           ))}
