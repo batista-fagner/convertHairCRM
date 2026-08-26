@@ -506,7 +506,7 @@ function IgCatchallEditor() {
   )
 }
 
-const EMPTY_RULE = { name: '', enabled: true, kanbanStage: '', utmCampaign: '', adTitle: '', createdAfter: '', delayMinutes: 60, cadenceSteps: null, sendAtHour: '', sendAtMinute: 0, mode: 'manual', text: '', promptOverride: '', ignoreAiPaused: false, videoId: '', videoCaptionOverride: '', buttonLabel: '', buttonUrl: '' }
+const EMPTY_RULE = { name: '', enabled: true, kanbanStage: '', utmCampaign: '', adTitle: '', createdAfter: '', excludeTag: '', delayMinutes: 60, cadenceSteps: null, sendAtHour: '', sendAtMinute: 0, mode: 'manual', text: '', promptOverride: '', ignoreAiPaused: false, videoId: '', videoCaptionOverride: '', buttonLabel: '', buttonUrl: '' }
 
 // Cadência: cada toque guarda a espera em minutos, mas a tela edita em
 // dias/horas/minutos — estes helpers convertem nos dois sentidos.
@@ -577,6 +577,7 @@ function FollowupRuleForm({ initial, campaignOptions, adTitleOptions, videos, on
         utmCampaign: rule.utmCampaign || null,
         adTitle: rule.adTitle || null,
         createdAfter: rule.createdAfter ? new Date(rule.createdAfter).toISOString() : null,
+        excludeTag: rule.excludeTag?.trim() || null,
         delayMinutes: rule.delayMinutes,
         cadenceSteps: cadence,
         sendAtHour: rule.sendAtHour === '' ? null : parseInt(rule.sendAtHour, 10),
@@ -683,6 +684,18 @@ function FollowupRuleForm({ initial, campaignOptions, adTitleOptions, videos, on
           </div>
           <p className="text-[10px] text-slate-400 mt-1">Vazio = sem filtro de data (pega leads antigos também)</p>
         </div>
+      </div>
+
+      <div className="mb-4">
+        <label className="block text-xs font-medium text-slate-600 mb-1.5">Excluir quem já tem a tag</label>
+        <input
+          type="text"
+          value={rule.excludeTag}
+          onChange={e => setRule(r => ({ ...r, excludeTag: e.target.value }))}
+          placeholder="Ex: entrou_no_grupo"
+          className="w-full text-sm border border-slate-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-violet-300 bg-white"
+        />
+        <p className="text-[10px] text-slate-400 mt-1">Vazio = sem filtro por tag. Lead com essa tag NÃO recebe esse disparo.</p>
       </div>
 
       {/* Disparo único x cadência de vários dias */}
@@ -1177,6 +1190,7 @@ function FollowupRules() {
                 utmCampaign: rule.utmCampaign || '',
                 adTitle: rule.adTitle || '',
                 createdAfter: rule.createdAfter ? rule.createdAfter.slice(0, 16) : '',
+                excludeTag: rule.excludeTag || '',
                 cadenceSteps: Array.isArray(rule.cadenceSteps) && rule.cadenceSteps.length ? rule.cadenceSteps : null,
                 sendAtHour: rule.sendAtHour != null ? rule.sendAtHour : '',
                 sendAtMinute: rule.sendAtMinute ?? 0,
@@ -1218,6 +1232,11 @@ function FollowupRules() {
                   {rule.createdAfter && (
                     <span className="px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-700">
                       desde {new Date(rule.createdAfter).toLocaleDateString('pt-BR')}
+                    </span>
+                  )}
+                  {rule.excludeTag && (
+                    <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-rose-50 text-rose-700">
+                      <Tag className="w-2.5 h-2.5" /> exclui "{rule.excludeTag}"
                     </span>
                   )}
                   {rule.cadenceSteps?.length ? (

@@ -95,6 +95,7 @@ export class FollowupController {
       utmCampaign: body.utmCampaign || null,
       adTitle: body.adTitle || null,
       createdAfter: body.createdAfter ? new Date(body.createdAfter) : null,
+      excludeTag: body.excludeTag || null,
       delayMinutes: Math.max(1, body.delayMinutes || 60),
       cadenceSteps,
       sendAtHour: body.sendAtHour != null ? Math.min(23, Math.max(0, body.sendAtHour)) : null,
@@ -123,6 +124,7 @@ export class FollowupController {
     if (body.utmCampaign !== undefined) rule.utmCampaign = body.utmCampaign || null;
     if (body.adTitle !== undefined) rule.adTitle = body.adTitle || null;
     if (body.createdAfter !== undefined) rule.createdAfter = body.createdAfter ? new Date(body.createdAfter) : null;
+    if (body.excludeTag !== undefined) rule.excludeTag = body.excludeTag || null;
     if (body.delayMinutes !== undefined) rule.delayMinutes = Math.max(1, body.delayMinutes);
     if (body.cadenceSteps !== undefined) rule.cadenceSteps = this.sanitizeCadence(body.cadenceSteps);
     if (body.sendAtHour !== undefined) rule.sendAtHour = body.sendAtHour != null ? Math.min(23, Math.max(0, body.sendAtHour)) : null;
@@ -171,6 +173,7 @@ export class FollowupController {
       if (rule.utmCampaign) qb.andWhere('utm_campaign = :campaign', { campaign: rule.utmCampaign });
       if (rule.adTitle) qb.andWhere('ctwa_ad_title = :adTitle', { adTitle: rule.adTitle });
       if (rule.createdAfter) qb.andWhere('created_at >= :createdAfter', { createdAfter: rule.createdAfter });
+      if (rule.excludeTag) qb.andWhere('(tags IS NULL OR NOT (tags @> :excludeTag::jsonb))', { excludeTag: JSON.stringify([rule.excludeTag]) });
       const res = await qb.execute();
       resetCount = res.affected ?? 0;
     }

@@ -101,10 +101,11 @@ export class SdrFollowupService {
       const campaignOk = rule.utmCampaign == null || rule.utmCampaign === lead.utmCampaign;
       const adTitleOk = rule.adTitle == null || rule.adTitle === lead.ctwaAdTitle;
       const createdAfterOk = rule.createdAfter == null || new Date(lead.createdAt).getTime() >= new Date(rule.createdAfter).getTime();
-      if (!stageOk || !campaignOk || !adTitleOk || !createdAfterOk) continue;
+      const excludeTagOk = rule.excludeTag == null || !(lead.tags || []).includes(rule.excludeTag);
+      if (!stageOk || !campaignOk || !adTitleOk || !createdAfterOk || !excludeTagOk) continue;
 
       const score = (rule.kanbanStage != null ? 1 : 0) + (rule.utmCampaign != null ? 1 : 0)
-        + (rule.adTitle != null ? 1 : 0) + (rule.createdAfter != null ? 1 : 0);
+        + (rule.adTitle != null ? 1 : 0) + (rule.createdAfter != null ? 1 : 0) + (rule.excludeTag != null ? 1 : 0);
       if (
         score > bestScore ||
         (score === bestScore && best && (rule.priority < best.priority ||
@@ -261,6 +262,7 @@ export class SdrFollowupService {
         'lead.followupStep',
         'lead.followupNextAt',
         'lead.aiPaused',
+        'lead.tags',
       ])
       .where('lead.agent_mode = :mode', { mode: 'sdr' })
       .andWhere('lead.wa_last_message_at IS NOT NULL')
@@ -395,12 +397,14 @@ export class SdrFollowupService {
         'lead.aiContext',
         'lead.aiPaused',
         'lead.notes',
+        'lead.tags',
       ])
       .where('lead.agent_mode = :mode', { mode: 'sdr' });
     if (rule.kanbanStage) qb.andWhere('lead.kanban_stage = :stage', { stage: rule.kanbanStage });
     if (rule.utmCampaign) qb.andWhere('lead.utm_campaign = :campaign', { campaign: rule.utmCampaign });
     if (rule.adTitle) qb.andWhere('lead.ctwa_ad_title = :adTitle', { adTitle: rule.adTitle });
     if (rule.createdAfter) qb.andWhere('lead.created_at >= :createdAfter', { createdAfter: rule.createdAfter });
+    if (rule.excludeTag) qb.andWhere("(lead.tags IS NULL OR NOT (lead.tags @> :excludeTag::jsonb))", { excludeTag: JSON.stringify([rule.excludeTag]) });
 
     const leads = await qb.getMany();
     const videoLimit = await this.getVideoLimit();
@@ -593,6 +597,7 @@ export class SdrFollowupService {
         'lead.followupStep',
         'lead.followupNextAt',
         'lead.aiPaused',
+        'lead.tags',
       ])
       .where('lead.agent_mode = :mode', { mode: 'sdr' })
       .andWhere('lead.wa_last_message_at IS NOT NULL')

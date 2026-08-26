@@ -50,6 +50,11 @@ export class FollowupRule {
   @Column({ name: 'created_after', type: 'timestamp', nullable: true })
   createdAfter?: Date | null;
 
+  // Exclui leads que JÁ têm essa tag em lead.tags. Nulo = sem filtro.
+  // Uso típico: "entrou_no_grupo" — não manda o convite de novo pra quem já entrou.
+  @Column({ name: 'exclude_tag', type: 'varchar', nullable: true })
+  excludeTag?: string | null;
+
   @Column({ name: 'delay_minutes', type: 'int', default: 60 })
   delayMinutes: number;
 
