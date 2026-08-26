@@ -11,6 +11,7 @@ import { SdrFollowupQueueService } from './sdr-followup-queue.service';
 import { SdrFollowupScanProcessor } from './sdr-followup-scan.processor';
 import { FollowupVideoService } from './followup-video.service';
 import { AvatarStorageService } from './avatar-storage.service';
+import { SdrGroupJoinService } from './sdr-group-join.service';
 import { Lead } from '../common/entities/lead.entity';
 import { FollowupRule } from '../common/entities/followup-rule.entity';
 import { FollowupVideo } from '../common/entities/followup-video.entity';
@@ -39,6 +40,6 @@ const queueProviders = queueEngineEnabled ? [SdrFollowupScanProcessor] : [];
     ...queueParts,
   ],
   controllers: [SdrController, FollowupController, ManualMessageController],
-  providers: [SdrService, SdrFollowupService, SdrFollowupQueueService, FollowupVideoService, AvatarStorageService, ...queueProviders],
+  providers: [SdrService, SdrFollowupService, SdrFollowupQueueService, FollowupVideoService, AvatarStorageService, SdrGroupJoinService, ...queueProviders],
 })
 export class SdrModule {}
