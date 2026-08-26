@@ -42,7 +42,7 @@ const NAV_GROUPS = [
       { icon: Users, label: 'Leads', path: '/leads' },
       { icon: KanbanSquare, label: 'Kanban', path: '/kanban' },
       { icon: FileSpreadsheet, label: 'Formulário Instantâneo', path: '/instant-form-leads' },
-      { icon: Users, label: 'Entraram no Grupo', path: '/group-workshop' },
+      { icon: Users, label: 'Grupo WhatsApp', path: '/group-workshop' },
     ],
   },
   {
