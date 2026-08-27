@@ -35,7 +35,8 @@ export class GroupWorkshopService {
     return this.leadsRepo
       .createQueryBuilder('lead')
       .where("lead.tags @> :tag::jsonb", { tag: JSON.stringify([JOIN_TAG]) })
-      .orderBy('lead.created_at', 'DESC')
+      .orderBy('lead.group_joined_at', 'DESC', 'NULLS LAST')
+      .addOrderBy('lead.created_at', 'DESC')
       .getMany();
   }
 

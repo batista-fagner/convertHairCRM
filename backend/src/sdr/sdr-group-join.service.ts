@@ -146,7 +146,7 @@ export class SdrGroupJoinService implements OnModuleInit {
       return;
     }
 
-    const updated = await this.leadsService.update(lead.id, { tags: [...tags, JOIN_TAG] });
+    const updated = await this.leadsService.update(lead.id, { tags: [...tags, JOIN_TAG], groupJoinedAt: new Date() });
     this.realtime.emitLeadUpdated(updated);
     this.logger.log(`[GROUP-JOIN-CRM] Lead ${lead.id} (${phone}, isMql=${lead.isMql}) marcado como "${JOIN_TAG}"`);
   }

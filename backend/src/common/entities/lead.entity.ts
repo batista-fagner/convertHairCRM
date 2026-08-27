@@ -239,6 +239,11 @@ export class Lead {
   @Column({ name: 'conversation_insights', type: 'jsonb', nullable: true })
   conversationInsights?: { painPoints: string | null; messagesPerDayMentioned: number | null; otherNotes: string | null; generatedAt: string } | null;
 
+  // Hora exata que a tag "entrou_no_grupo" foi aplicada (ver SdrGroupJoinService).
+  // Null pros leads retroativos (backfill de 2026-08-24), que não têm o timestamp real.
+  @Column({ name: 'group_joined_at', type: 'timestamp', nullable: true })
+  groupJoinedAt?: Date | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
