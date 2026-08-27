@@ -53,6 +53,17 @@ export class FollowupController {
     return rows.map((r) => r.adTitle).filter(Boolean).sort();
   }
 
+  // Valores distintos de tags já gravadas nos leads (jsonb array, precisa
+  // desaninhar com jsonb_array_elements_text) — popula o select de "excluir
+  // quem já tem a tag" no formulário de regra.
+  @Get('tag-options')
+  async tagOptions() {
+    const rows = await this.leadsRepo.query(
+      `SELECT DISTINCT jsonb_array_elements_text(tags) AS tag FROM leads WHERE tags IS NOT NULL ORDER BY tag`,
+    );
+    return rows.map((r: { tag: string }) => r.tag).filter(Boolean);
+  }
+
   /**
    * Normaliza a cadência vinda da tela: descarta toques em branco, garante
    * delay mínimo de 1 min. Retorna null quando não sobra nada — aí a regra

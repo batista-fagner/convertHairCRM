@@ -506,7 +506,7 @@ function IgCatchallEditor() {
   )
 }
 
-const EMPTY_RULE = { name: '', enabled: true, kanbanStage: '', utmCampaign: '', adTitle: '', createdAfter: '', excludeTag: '', delayMinutes: 60, cadenceSteps: null, sendAtHour: '', sendAtMinute: 0, mode: 'manual', text: '', promptOverride: '', ignoreAiPaused: false, videoId: '', videoCaptionOverride: '', buttonLabel: '', buttonUrl: '' }
+const EMPTY_RULE = { name: '', enabled: true, kanbanStage: '', utmCampaign: '', adTitle: '', createdAfter: '', excludeTag: 'entrou_no_grupo', delayMinutes: 60, cadenceSteps: null, sendAtHour: '', sendAtMinute: 0, mode: 'manual', text: '', promptOverride: '', ignoreAiPaused: false, videoId: '', videoCaptionOverride: '', buttonLabel: '', buttonUrl: '' }
 
 // Cadência: cada toque guarda a espera em minutos, mas a tela edita em
 // dias/horas/minutos — estes helpers convertem nos dois sentidos.
@@ -536,7 +536,7 @@ function todayStartLocal() {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T00:00`
 }
 
-function FollowupRuleForm({ initial, campaignOptions, adTitleOptions, videos, onCancel, onSaved }) {
+function FollowupRuleForm({ initial, campaignOptions, adTitleOptions, tagOptions, videos, onCancel, onSaved }) {
   const [rule, setRule] = useState(initial)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -688,14 +688,15 @@ function FollowupRuleForm({ initial, campaignOptions, adTitleOptions, videos, on
 
       <div className="mb-4">
         <label className="block text-xs font-medium text-slate-600 mb-1.5">Excluir quem já tem a tag</label>
-        <input
-          type="text"
+        <select
           value={rule.excludeTag}
           onChange={e => setRule(r => ({ ...r, excludeTag: e.target.value }))}
-          placeholder="Ex: entrou_no_grupo"
           className="w-full text-sm border border-slate-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-violet-300 bg-white"
-        />
-        <p className="text-[10px] text-slate-400 mt-1">Vazio = sem filtro por tag. Lead com essa tag NÃO recebe esse disparo.</p>
+        >
+          <option value="">Nenhuma (sem filtro por tag)</option>
+          {tagOptions.map(t => <option key={t} value={t}>{t}</option>)}
+        </select>
+        <p className="text-[10px] text-slate-400 mt-1">Lead com essa tag NÃO recebe esse disparo.</p>
       </div>
 
       {/* Disparo único x cadência de vários dias */}
@@ -1021,6 +1022,7 @@ function FollowupRules() {
   const [rules, setRules] = useState([])
   const [campaignOptions, setCampaignOptions] = useState([])
   const [adTitleOptions, setAdTitleOptions] = useState([])
+  const [tagOptions, setTagOptions] = useState([])
   const [videos, setVideos] = useState([])
   const [videoLimit, setVideoLimit] = useState(15)
   const [savingLimit, setSavingLimit] = useState(false)
@@ -1035,13 +1037,15 @@ function FollowupRules() {
       fetch(`${API}/followup/rules`).then(r => r.json()),
       fetch(`${API}/followup/campaign-options`).then(r => r.json()),
       fetch(`${API}/followup/ad-title-options`).then(r => r.json()),
+      fetch(`${API}/followup/tag-options`).then(r => r.json()),
       fetch(`${API}/followup/videos`).then(r => r.json()),
       fetch(`${API}/followup/video-limit`).then(r => r.json()),
     ])
-      .then(([rulesData, campaignsData, adTitlesData, videosData, limitData]) => {
+      .then(([rulesData, campaignsData, adTitlesData, tagsData, videosData, limitData]) => {
         setRules(Array.isArray(rulesData) ? rulesData : [])
         setCampaignOptions(Array.isArray(campaignsData) ? campaignsData : [])
         setAdTitleOptions(Array.isArray(adTitlesData) ? adTitlesData : [])
+        setTagOptions(Array.isArray(tagsData) ? tagsData : [])
         setVideos(Array.isArray(videosData) ? videosData : [])
         if (limitData?.limit) setVideoLimit(limitData.limit)
       })
@@ -1167,6 +1171,7 @@ function FollowupRules() {
           initial={EMPTY_RULE}
           campaignOptions={campaignOptions}
           adTitleOptions={adTitleOptions}
+          tagOptions={tagOptions}
           videos={videos}
           onCancel={() => setEditingId(null)}
           onSaved={onSaved}
@@ -1204,6 +1209,7 @@ function FollowupRules() {
               }}
               campaignOptions={campaignOptions}
               adTitleOptions={adTitleOptions}
+              tagOptions={tagOptions}
               videos={videos}
               onCancel={() => setEditingId(null)}
               onSaved={onSaved}
