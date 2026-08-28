@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
-import { Users, Loader2, RefreshCw, Sparkles, AlertCircle, X, CheckCircle2, Circle } from 'lucide-react'
+import { Users, Loader2, RefreshCw, Sparkles, AlertCircle, X, CheckCircle2, Circle, ChevronLeft, ChevronRight } from 'lucide-react'
+
+const PAGE_SIZE = 20
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3001/api'
 
@@ -168,12 +170,13 @@ export default function GroupWorkshop() {
   const [analyzingAll, setAnalyzingAll] = useState(false)
   const [error, setError] = useState('')
   const [selectedId, setSelectedId] = useState(null)
+  const [page, setPage] = useState(1)
 
   function load() {
     setLoading(true)
     fetch(`${API}/group-workshop/leads`)
       .then(r => r.json())
-      .then(setLeads)
+      .then(data => { setLeads(data); setPage(1) })
       .catch(() => setError('Erro ao carregar leads'))
       .finally(() => setLoading(false))
   }
@@ -207,6 +210,10 @@ export default function GroupWorkshop() {
 
   const analyzedCount = leads.filter(l => l.conversationInsights).length
   const selectedLead = leads.find(l => l.id === selectedId) || null
+
+  const totalPages = Math.max(1, Math.ceil(leads.length / PAGE_SIZE))
+  const currentPage = Math.min(page, totalPages)
+  const pageLeads = leads.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
 
   return (
     <div className="p-6">
@@ -251,7 +258,7 @@ export default function GroupWorkshop() {
               </tr>
             </thead>
             <tbody>
-              {leads.map(lead => (
+              {pageLeads.map(lead => (
                 <tr key={lead.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/60">
                   <td className="px-4 py-3">
                     <p className="font-medium text-slate-800">{lead.name || 'Sem nome'}</p>
@@ -279,6 +286,30 @@ export default function GroupWorkshop() {
               ))}
             </tbody>
           </table>
+
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between px-4 py-3 border-t border-slate-200">
+              <p className="text-xs text-slate-400">
+                Página {currentPage} de {totalPages} — {leads.length} pessoa(s) no total
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:hover:bg-transparent transition"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" /> Anterior
+                </button>
+                <button
+                  onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:hover:bg-transparent transition"
+                >
+                  Próxima <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
