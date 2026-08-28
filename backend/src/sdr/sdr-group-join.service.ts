@@ -26,6 +26,7 @@ export class SdrGroupJoinService implements OnModuleInit {
   private readonly uazapiToken: string;
   private reconnecting = false;
   private readonly recentJoins = new Set<string>();
+  private readonly recentLeaves = new Set<string>();
   private reconnectDelayMs = 5000;
   private readonly MAX_RECONNECT_DELAY_MS = 60_000;
 
@@ -113,17 +114,26 @@ export class SdrGroupJoinService implements OnModuleInit {
     if (evt.EventType !== 'groups') return;
 
     const joins = evt.event?.Join;
-    if (!Array.isArray(joins) || joins.length === 0) return;
+    const leaves = evt.event?.Leave;
+    if ((!Array.isArray(joins) || joins.length === 0) && (!Array.isArray(leaves) || leaves.length === 0)) return;
 
     // Log do payload cru na primeira vez de cada lote — insumo pra decidir se
     // precisa filtrar por grupo específico (ver aviso no topo do arquivo).
     this.logger.debug(`[GROUP-JOIN-CRM] Evento bruto: ${JSON.stringify(evt.event).slice(0, 500)}`);
 
-    for (const jid of joins) {
+    for (const jid of Array.isArray(joins) ? joins : []) {
       const phone = String(jid).split('@')[0].replace(/\D/g, '');
       if (!phone) continue;
       this.handleJoin(phone).catch((err) =>
         this.logger.error(`Erro ao processar entrada no grupo (CRM, ${phone}): ${err.message}`),
+      );
+    }
+
+    for (const jid of Array.isArray(leaves) ? leaves : []) {
+      const phone = String(jid).split('@')[0].replace(/\D/g, '');
+      if (!phone) continue;
+      this.handleLeave(phone).catch((err) =>
+        this.logger.error(`Erro ao processar saída do grupo (CRM, ${phone}): ${err.message}`),
       );
     }
   }
@@ -142,13 +152,38 @@ export class SdrGroupJoinService implements OnModuleInit {
 
     const tags = lead.tags || [];
     if (tags.includes(JOIN_TAG)) {
-      this.logger.debug(`[GROUP-JOIN-CRM] Lead ${lead.id} (${phone}) já tinha a tag ${JOIN_TAG}`);
+      // Reentrada depois de ter saído — limpa o "saiu do grupo" (senão a tela
+      // continua sinalizando em vermelho alguém que já voltou).
+      if (lead.groupLeftAt) {
+        const updated = await this.leadsService.update(lead.id, { groupLeftAt: null });
+        this.realtime.emitLeadUpdated(updated);
+        this.logger.log(`[GROUP-JOIN-CRM] Lead ${lead.id} (${phone}) reentrou no grupo — "saiu do grupo" limpo`);
+      } else {
+        this.logger.debug(`[GROUP-JOIN-CRM] Lead ${lead.id} (${phone}) já tinha a tag ${JOIN_TAG}`);
+      }
       return;
     }
 
     const updated = await this.leadsService.update(lead.id, { tags: [...tags, JOIN_TAG], groupJoinedAt: new Date() });
     this.realtime.emitLeadUpdated(updated);
     this.logger.log(`[GROUP-JOIN-CRM] Lead ${lead.id} (${phone}, isMql=${lead.isMql}) marcado como "${JOIN_TAG}"`);
+  }
+
+  private async handleLeave(phone: string) {
+    const dedupKey = `leave:${phone}`;
+    if (this.recentLeaves.has(dedupKey)) return;
+    this.recentLeaves.add(dedupKey);
+    setTimeout(() => this.recentLeaves.delete(dedupKey), 30_000);
+
+    const lead = await this.findLeadByPhoneVariants(phone);
+    if (!lead) {
+      this.logger.log(`[GROUP-JOIN-CRM] ${phone} saiu do grupo mas não é um lead conhecido — ignorado`);
+      return;
+    }
+
+    const updated = await this.leadsService.update(lead.id, { groupLeftAt: new Date() });
+    this.realtime.emitLeadUpdated(updated);
+    this.logger.log(`[GROUP-JOIN-CRM] Lead ${lead.id} (${phone}) marcado como "saiu do grupo"`);
   }
 
   private async findLeadByPhoneVariants(phone: string) {

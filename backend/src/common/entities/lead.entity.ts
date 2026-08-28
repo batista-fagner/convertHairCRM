@@ -244,6 +244,12 @@ export class Lead {
   @Column({ name: 'group_joined_at', type: 'timestamp', nullable: true })
   groupJoinedAt?: Date | null;
 
+  // Hora que o evento "Leave" do grupo foi detectado (ver SdrGroupJoinService).
+  // Não remove a tag "entrou_no_grupo" — só marca que ela saiu depois de ter entrado,
+  // pra tela Grupo WhatsApp sinalizar quem saiu sem perder o histórico de quem já esteve lá.
+  @Column({ name: 'group_left_at', type: 'timestamp', nullable: true })
+  groupLeftAt?: Date | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

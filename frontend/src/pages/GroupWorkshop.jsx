@@ -259,12 +259,20 @@ export default function GroupWorkshop() {
             </thead>
             <tbody>
               {pageLeads.map(lead => (
-                <tr key={lead.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/60">
+                <tr
+                  key={lead.id}
+                  className={`border-b last:border-0 ${lead.groupLeftAt ? 'bg-red-50 border-red-100 hover:bg-red-100/70' : 'border-slate-100 hover:bg-slate-50/60'}`}
+                >
                   <td className="px-4 py-3">
                     <p className="font-medium text-slate-800">{lead.name || 'Sem nome'}</p>
                     <p className="text-xs text-slate-400">{lead.phone}</p>
                   </td>
-                  <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{formatEntrada(lead)}</td>
+                  <td className="px-4 py-3 text-slate-500 whitespace-nowrap">
+                    {formatEntrada(lead)}
+                    {lead.groupLeftAt && (
+                      <p className="text-xs text-red-600 font-medium mt-0.5">Saiu do grupo — {timeAgo(lead.groupLeftAt)}</p>
+                    )}
+                  </td>
                   <td className="px-4 py-3"><QualificacaoBadge lead={lead} /></td>
                   <td className="px-4 py-3">
                     <span className="text-xs px-2 py-1 rounded-full bg-slate-50 text-slate-300 font-medium border border-slate-200 whitespace-nowrap" title="Pontuação ainda não definida">
