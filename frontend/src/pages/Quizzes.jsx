@@ -39,6 +39,8 @@ function emptyQuiz() {
       subtitleBoxFontSize: 14,
       subtitleBoxBold: '',
       bodyText: '',
+      bodyTextFontSize: 14,
+      bodyTextBold: '',
       buttonLabel: 'QUERO PARTICIPAR',
       autoRedirectSeconds: null,
     },
@@ -398,6 +400,32 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
               onChange={e => set('presentation.bodyText', e.target.value)}
               rows={3}
               className="w-full mt-1 text-sm border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition resize-none"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-slate-500">Palavra/trecho em negrito mais forte (texto de apoio)</label>
+            <input
+              value={quiz.presentation.bodyTextBold}
+              onChange={e => set('presentation.bodyTextBold', e.target.value)}
+              placeholder="fim de semana"
+              className="w-full mt-1 text-sm border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
+            />
+            {quiz.presentation.bodyTextBold && !quiz.presentation.bodyText.includes(quiz.presentation.bodyTextBold) && (
+              <p className="text-[11px] text-amber-600 mt-1">Esse trecho precisa aparecer dentro do texto de apoio — hoje não aparece.</p>
+            )}
+          </div>
+          <div>
+            <div className="flex items-center justify-between">
+              <label className="text-xs text-slate-500">Tamanho da fonte do texto de apoio</label>
+              <span className="text-xs text-slate-400 font-mono">{quiz.presentation.bodyTextFontSize || 14}px</span>
+            </div>
+            <input
+              type="range"
+              min={10}
+              max={30}
+              value={quiz.presentation.bodyTextFontSize || 14}
+              onChange={e => set('presentation.bodyTextFontSize', Number(e.target.value))}
+              className="w-full mt-1.5 accent-violet-600"
             />
           </div>
           <div className="grid grid-cols-2 gap-3">

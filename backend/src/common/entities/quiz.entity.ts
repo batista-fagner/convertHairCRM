@@ -37,6 +37,10 @@ export interface QuizPresentation {
   // 900) que o resto do texto (que já é font-bold, 700).
   subtitleBoxBold?: string;
   bodyText?: string;
+  bodyTextFontSize?: number | null;
+  // trecho dentro de bodyText pra deixar com peso mais forte (font-black,
+  // 900) que o resto do texto (que é normal, sem peso extra).
+  bodyTextBold?: string;
   buttonLabel?: string;
   // segundos até redirecionar direto pro grupo se a pessoa não clicar no
   // botão da apresentação. null/0 = sem auto-redirect.
