@@ -209,6 +209,7 @@ export default function GroupWorkshop() {
   }
 
   const analyzedCount = leads.filter(l => l.conversationInsights).length
+  const currentlyInGroupCount = leads.filter(l => !l.groupLeftAt).length
   const selectedLead = leads.find(l => l.id === selectedId) || null
 
   const totalPages = Math.max(1, Math.ceil(leads.length / PAGE_SIZE))
@@ -223,7 +224,7 @@ export default function GroupWorkshop() {
             <Users className="w-5 h-5 text-violet-600" /> Grupo WhatsApp
           </h1>
           <p className="text-sm text-slate-500 mt-1">
-            Leads que entraram no grupo do Workshop — {leads.length} pessoa(s), {analyzedCount} já analisada(s).
+            Leads que entraram no grupo do Workshop — {leads.length} pessoa(s) no histórico ({currentlyInGroupCount} atualmente no grupo), {analyzedCount} já analisada(s).
           </p>
         </div>
         <button
