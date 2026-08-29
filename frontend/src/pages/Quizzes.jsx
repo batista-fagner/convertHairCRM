@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
   ListChecks, Plus, Trash2, ChevronUp, ChevronDown, Save, Eye,
   Copy, CheckCircle2, ExternalLink, Loader2, Image as ImageIcon, Zap, UploadCloud,
@@ -31,7 +31,7 @@ function emptyQuiz() {
       badgeSubtitle: '',
       badgeDateLine: '',
       photoUrl: '',
-      title: 'Título do',
+      title: 'Título do Evento',
       titleHighlight: 'Evento',
       subtitleBox: '',
       bodyText: '',
@@ -40,7 +40,7 @@ function emptyQuiz() {
     },
     questions: [],
     finalStep: {
-      title: 'Sua vaga está',
+      title: 'Sua vaga está quase garantida!',
       titleHighlight: 'quase garantida!',
       progressLabel: 'Falta pouco!',
       bodyText: 'Para confirmar sua presença, entre agora no grupo exclusivo do WhatsApp.',
@@ -61,6 +61,47 @@ function emptyQuestion() {
       { id: uid(), label: '', isMqlAnswer: false },
     ],
   }
+}
+
+// Preview ao vivo do quiz ainda não salvo — abre a própria página pública
+// (ConvertHairPage) na rota especial /q/preview dentro de um iframe e manda o
+// JSON do quiz por postMessage a cada mudança, em vez de depender do quiz
+// existir salvo no banco (ver Quiz.tsx: slug==="preview" pula o fetch por
+// slug e escuta postMessage). "quiz-preview-ready" é a resposta do iframe
+// avisando que já montou e está pronto pra receber o primeiro envio.
+function QuizPreviewFrame({ quiz }) {
+  const iframeRef = useRef(null)
+
+  function sendQuiz() {
+    iframeRef.current?.contentWindow?.postMessage({ type: 'quiz-preview-data', quiz }, '*')
+  }
+
+  useEffect(() => { sendQuiz() }, [quiz])
+
+  useEffect(() => {
+    function handleMessage(event) {
+      if (event.data?.type === 'quiz-preview-ready') sendQuiz()
+    }
+    window.addEventListener('message', handleMessage)
+    return () => window.removeEventListener('message', handleMessage)
+  }, [quiz])
+
+  return (
+    <div className="sticky top-6">
+      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+        <Eye className="w-3.5 h-3.5" /> Preview ao vivo
+      </p>
+      <div className="mx-auto rounded-[2rem] border-8 border-slate-900 bg-black overflow-hidden shadow-xl" style={{ width: 320, height: 640 }}>
+        <iframe
+          ref={iframeRef}
+          src={`${QUIZ_PUBLIC_BASE}/preview`}
+          onLoad={sendQuiz}
+          className="w-full h-full border-0"
+          title="Preview do quiz"
+        />
+      </div>
+    </div>
+  )
 }
 
 function QuizBuilder({ quiz, onChange, onSave, saving }) {
@@ -258,20 +299,25 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs text-slate-500">Título</label>
+              <label className="text-xs text-slate-500">Título completo</label>
               <input
                 value={quiz.presentation.title}
                 onChange={e => set('presentation.title', e.target.value)}
+                placeholder="Como vende cabelo todo dia"
                 className="w-full mt-1 text-sm border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
               />
             </div>
             <div>
-              <label className="text-xs text-slate-500">Título (destaque colorido)</label>
+              <label className="text-xs text-slate-500">Palavra/trecho pra destacar em azul</label>
               <input
                 value={quiz.presentation.titleHighlight}
                 onChange={e => set('presentation.titleHighlight', e.target.value)}
+                placeholder="vende"
                 className="w-full mt-1 text-sm border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
               />
+              {quiz.presentation.titleHighlight && !quiz.presentation.title.includes(quiz.presentation.titleHighlight) && (
+                <p className="text-[11px] text-amber-600 mt-1">Esse trecho precisa aparecer dentro do título acima — hoje não aparece.</p>
+              )}
             </div>
           </div>
           <div>
@@ -429,20 +475,25 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
         <div className="pl-7 space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs text-slate-500">Título</label>
+              <label className="text-xs text-slate-500">Título completo</label>
               <input
                 value={quiz.finalStep.title}
                 onChange={e => set('finalStep.title', e.target.value)}
+                placeholder="Sua vaga está quase garantida!"
                 className="w-full mt-1 text-sm border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
               />
             </div>
             <div>
-              <label className="text-xs text-slate-500">Título (destaque colorido)</label>
+              <label className="text-xs text-slate-500">Palavra/trecho pra destacar em azul</label>
               <input
                 value={quiz.finalStep.titleHighlight}
                 onChange={e => set('finalStep.titleHighlight', e.target.value)}
+                placeholder="quase garantida!"
                 className="w-full mt-1 text-sm border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
               />
+              {quiz.finalStep.titleHighlight && !quiz.finalStep.title.includes(quiz.finalStep.titleHighlight) && (
+                <p className="text-[11px] text-amber-600 mt-1">Esse trecho precisa aparecer dentro do título acima — hoje não aparece.</p>
+              )}
             </div>
           </div>
           <div>
@@ -480,7 +531,7 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
       <div className="flex justify-end gap-2 sticky bottom-0 bg-gradient-to-t from-slate-50 pt-4 pb-2">
         {publicUrl && (
           <a href={publicUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700 border border-slate-200 px-4 py-2 rounded-lg transition bg-white">
-            <Eye className="w-4 h-4" /> Preview
+            <ExternalLink className="w-4 h-4" /> Abrir publicado
           </a>
         )}
         <button
@@ -571,7 +622,14 @@ export default function Quizzes() {
           <h2 className="text-lg font-semibold text-slate-800">{current.id ? 'Editar Quiz' : 'Novo Quiz'}</h2>
           <p className="text-sm text-slate-400 mt-0.5">Apresentação → até {MAX_QUESTIONS} perguntas → grupo do WhatsApp</p>
         </div>
-        <QuizBuilder quiz={current} onChange={setCurrent} onSave={handleSave} saving={saving} />
+        <div className="flex gap-6 items-start">
+          <div className="flex-1 min-w-0">
+            <QuizBuilder quiz={current} onChange={setCurrent} onSave={handleSave} saving={saving} />
+          </div>
+          <div className="shrink-0">
+            <QuizPreviewFrame quiz={current} />
+          </div>
+        </div>
       </div>
     )
   }
