@@ -32,6 +32,10 @@ export interface QuizPresentation {
   // tamanho da fonte do título em px — null/undefined usa o padrão do layout.
   titleFontSize?: number | null;
   subtitleBox?: string;
+  subtitleBoxFontSize?: number | null;
+  // trecho dentro de subtitleBox pra deixar com peso mais forte (font-black,
+  // 900) que o resto do texto (que já é font-bold, 700).
+  subtitleBoxBold?: string;
   bodyText?: string;
   buttonLabel?: string;
   // segundos até redirecionar direto pro grupo se a pessoa não clicar no

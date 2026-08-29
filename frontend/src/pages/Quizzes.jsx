@@ -36,6 +36,8 @@ function emptyQuiz() {
       titleHighlight: 'Evento',
       titleFontSize: 30,
       subtitleBox: '',
+      subtitleBoxFontSize: 14,
+      subtitleBoxBold: '',
       bodyText: '',
       buttonLabel: 'QUERO PARTICIPAR',
       autoRedirectSeconds: null,
@@ -352,13 +354,41 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
               className="w-full mt-1.5 accent-violet-600"
             />
           </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-slate-500">Caixa de subtítulo</label>
+              <input
+                value={quiz.presentation.subtitleBox}
+                onChange={e => set('presentation.subtitleBox', e.target.value)}
+                placeholder="Construa seu processo comercial em um fim de semana"
+                className="w-full mt-1 text-sm border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-slate-500">Palavra/trecho em negrito mais forte</label>
+              <input
+                value={quiz.presentation.subtitleBoxBold}
+                onChange={e => set('presentation.subtitleBoxBold', e.target.value)}
+                placeholder="fim de semana"
+                className="w-full mt-1 text-sm border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
+              />
+              {quiz.presentation.subtitleBoxBold && !quiz.presentation.subtitleBox.includes(quiz.presentation.subtitleBoxBold) && (
+                <p className="text-[11px] text-amber-600 mt-1">Esse trecho precisa aparecer dentro da caixa de subtítulo — hoje não aparece.</p>
+              )}
+            </div>
+          </div>
           <div>
-            <label className="text-xs text-slate-500">Caixa de subtítulo</label>
+            <div className="flex items-center justify-between">
+              <label className="text-xs text-slate-500">Tamanho da fonte da caixa de subtítulo</label>
+              <span className="text-xs text-slate-400 font-mono">{quiz.presentation.subtitleBoxFontSize || 14}px</span>
+            </div>
             <input
-              value={quiz.presentation.subtitleBox}
-              onChange={e => set('presentation.subtitleBox', e.target.value)}
-              placeholder="Construa seu processo comercial em um fim de semana"
-              className="w-full mt-1 text-sm border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
+              type="range"
+              min={10}
+              max={30}
+              value={quiz.presentation.subtitleBoxFontSize || 14}
+              onChange={e => set('presentation.subtitleBoxFontSize', Number(e.target.value))}
+              className="w-full mt-1.5 accent-violet-600"
             />
           </div>
           <div>
