@@ -43,8 +43,12 @@ export class QuizController {
 
   // --- Público (ConvertHairPage) ---
   @Get(':slug')
-  findBySlug(@Param('slug') slug: string) {
-    return this.quizService.findBySlug(slug);
+  async findBySlug(@Param('slug') slug: string) {
+    const quiz = await this.quizService.findBySlug(slug);
+    // fbAccessToken é segredo do CAPI — nunca sai pro browser. fbPixelId
+    // continua público (o Pixel client-side é sempre visível no HTML mesmo).
+    const { fbAccessToken, ...publicQuiz } = quiz;
+    return publicQuiz;
   }
 
   @Post(':slug/submit')

@@ -83,6 +83,16 @@ export class Quiz {
   @Column({ name: 'whatsapp_url', type: 'varchar', nullable: true })
   whatsappUrl?: string | null;
 
+  // Pixel/CAPI dedicados dessa campanha — null/vazio usa o par global
+  // (FB_PIXEL_ID/FB_ACCESS_TOKEN) usado pelo resto do CRM (Lead/MQL do
+  // WhatsApp etc). Existe pra campanhas que precisam de um pixel próprio,
+  // sem misturar sinal com o pixel principal.
+  @Column({ name: 'fb_pixel_id', type: 'varchar', nullable: true })
+  fbPixelId?: string | null;
+
+  @Column({ name: 'fb_access_token', type: 'varchar', nullable: true })
+  fbAccessToken?: string | null;
+
   @Column({ name: 'presentation', type: 'jsonb' })
   presentation: QuizPresentation;
 

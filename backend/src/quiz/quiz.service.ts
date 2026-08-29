@@ -118,6 +118,8 @@ export class QuizService {
       slug: dto.slug,
       active: dto.active ?? true,
       whatsappUrl: dto.whatsappUrl || null,
+      fbPixelId: dto.fbPixelId || null,
+      fbAccessToken: dto.fbAccessToken || null,
       presentation: dto.presentation || {},
       questions: dto.questions || [],
       finalStep: dto.finalStep || {},
@@ -176,16 +178,22 @@ export class QuizService {
       userAgent: dto.userAgent,
     };
 
+    // Pixel/token próprios da campanha, se configurados — cai pro par global
+    // (FB_PIXEL_ID/FB_ACCESS_TOKEN) dentro do FacebookService quando ausentes.
+    const pixelOverride = quiz.fbPixelId || quiz.fbAccessToken
+      ? { pixelId: quiz.fbPixelId ?? undefined, accessToken: quiz.fbAccessToken ?? undefined }
+      : undefined;
+
     // Evento amplo — todo mundo que termina o quiz, independente de qualificar.
     // Necessário pro Meta ter volume suficiente pra otimizar (um evento MQL
     // sozinho, se raro, trava a campanha em aprendizado).
     this.facebookService
-      .sendCustomEvent('QuizCompleto', eventPayload, eventSourceUrl, `quiz-complete-${dto.clickId || randomUUID()}`)
+      .sendCustomEvent('QuizCompleto', eventPayload, eventSourceUrl, `quiz-complete-${dto.clickId || randomUUID()}`, pixelOverride)
       .catch((err) => this.logger.error(`Erro ao enviar QuizCompleto: ${err.message}`));
 
     for (const eventName of mqlEvents) {
       this.facebookService
-        .sendCustomEvent(eventName, eventPayload, eventSourceUrl, `quiz-mql-${eventName}-${dto.clickId || randomUUID()}`)
+        .sendCustomEvent(eventName, eventPayload, eventSourceUrl, `quiz-mql-${eventName}-${dto.clickId || randomUUID()}`, pixelOverride)
         .catch((err) => this.logger.error(`Erro ao enviar evento MQL "${eventName}": ${err.message}`));
     }
 

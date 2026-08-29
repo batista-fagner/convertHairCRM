@@ -43,10 +43,12 @@ export class FacebookService {
     userData: Record<string, string>,
     customData?: Record<string, any>,
     eventSourceUrl?: string,
-    opts?: { ctwa?: boolean; eventId?: string },
+    opts?: { ctwa?: boolean; eventId?: string; pixelId?: string; accessToken?: string },
   ): Promise<void> {
-    const pixelId = this.config.get('FB_PIXEL_ID');
-    const accessToken = this.config.get('FB_ACCESS_TOKEN');
+    // Override por chamada (ex: quiz com pixel próprio de campanha) — cai pro
+    // par global (FB_PIXEL_ID/FB_ACCESS_TOKEN) se não for passado.
+    const pixelId = opts?.pixelId || this.config.get('FB_PIXEL_ID');
+    const accessToken = opts?.accessToken || this.config.get('FB_ACCESS_TOKEN');
 
     if (!pixelId || !accessToken) {
       this.logger.warn('FB_PIXEL_ID ou FB_ACCESS_TOKEN não configurados — evento não enviado');
@@ -269,6 +271,9 @@ export class FacebookService {
     data: { fbclid?: string; fbc?: string; fbp?: string; clientIp?: string; userAgent?: string; externalId?: string },
     eventSourceUrl?: string,
     eventId?: string,
+    // pixel/token próprios de campanha (ex: quiz com pixel dedicado) — cai pro
+    // par global se não passado (ver sendEvent).
+    pixelOverride?: { pixelId?: string; accessToken?: string },
   ): Promise<void> {
     const userData: Record<string, string> = {};
     if (data.fbc) userData['fbc'] = data.fbc;
@@ -277,7 +282,7 @@ export class FacebookService {
     if (data.clientIp) userData['client_ip_address'] = data.clientIp;
     if (data.userAgent) userData['client_user_agent'] = data.userAgent;
     if (data.externalId) userData['external_id'] = data.externalId;
-    await this.sendEvent(eventName, userData, undefined, eventSourceUrl, { eventId });
+    await this.sendEvent(eventName, userData, undefined, eventSourceUrl, { eventId, ...pixelOverride });
   }
 
   /**

@@ -26,6 +26,8 @@ function emptyQuiz() {
     slug: '',
     active: true,
     whatsappUrl: '',
+    fbPixelId: '',
+    fbAccessToken: '',
     presentation: {
       badgeTitle: 'Oficina de Vendas',
       badgeSubtitle: '',
@@ -215,6 +217,32 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
             className="w-full mt-1 text-sm border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
           />
         </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs text-slate-500">Meta Pixel ID (opcional)</label>
+            <input
+              value={quiz.fbPixelId || ''}
+              onChange={e => set('fbPixelId', e.target.value)}
+              placeholder="vazio = usa o pixel padrão do CRM"
+              className="w-full mt-1 text-sm border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition font-mono"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-slate-500">CAPI Access Token (opcional)</label>
+            <input
+              type="password"
+              value={quiz.fbAccessToken || ''}
+              onChange={e => set('fbAccessToken', e.target.value)}
+              placeholder="vazio = usa o token padrão do CRM"
+              className="w-full mt-1 text-sm border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition font-mono"
+            />
+          </div>
+        </div>
+        {(quiz.fbPixelId || quiz.fbAccessToken) && (
+          <p className="text-[11px] text-slate-400 -mt-1">
+            Esse quiz vai mandar os eventos (QuizCompleto, MQL-*) pro pixel/token acima, em vez do pixel padrão do CRM.
+          </p>
+        )}
         {publicUrl && (
           <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
             <p className="text-xs text-slate-400 flex-1 truncate">{publicUrl}</p>
