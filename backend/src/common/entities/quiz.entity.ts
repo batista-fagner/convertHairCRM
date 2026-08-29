@@ -41,6 +41,11 @@ export interface QuizFinalStep {
   progressLabel?: string;
   bodyText?: string;
   buttonLabel?: string;
+  // segundos que a barra "Falta pouco!" leva animando até 100% na página
+  // pública — o auto-redirect pro whatsappUrl dispara junto (ver Quiz.tsx no
+  // repo da ConvertHairPage). O botão da tela final também redireciona a
+  // qualquer momento, adiantando o auto-redirect.
+  autoRedirectSeconds?: number | null;
 }
 
 // Quiz de captação (apresentação → até 6 perguntas de múltipla escolha, 1

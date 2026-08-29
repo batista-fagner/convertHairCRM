@@ -45,6 +45,7 @@ function emptyQuiz() {
       progressLabel: 'Falta pouco!',
       bodyText: 'Para confirmar sua presença, entre agora no grupo exclusivo do WhatsApp.',
       buttonLabel: 'ENTRAR NO GRUPO DO WHATSAPP',
+      autoRedirectSeconds: 4,
     },
   }
 }
@@ -453,13 +454,25 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
               className="w-full mt-1 text-sm border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition resize-none"
             />
           </div>
-          <div>
-            <label className="text-xs text-slate-500">Texto do botão</label>
-            <input
-              value={quiz.finalStep.buttonLabel}
-              onChange={e => set('finalStep.buttonLabel', e.target.value)}
-              className="w-full mt-1 text-sm border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
-            />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-slate-500">Texto do botão</label>
+              <input
+                value={quiz.finalStep.buttonLabel}
+                onChange={e => set('finalStep.buttonLabel', e.target.value)}
+                className="w-full mt-1 text-sm border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-slate-500">Animação da barra + auto-redirect (segundos)</label>
+              <input
+                type="number"
+                min={1}
+                value={quiz.finalStep.autoRedirectSeconds ?? 4}
+                onChange={e => set('finalStep.autoRedirectSeconds', Number(e.target.value) || 1)}
+                className="w-full mt-1 text-sm border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
+              />
+            </div>
           </div>
         </div>
       </div>
