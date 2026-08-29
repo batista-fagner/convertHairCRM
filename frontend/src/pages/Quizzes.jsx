@@ -31,6 +31,7 @@ function emptyQuiz() {
       badgeSubtitle: '',
       badgeDateLine: '',
       photoUrl: '',
+      photoMaxHeight: 340,
       title: 'Título do Evento',
       titleHighlight: 'Evento',
       titleFontSize: 30,
@@ -270,6 +271,22 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
               </label>
             </div>
           </div>
+          {quiz.presentation.photoUrl && (
+            <div>
+              <div className="flex items-center justify-between">
+                <label className="text-xs text-slate-500">Altura da foto</label>
+                <span className="text-xs text-slate-400 font-mono">{quiz.presentation.photoMaxHeight || 340}px</span>
+              </div>
+              <input
+                type="range"
+                min={120}
+                max={400}
+                value={quiz.presentation.photoMaxHeight || 340}
+                onChange={e => set('presentation.photoMaxHeight', Number(e.target.value))}
+                className="w-full mt-1.5 accent-violet-600"
+              />
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs text-slate-500">Badge — título</label>

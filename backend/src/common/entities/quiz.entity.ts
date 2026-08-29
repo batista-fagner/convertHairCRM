@@ -25,6 +25,8 @@ export interface QuizPresentation {
   badgeSubtitle?: string;
   badgeDateLine?: string;
   photoUrl?: string;
+  // altura máxima da foto em px — null/undefined usa o padrão do layout (340).
+  photoMaxHeight?: number | null;
   title?: string;
   titleHighlight?: string;
   // tamanho da fonte do título em px — null/undefined usa o padrão do layout.
