@@ -27,6 +27,8 @@ export interface QuizPresentation {
   photoUrl?: string;
   title?: string;
   titleHighlight?: string;
+  // tamanho da fonte do título em px — null/undefined usa o padrão do layout.
+  titleFontSize?: number | null;
   subtitleBox?: string;
   bodyText?: string;
   buttonLabel?: string;

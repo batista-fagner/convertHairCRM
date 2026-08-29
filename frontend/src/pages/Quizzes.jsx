@@ -33,6 +33,7 @@ function emptyQuiz() {
       photoUrl: '',
       title: 'Título do Evento',
       titleHighlight: 'Evento',
+      titleFontSize: 30,
       subtitleBox: '',
       bodyText: '',
       buttonLabel: 'QUERO PARTICIPAR',
@@ -319,6 +320,20 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
                 <p className="text-[11px] text-amber-600 mt-1">Esse trecho precisa aparecer dentro do título acima — hoje não aparece.</p>
               )}
             </div>
+          </div>
+          <div>
+            <div className="flex items-center justify-between">
+              <label className="text-xs text-slate-500">Tamanho da fonte do título</label>
+              <span className="text-xs text-slate-400 font-mono">{quiz.presentation.titleFontSize || 30}px</span>
+            </div>
+            <input
+              type="range"
+              min={20}
+              max={60}
+              value={quiz.presentation.titleFontSize || 30}
+              onChange={e => set('presentation.titleFontSize', Number(e.target.value))}
+              className="w-full mt-1.5 accent-violet-600"
+            />
           </div>
           <div>
             <label className="text-xs text-slate-500">Caixa de subtítulo</label>
