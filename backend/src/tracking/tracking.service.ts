@@ -13,6 +13,11 @@ export interface PendingUtm {
   fbc?: string;
   fbp?: string;
   clickId?: string;
+  // Preenchido quando o clique veio de um quiz (ver QuizService) — GroupJoinService
+  // usa isso pra anexar as respostas ao Lead assim que ele entra no grupo.
+  quizSlug?: string;
+  quizResponses?: { question: string; answer: string }[];
+  quizMqlEvents?: string[];
 }
 
 const QUEUE_KEY = 'converthair:tracking:utm-queue';

@@ -20,6 +20,7 @@ import SmsInbox from './pages/sms/SmsInbox'
 import IgInbox from './pages/instagram-inbox/IgInbox'
 import Login from './pages/Login'
 import GroupWorkshop from './pages/GroupWorkshop'
+import Quizzes from './pages/Quizzes'
 
 function RequireAuth({ children }) {
   // Em dev (npm run dev / localhost) pula o login pra agilizar teste local —
@@ -44,6 +45,7 @@ export default function App() {
           <Route path="/instant-form-leads" element={<InstantFormLeads />} />
           <Route path="/group-workshop" element={<GroupWorkshop />} />
           <Route path="/forms" element={<Forms />} />
+          <Route path="/quiz-builder" element={<Quizzes />} />
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/email-sequences" element={<EmailSequences />} />
           <Route path="/whatsapp" element={<WhatsAppLeads />} />

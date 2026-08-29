@@ -258,6 +258,29 @@ export class FacebookService {
   }
 
   /**
+   * Evento genérico de site (action_source: website), sem depender de um Lead
+   * já existente no banco — usado pelo QuizService pra disparar o evento MQL
+   * (ou o de conclusão) no exato momento da resposta, antes da pessoa entrar
+   * no grupo (e possivelmente antes dela existir como Lead). Match fica por
+   * conta de fbc/fbp/IP/user-agent (sem PII de nome/telefone/email).
+   */
+  async sendCustomEvent(
+    eventName: string,
+    data: { fbclid?: string; fbc?: string; fbp?: string; clientIp?: string; userAgent?: string; externalId?: string },
+    eventSourceUrl?: string,
+    eventId?: string,
+  ): Promise<void> {
+    const userData: Record<string, string> = {};
+    if (data.fbc) userData['fbc'] = data.fbc;
+    else if (data.fbclid) userData['fbc'] = this.buildFbc(data.fbclid);
+    if (data.fbp) userData['fbp'] = data.fbp;
+    if (data.clientIp) userData['client_ip_address'] = data.clientIp;
+    if (data.userAgent) userData['client_user_agent'] = data.userAgent;
+    if (data.externalId) userData['external_id'] = data.externalId;
+    await this.sendEvent(eventName, userData, undefined, eventSourceUrl, { eventId });
+  }
+
+  /**
    * Evento de CRM (action_source: system_generated) — único jeito de mandar um
    * event_name LIVRE (ex: "MQL+30") pro Meta, ao contrário do CAPI normal, que
    * pra business_messaging só aceita Purchase/LeadSubmitted. Usado pro funil de

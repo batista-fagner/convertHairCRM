@@ -166,6 +166,12 @@ export class GroupJoinService implements OnModuleInit {
       fbc: utm?.fbc,
       fbp: utm?.fbp,
       clickId: utm?.clickId,
+      quizSlug: utm?.quizSlug,
+      quizResponses: utm?.quizResponses,
+      quizMqlEvents: utm?.quizMqlEvents,
+      // Quiz já qualificou (evento MQL disparado na resposta) — marca de cara
+      // pra não depender de o SDR perguntar de novo o que o quiz já cobriu.
+      isMql: Boolean(utm?.quizMqlEvents?.length),
       waStage: (hasName ? 'aguardando_faturamento' : 'aguardando_nome') as WaStage,
     });
 

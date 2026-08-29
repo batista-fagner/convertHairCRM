@@ -239,6 +239,22 @@ export class Lead {
   @Column({ name: 'conversation_insights', type: 'jsonb', nullable: true })
   conversationInsights?: { painPoints: string | null; messagesPerDayMentioned: number | null; otherNotes: string | null; generatedAt: string } | null;
 
+  // Slug do quiz respondido antes de entrar no grupo (ver QuizService +
+  // GroupJoinService, que consome do TrackingService a mesma fila FIFO de UTM).
+  @Column({ name: 'quiz_slug', type: 'varchar', nullable: true })
+  quizSlug?: string | null;
+
+  // Respostas do quiz, na ordem em que foram dadas — exibido no card do lead
+  // pra dar contexto sem precisar abrir o quiz builder.
+  @Column({ name: 'quiz_responses', type: 'jsonb', nullable: true })
+  quizResponses?: { question: string; answer: string }[] | null;
+
+  // Nomes dos eventos MQL do quiz que essa resposta disparou (ex:
+  // ["MQL-workshop-1"]) — já foram enviados ao Meta no momento da resposta
+  // (QuizService), isso aqui é só o registro no lead pra referência/relatório.
+  @Column({ name: 'quiz_mql_events', type: 'jsonb', nullable: true })
+  quizMqlEvents?: string[] | null;
+
   // Hora exata que a tag "entrou_no_grupo" foi aplicada (ver SdrGroupJoinService).
   // Null pros leads retroativos (backfill de 2026-08-24), que não têm o timestamp real.
   @Column({ name: 'group_joined_at', type: 'timestamp', nullable: true })

@@ -24,6 +24,7 @@ import {
   MessageSquare,
   Camera,
   FileSpreadsheet,
+  ListChecks,
 } from 'lucide-react'
 
 const NAV_GROUPS = [
@@ -39,6 +40,7 @@ const NAV_GROUPS = [
     items: [
       { icon: Megaphone, label: 'Campanhas', path: '/campaigns', disabled: true },
       { icon: FileText, label: 'Formulários', path: '/forms' },
+      { icon: ListChecks, label: 'Quiz Builder', path: '/quiz-builder' },
       { icon: Users, label: 'Leads', path: '/leads' },
       { icon: KanbanSquare, label: 'Kanban', path: '/kanban' },
       { icon: FileSpreadsheet, label: 'Formulário Instantâneo', path: '/instant-form-leads' },
