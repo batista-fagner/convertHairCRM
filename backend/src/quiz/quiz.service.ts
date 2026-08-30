@@ -151,6 +151,41 @@ export class QuizService {
   }
 
   /**
+   * Dispara o evento PADRÃO "Lead" do Meta assim que a pessoa abre a 1ª tela
+   * do quiz (apresentação) — ao contrário de QuizCompleto/MQL-*, que só
+   * disparam em quem termina todas as perguntas. Sendo padrão, permite a
+   * campanha otimizar direto pro objetivo de Lead sem Conversão Personalizada.
+   */
+  async trackView(slug: string, dto: SubmitDto): Promise<{ ok: true }> {
+    const quiz = await this.findBySlug(slug);
+    const quizPublicBase = (this.config.get<string>('QUIZ_PUBLIC_BASE_URL') || 'https://convert-hair-page.vercel.app/q').replace(/\/$/, '');
+    const eventSourceUrl = `${quizPublicBase}/${slug}`;
+
+    const pixelOverride = quiz.fbPixelId || quiz.fbAccessToken
+      ? { pixelId: quiz.fbPixelId ?? undefined, accessToken: quiz.fbAccessToken ?? undefined }
+      : undefined;
+
+    await this.facebookService
+      .sendCustomEvent(
+        'Lead',
+        {
+          fbclid: dto.fbclid,
+          fbc: dto.fbc,
+          fbp: dto.fbp,
+          externalId: dto.clickId,
+          clientIp: dto.clientIp,
+          userAgent: dto.userAgent,
+        },
+        eventSourceUrl,
+        `quiz-view-${dto.clickId || randomUUID()}`,
+        pixelOverride,
+      )
+      .catch((err) => this.logger.error(`Erro ao enviar Lead (view): ${err.message}`));
+
+    return { ok: true };
+  }
+
+  /**
    * Recebe as respostas do quiz público, dispara os eventos ao Meta (conclusão
    * + qualquer evento MQL das perguntas "matadoras" respondidas com a opção
    * marcada) e empurra as respostas + UTM pra fila que o GroupJoinService
@@ -201,19 +236,13 @@ export class QuizService {
     // Evento amplo — todo mundo que termina o quiz, independente de qualificar.
     // Necessário pro Meta ter volume suficiente pra otimizar (um evento MQL
     // sozinho, se raro, trava a campanha em aprendizado).
+    // "Lead" (padrão do Meta) NÃO é disparado aqui — sairia redundante com
+    // QuizCompleto, já que os dois marcariam exatamente quem termina o quiz.
+    // Lead agora dispara na 1ª tela (ver trackView()), representando "viu o
+    // quiz" em vez de "terminou o quiz".
     this.facebookService
       .sendCustomEvent('QuizCompleto', eventPayload, eventSourceUrl, `quiz-complete-${dto.clickId || randomUUID()}`, pixelOverride)
       .catch((err) => this.logger.error(`Erro ao enviar QuizCompleto: ${err.message}`));
-
-    // "Lead" é evento PADRÃO do Meta (ao contrário de QuizCompleto/MQL-*, que
-    // são customizados) — permite a campanha otimizar direto pro objetivo de
-    // Lead sem precisar de conversão customizada. Disparado aqui (fim do
-    // quiz), não quando a pessoa realmente entra no grupo do WhatsApp depois
-    // (esse "Lead" separado do GroupJoinService continua existindo, mas usa o
-    // pixel global — não o dedicado do quiz).
-    this.facebookService
-      .sendCustomEvent('Lead', eventPayload, eventSourceUrl, `quiz-lead-${dto.clickId || randomUUID()}`, pixelOverride)
-      .catch((err) => this.logger.error(`Erro ao enviar Lead: ${err.message}`));
 
     for (const eventName of mqlEvents) {
       this.facebookService
