@@ -150,6 +150,11 @@ export class GroupJoinService implements OnModuleInit {
 
     // Consome UTMs do clique mais recente na LP (FIFO)
     const utm = await this.trackingService.consumeNextUtm();
+    // Lead veio de um quiz — só registra, sem abertura automática do Efraim/
+    // Sofia (aiPaused trava qualquer automação de mandar mensagem sozinha).
+    // Mensagem de boas-vindas individual pra esse público fica pra configurar
+    // depois, separada do fluxo padrão do grupo.
+    const cameFromQuiz = Boolean(utm?.quizSlug);
 
     // Cria lead no banco
     const lead = await this.leadsService.create({
@@ -172,13 +177,19 @@ export class GroupJoinService implements OnModuleInit {
       // Quiz já qualificou (evento MQL disparado na resposta) — marca de cara
       // pra não depender de o SDR perguntar de novo o que o quiz já cobriu.
       isMql: Boolean(utm?.quizMqlEvents?.length),
-      waStage: (hasName ? 'aguardando_faturamento' : 'aguardando_nome') as WaStage,
+      waStage: cameFromQuiz ? undefined : ((hasName ? 'aguardando_faturamento' : 'aguardando_nome') as WaStage),
+      aiPaused: cameFromQuiz,
     });
 
     // Envia evento Lead pro Meta (CAPI) com telefone + nome real + cookies do Meta Pixel
     this.facebookService.sendLeadEvent(lead, { fbp: lead.fbp, fbc: lead.fbc }).catch((err) =>
       this.logger.error(`Erro ao enviar Lead event ao Facebook: ${err.message}`),
     );
+
+    if (cameFromQuiz) {
+      this.logger.log(`Lead via quiz "${utm?.quizSlug}" registrado sem abertura automática: ${lead.id} (${phone}) nome=${leadName}`);
+      return;
+    }
 
     // Mensagem de abertura — pula pergunta de nome se já tiver
     const firstName = leadName.split(' ')[0];
