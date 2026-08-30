@@ -191,6 +191,16 @@ export class QuizService {
       .sendCustomEvent('QuizCompleto', eventPayload, eventSourceUrl, `quiz-complete-${dto.clickId || randomUUID()}`, pixelOverride)
       .catch((err) => this.logger.error(`Erro ao enviar QuizCompleto: ${err.message}`));
 
+    // "Lead" é evento PADRÃO do Meta (ao contrário de QuizCompleto/MQL-*, que
+    // são customizados) — permite a campanha otimizar direto pro objetivo de
+    // Lead sem precisar de conversão customizada. Disparado aqui (fim do
+    // quiz), não quando a pessoa realmente entra no grupo do WhatsApp depois
+    // (esse "Lead" separado do GroupJoinService continua existindo, mas usa o
+    // pixel global — não o dedicado do quiz).
+    this.facebookService
+      .sendCustomEvent('Lead', eventPayload, eventSourceUrl, `quiz-lead-${dto.clickId || randomUUID()}`, pixelOverride)
+      .catch((err) => this.logger.error(`Erro ao enviar Lead: ${err.message}`));
+
     for (const eventName of mqlEvents) {
       this.facebookService
         .sendCustomEvent(eventName, eventPayload, eventSourceUrl, `quiz-mql-${eventName}-${dto.clickId || randomUUID()}`, pixelOverride)
