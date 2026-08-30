@@ -242,20 +242,23 @@ export class SdrGroupJoinService implements OnModuleInit {
     this.logger.log(`[GROUP-JOIN-CRM] Lead ${lead.id} (${phone}) marcado como "saiu do grupo"`);
   }
 
-  /** Busca o nome do contato no WhatsApp via uazapi /contacts/info (instância SDR/CRM). */
+  /**
+   * Busca o nome do contato no WhatsApp via uazapi /chat/details (instância
+   * SDR/CRM) — mesmo endpoint usado em sdr.controller.ts:fetchAndSaveAvatar().
+   * NÃO usar /contacts/info nessa instância: retorna 405 (Method Not Allowed).
+   */
   private async fetchContactName(phone: string): Promise<string | null> {
     try {
-      const normalizedPhone = phone.startsWith('55') ? phone : `55${phone}`;
       const res = await firstValueFrom(
         this.http.post(
-          `${this.uazapiBaseUrl}/contacts/info`,
-          { number: normalizedPhone },
+          `${this.uazapiBaseUrl}/chat/details`,
+          { number: phone, preview: true },
           { headers: { token: this.uazapiToken } },
         ),
       );
-      const data = res.data as any;
-      const name: string = data?.name || data?.pushName || data?.notify || '';
-      if (!name || name === normalizedPhone || name === phone) return null;
+      const data = res.data as { name?: string; wa_contactName?: string; wa_name?: string };
+      const name = data?.name || data?.wa_contactName || data?.wa_name || '';
+      if (!name || name === phone) return null;
       return name.trim();
     } catch (err: any) {
       this.logger.warn(`[GROUP-JOIN-CRM] Não foi possível buscar nome do contato ${phone}: ${err.message}`);
