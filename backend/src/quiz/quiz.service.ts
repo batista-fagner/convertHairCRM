@@ -158,7 +158,11 @@ export class QuizService {
    */
   async submit(slug: string, dto: SubmitDto): Promise<{ ok: true; redirectUrl: string; mqlEvents: string[] }> {
     const quiz = await this.findBySlug(slug);
-    const eventSourceUrl = `https://${slug}`;
+    // Bug corrigido em 2026-08-30: antes mandava só `https://${slug}` (não é
+    // uma URL real) — sem isso, uma regra de Conversão Personalizada no Meta
+    // baseada em "URL contém" nunca bateria com nada de verdade.
+    const quizPublicBase = (this.config.get<string>('QUIZ_PUBLIC_BASE_URL') || 'https://convert-hair-page.vercel.app/q').replace(/\/$/, '');
+    const eventSourceUrl = `${quizPublicBase}/${slug}`;
 
     const answeredResponses: { question: string; answer: string }[] = [];
     const mqlEvents = new Set<string>();
