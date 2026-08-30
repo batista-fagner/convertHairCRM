@@ -22,6 +22,8 @@ import { FacebookModule } from '../facebook/facebook.module';
 import { RealtimeModule } from '../realtime/realtime.module';
 import { SettingsModule } from '../settings/settings.module';
 import { EnrichmentModule } from '../enrichment/enrichment.module';
+import { TrackingModule } from '../tracking/tracking.module';
+import { QuizModule } from '../quiz/quiz.module';
 import { SDR_FOLLOWUP_QUEUE_NAME } from '../queue/queue.constants';
 import { queueEngineEnabled } from '../queue/queue.enabled';
 
@@ -39,6 +41,8 @@ const queueProviders = queueEngineEnabled ? [SdrFollowupScanProcessor] : [];
     RealtimeModule,
     SettingsModule,
     EnrichmentModule,
+    TrackingModule,
+    QuizModule,
     ...queueParts,
   ],
   controllers: [SdrController, FollowupController, ManualMessageController, GroupWorkshopController],

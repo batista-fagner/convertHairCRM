@@ -4,6 +4,10 @@ import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
 import { LeadsService } from '../leads/leads.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { FacebookService } from '../facebook/facebook.service';
+import { TrackingService } from '../tracking/tracking.service';
+import { QuizService } from '../quiz/quiz.service';
+import { Lead } from '../common/entities/lead.entity';
 
 const JOIN_TAG = 'entrou_no_grupo';
 
@@ -35,6 +39,9 @@ export class SdrGroupJoinService implements OnModuleInit {
     private readonly config: ConfigService,
     private readonly leadsService: LeadsService,
     private readonly realtime: RealtimeGateway,
+    private readonly facebookService: FacebookService,
+    private readonly trackingService: TrackingService,
+    private readonly quizService: QuizService,
   ) {
     this.uazapiBaseUrl = config.get('SDR_UAZAPI_BASE_URL') || config.get('UAZAPI_BASE_URL') || 'https://free.uazapi.com';
     this.uazapiToken = config.get('SDR_UAZAPI_TOKEN') || '';
@@ -144,9 +151,58 @@ export class SdrGroupJoinService implements OnModuleInit {
     this.recentJoins.add(dedupKey);
     setTimeout(() => this.recentJoins.delete(dedupKey), 30_000);
 
-    const lead = await this.findLeadByPhoneVariants(phone);
+    let lead = await this.findLeadByPhoneVariants(phone);
     if (!lead) {
-      this.logger.log(`[GROUP-JOIN-CRM] ${phone} entrou no grupo mas não é um lead conhecido — ignorado`);
+      // Consome o clique mais antigo da fila (TrackingService) — só cria lead
+      // novo se existir um clique de verdade esperando (quiz ou LP), pra não
+      // criar lead pra qualquer pessoa aleatória que entra no grupo sem ter
+      // passado pelo funil. Ver aviso no topo do arquivo sobre a fila ser
+      // FIFO por ordem, não por identidade.
+      const utm = await this.trackingService.consumeNextUtm();
+      if (!utm) {
+        this.logger.log(`[GROUP-JOIN-CRM] ${phone} entrou no grupo mas não é um lead conhecido e não há clique pendente — ignorado`);
+        return;
+      }
+      const cameFromQuiz = Boolean(utm.quizSlug);
+      const waName = await this.fetchContactName(phone);
+      const leadName = waName || 'Novo Lead';
+
+      lead = await this.leadsService.create({
+        name: leadName,
+        phone,
+        agentMode: 'sdr',
+        kanbanStage: 'novo',
+        waStage: cameFromQuiz ? undefined : ('abertura' as any),
+        status: 'novo',
+        score: 0,
+        utmSource: utm.utmSource,
+        utmMedium: utm.utmMedium,
+        utmCampaign: utm.utmCampaign,
+        utmContent: utm.utmContent,
+        utmTerm: utm.utmTerm,
+        fbclid: utm.fbclid,
+        fbc: utm.fbc,
+        fbp: utm.fbp,
+        clickId: utm.clickId,
+        quizSlug: utm.quizSlug,
+        quizResponses: utm.quizResponses,
+        quizMqlEvents: utm.quizMqlEvents,
+        isMql: Boolean(utm.quizMqlEvents?.length),
+        tags: [JOIN_TAG],
+        groupJoinedAt: new Date(),
+        aiPaused: cameFromQuiz,
+      });
+      this.realtime.emitLeadCreated(lead);
+
+      this.facebookService.sendLeadEvent(lead, { fbp: lead.fbp, fbc: lead.fbc }).catch((err) =>
+        this.logger.error(`Erro ao enviar Lead event ao Facebook: ${err.message}`),
+      );
+
+      if (cameFromQuiz) {
+        await this.sendQuizWelcomeMessage(lead, phone, leadName, utm.quizSlug);
+      }
+
+      this.logger.log(`[GROUP-JOIN-CRM] Novo lead ${lead.id} (${phone}) criado ao entrar no grupo${cameFromQuiz ? ` via quiz "${utm.quizSlug}"` : ''}`);
       return;
     }
 
@@ -184,6 +240,77 @@ export class SdrGroupJoinService implements OnModuleInit {
     const updated = await this.leadsService.update(lead.id, { groupLeftAt: new Date() });
     this.realtime.emitLeadUpdated(updated);
     this.logger.log(`[GROUP-JOIN-CRM] Lead ${lead.id} (${phone}) marcado como "saiu do grupo"`);
+  }
+
+  /** Busca o nome do contato no WhatsApp via uazapi /contacts/info (instância SDR/CRM). */
+  private async fetchContactName(phone: string): Promise<string | null> {
+    try {
+      const normalizedPhone = phone.startsWith('55') ? phone : `55${phone}`;
+      const res = await firstValueFrom(
+        this.http.post(
+          `${this.uazapiBaseUrl}/contacts/info`,
+          { number: normalizedPhone },
+          { headers: { token: this.uazapiToken } },
+        ),
+      );
+      const data = res.data as any;
+      const name: string = data?.name || data?.pushName || data?.notify || '';
+      if (!name || name === normalizedPhone || name === phone) return null;
+      return name.trim();
+    } catch (err: any) {
+      this.logger.warn(`[GROUP-JOIN-CRM] Não foi possível buscar nome do contato ${phone}: ${err.message}`);
+      return null;
+    }
+  }
+
+  private async sendMessage(phone: string, text: string): Promise<void> {
+    try {
+      const normalizedPhone = phone.startsWith('55') ? phone : `55${phone}`;
+      await firstValueFrom(
+        this.http.post(
+          `${this.uazapiBaseUrl}/send/text`,
+          { number: normalizedPhone, text },
+          { headers: { token: this.uazapiToken } },
+        ),
+      );
+    } catch (err: any) {
+      this.logger.error(`[GROUP-JOIN-CRM] Erro ao enviar mensagem para ${phone}: ${err.message}`);
+    }
+  }
+
+  /**
+   * Mensagem individual pro lead que veio de um quiz — configurada por quiz
+   * (Quiz.welcomeMessageVariants / welcomeMessageTemplate), com placeholders
+   * {nome} e {resposta_1}..{resposta_6} substituídos pelas respostas reais.
+   * Sem template configurado (padrão nem variante), não envia nada.
+   */
+  private async sendQuizWelcomeMessage(lead: Lead, phone: string, leadName: string, quizSlug?: string | null) {
+    if (!quizSlug) return;
+    const responses = lead.quizResponses || [];
+    let template: string | null | undefined;
+    try {
+      const quiz = await this.quizService.findBySlug(quizSlug);
+      const variant = (quiz.welcomeMessageVariants || []).find(
+        (v) => responses[v.questionIndex - 1]?.answer === v.optionLabel,
+      );
+      template = variant?.template ?? quiz.welcomeMessageTemplate;
+    } catch (err: any) {
+      this.logger.warn(`[GROUP-JOIN-CRM] Não foi possível carregar quiz "${quizSlug}" pra montar mensagem de boas-vindas: ${err.message}`);
+      return;
+    }
+    if (!template?.trim()) return;
+
+    const firstName = leadName.split(' ')[0];
+    const message = template
+      .replace(/\{nome\}/gi, firstName)
+      .replace(/\{resposta_(\d+)\}/gi, (_match, idx) => responses[parseInt(idx, 10) - 1]?.answer ?? '');
+
+    await this.sendMessage(phone, message);
+    const updated = await this.leadsService.update(lead.id, {
+      aiContext: [{ role: 'assistant', content: message }],
+      waLastMessageAt: new Date(),
+    });
+    this.realtime.emitLeadUpdated(updated);
   }
 
   private async findLeadByPhoneVariants(phone: string) {
