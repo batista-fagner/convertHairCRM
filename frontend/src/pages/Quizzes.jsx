@@ -29,6 +29,7 @@ function emptyQuiz() {
     fbPixelId: '',
     fbAccessToken: '',
     welcomeMessageTemplate: '',
+    welcomeMessageVariants: [],
     presentation: {
       badgeTitle: 'Oficina de Vendas',
       badgeSubtitle: '',
@@ -97,7 +98,7 @@ function QuizPreviewFrame({ quiz }) {
 
   return (
     <div className="sticky top-6">
-      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+      <p className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-2 flex items-center gap-1.5">
         <Eye className="w-3.5 h-3.5" /> Preview ao vivo
       </p>
       <div className="mx-auto rounded-[2rem] border-8 border-slate-900 bg-black overflow-hidden shadow-xl" style={{ width: 320, height: 640 }}>
@@ -133,8 +134,8 @@ function SubmissionsModal({ quiz, submissions, loading, onClose }) {
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200">
           <div>
-            <p className="font-semibold text-slate-800 text-sm">Respostas — {quiz.name}</p>
-            <p className="text-xs text-slate-400 mt-0.5">{submissions.length} pessoa{submissions.length !== 1 ? 's' : ''} completou o quiz</p>
+            <p className="font-semibold text-slate-800 text-base">Respostas — {quiz.name}</p>
+            <p className="text-sm text-slate-400 mt-0.5">{submissions.length} pessoa{submissions.length !== 1 ? 's' : ''} completou o quiz</p>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
         </div>
@@ -146,12 +147,12 @@ function SubmissionsModal({ quiz, submissions, loading, onClose }) {
             </div>
           )}
           {!loading && submissions.length === 0 && (
-            <div className="text-center py-16 text-slate-400 text-sm">Ninguém completou esse quiz ainda.</div>
+            <div className="text-center py-16 text-slate-400 text-base">Ninguém completou esse quiz ainda.</div>
           )}
           {!loading && submissions.length > 0 && (
-            <table className="w-full text-sm">
+            <table className="w-full text-base">
               <thead className="bg-slate-50 sticky top-0">
-                <tr className="text-left text-xs text-slate-500 uppercase tracking-wide">
+                <tr className="text-left text-sm text-slate-500 uppercase tracking-wide">
                   <th className="px-4 py-2 font-medium">Data</th>
                   <th className="px-4 py-2 font-medium">Campanha</th>
                   <th className="px-4 py-2 font-medium">Conjunto/Anúncio</th>
@@ -172,7 +173,7 @@ function SubmissionsModal({ quiz, submissions, loading, onClose }) {
                       <td className="px-4 py-2.5 text-slate-600">{[s.utmSource, s.utmMedium].filter(Boolean).join(' / ') || '—'}</td>
                       <td className="px-4 py-2.5">
                         {s.mqlEvents?.length > 0 ? (
-                          <span className="text-xs bg-amber-50 text-amber-700 px-2 py-0.5 rounded flex items-center gap-1 w-fit">
+                          <span className="text-sm bg-amber-50 text-amber-700 px-2 py-0.5 rounded flex items-center gap-1 w-fit">
                             <Zap className="w-3 h-3" /> {s.mqlEvents.join(', ')}
                           </span>
                         ) : '—'}
@@ -183,11 +184,11 @@ function SubmissionsModal({ quiz, submissions, loading, onClose }) {
                         <td colSpan={5} className="px-4 py-3">
                           <div className="space-y-1.5">
                             {(s.answers || []).map((a, i) => (
-                              <p key={i} className="text-xs text-slate-600">
+                              <p key={i} className="text-sm text-slate-600">
                                 <span className="text-slate-400">{a.question}:</span> <span className="font-medium">{a.answer}</span>
                               </p>
                             ))}
-                            {s.fbclid && <p className="text-[11px] text-slate-400 mt-2">fbclid: {s.fbclid}</p>}
+                            {s.fbclid && <p className="text-sm text-slate-400 mt-2">fbclid: {s.fbclid}</p>}
                           </div>
                         </td>
                       </tr>
@@ -275,10 +276,10 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
     <div className="space-y-5 max-w-2xl">
       {/* Config básica */}
       <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
-        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Configuração</p>
+        <p className="text-sm font-semibold text-slate-500 uppercase tracking-wide">Configuração</p>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="text-xs text-slate-500">Nome interno</label>
+            <label className="text-sm text-slate-500">Nome interno</label>
             <input
               value={quiz.name}
               onChange={e => {
@@ -286,64 +287,65 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
                 onChange(prev => ({ ...prev, name, slug: prev.slug || slugify(name) }))
               }}
               placeholder="Ex: Oficina de Vendas — Ago"
-              className="w-full mt-1 text-sm border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
+              className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
             />
           </div>
           <div>
-            <label className="text-xs text-slate-500">Slug (URL pública)</label>
+            <label className="text-sm text-slate-500">Slug (URL pública)</label>
             <input
               value={quiz.slug}
               onChange={e => set('slug', slugify(e.target.value))}
               placeholder="oficina-vendas-ago"
-              className="w-full mt-1 text-sm border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition font-mono"
+              className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition font-mono"
             />
           </div>
         </div>
         <div>
-          <label className="text-xs text-slate-500">Link do grupo do WhatsApp (destino final)</label>
+          <label className="text-sm text-slate-500">Link do grupo do WhatsApp (destino final)</label>
           <input
             value={quiz.whatsappUrl || ''}
             onChange={e => set('whatsappUrl', e.target.value)}
             placeholder="https://chat.whatsapp.com/..."
-            className="w-full mt-1 text-sm border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
+            className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
           />
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="text-xs text-slate-500">Meta Pixel ID (opcional)</label>
+            <label className="text-sm text-slate-500">Meta Pixel ID (opcional)</label>
             <input
               value={quiz.fbPixelId || ''}
               onChange={e => set('fbPixelId', e.target.value)}
               placeholder="vazio = usa o pixel padrão do CRM"
-              className="w-full mt-1 text-sm border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition font-mono"
+              className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition font-mono"
             />
           </div>
           <div>
-            <label className="text-xs text-slate-500">CAPI Access Token (opcional)</label>
+            <label className="text-sm text-slate-500">CAPI Access Token (opcional)</label>
             <input
               type="password"
               value={quiz.fbAccessToken || ''}
               onChange={e => set('fbAccessToken', e.target.value)}
               placeholder="vazio = usa o token padrão do CRM"
-              className="w-full mt-1 text-sm border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition font-mono"
+              className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition font-mono"
             />
           </div>
         </div>
         {(quiz.fbPixelId || quiz.fbAccessToken) && (
-          <p className="text-[11px] text-slate-400 -mt-1">
+          <p className="text-sm text-slate-400 -mt-1">
             Esse quiz vai mandar os eventos (QuizCompleto, MQL-*) pro pixel/token acima, em vez do pixel padrão do CRM.
           </p>
         )}
         <div>
-          <label className="text-xs text-slate-500">Mensagem de boas-vindas individual (WhatsApp, ao entrar no grupo)</label>
+          <label className="text-sm text-slate-500">Mensagem de boas-vindas individual (WhatsApp, ao entrar no grupo)</label>
+          <p className="text-sm text-slate-400 mt-0.5 mb-1">Mensagem padrão — usada quando nenhuma regra condicional abaixo bater com a resposta do lead.</p>
           <textarea
             value={quiz.welcomeMessageTemplate || ''}
             onChange={e => set('welcomeMessageTemplate', e.target.value)}
             rows={4}
             placeholder="Vazio = nenhuma mensagem individual (a Sofia/Efraim também não conversa com esse lead)"
-            className="w-full mt-1 text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-violet-400 transition"
+            className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-violet-400 transition"
           />
-          <p className="text-[11px] text-slate-400 mt-1">
+          <p className="text-sm text-slate-400 mt-1">
             Placeholders: <code className="bg-slate-100 px-1 rounded">{'{nome}'}</code>
             {quiz.questions.map((q, i) => (
               <span key={q.id}> · <code className="bg-slate-100 px-1 rounded">{`{resposta_${i + 1}}`}</code> = "{q.question || `pergunta ${i + 1}`}"</span>
@@ -351,9 +353,94 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
             {quiz.questions.length === 0 && ' — adicione perguntas abaixo pra ver os placeholders de resposta disponíveis.'}
           </p>
         </div>
+
+        <div>
+          <div className="flex items-center justify-between">
+            <label className="text-sm text-slate-500">Mensagens condicionais por resposta (opcional)</label>
+            <button
+              onClick={() => onChange(prev => {
+                const next = structuredClone(prev)
+                next.welcomeMessageVariants = [...(next.welcomeMessageVariants || []), { questionIndex: 1, optionLabel: '', template: '' }]
+                return next
+              })}
+              className="flex items-center gap-1 text-sm text-violet-600 hover:text-violet-700 font-medium"
+            >
+              <Plus className="w-3.5 h-3.5" /> Nova regra
+            </button>
+          </div>
+          <p className="text-sm text-slate-400 mt-0.5 mb-2">Personaliza a mensagem de acordo com a resposta dada numa pergunta específica. A primeira regra que bater é usada; se nenhuma bater, usa a mensagem padrão acima.</p>
+
+          {(quiz.welcomeMessageVariants || []).map((variant, vi) => {
+            const q = quiz.questions[variant.questionIndex - 1]
+            return (
+              <div key={vi} className="border border-slate-200 rounded-lg p-3 mb-2 bg-slate-50/50">
+                <div className="grid grid-cols-2 gap-2 mb-2">
+                  <div>
+                    <label className="text-sm text-slate-500">Pergunta</label>
+                    <select
+                      value={variant.questionIndex}
+                      onChange={e => onChange(prev => {
+                        const next = structuredClone(prev)
+                        next.welcomeMessageVariants[vi].questionIndex = parseInt(e.target.value, 10)
+                        next.welcomeMessageVariants[vi].optionLabel = ''
+                        return next
+                      })}
+                      className="w-full mt-1 text-base border border-slate-200 rounded-lg px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition bg-white"
+                    >
+                      {quiz.questions.map((qq, i) => (
+                        <option key={qq.id} value={i + 1}>{`Pergunta ${i + 1}: ${qq.question || '(sem texto)'}`}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-sm text-slate-500">Resposta</label>
+                    <select
+                      value={variant.optionLabel}
+                      onChange={e => onChange(prev => {
+                        const next = structuredClone(prev)
+                        next.welcomeMessageVariants[vi].optionLabel = e.target.value
+                        return next
+                      })}
+                      className="w-full mt-1 text-base border border-slate-200 rounded-lg px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition bg-white"
+                    >
+                      <option value="">Selecione...</option>
+                      {(q?.options || []).map(o => (
+                        <option key={o.id} value={o.label}>{o.label || '(sem texto)'}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div className="flex items-start gap-2">
+                  <textarea
+                    value={variant.template}
+                    onChange={e => onChange(prev => {
+                      const next = structuredClone(prev)
+                      next.welcomeMessageVariants[vi].template = e.target.value
+                      return next
+                    })}
+                    rows={3}
+                    placeholder="Mensagem específica pra quem respondeu essa opção..."
+                    className="flex-1 text-base border border-slate-200 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-violet-400 transition bg-white"
+                  />
+                  <button
+                    onClick={() => onChange(prev => {
+                      const next = structuredClone(prev)
+                      next.welcomeMessageVariants = next.welcomeMessageVariants.filter((_, i) => i !== vi)
+                      return next
+                    })}
+                    className="shrink-0 text-slate-400 hover:text-red-500 transition p-1.5"
+                    title="Remover regra"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
         {publicUrl && (
           <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
-            <p className="text-xs text-slate-400 flex-1 truncate">{publicUrl}</p>
+            <p className="text-sm text-slate-400 flex-1 truncate">{publicUrl}</p>
             <button
               onClick={() => navigator.clipboard.writeText(publicUrl)}
               className="shrink-0 text-slate-400 hover:text-violet-600 transition"
@@ -368,17 +455,17 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
       {/* Etapa 1: Apresentação */}
       <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
         <div className="flex items-center gap-2">
-          <span className="w-5 h-5 rounded-full bg-violet-100 text-violet-600 text-[11px] font-semibold flex items-center justify-center shrink-0">1</span>
-          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Apresentação</p>
+          <span className="w-5 h-5 rounded-full bg-violet-100 text-violet-600 text-sm font-semibold flex items-center justify-center shrink-0">1</span>
+          <p className="text-sm font-semibold text-slate-500 uppercase tracking-wide">Apresentação</p>
         </div>
         <div className="pl-7 space-y-3">
           <div>
-            <label className="text-xs text-slate-500 flex items-center gap-1"><ImageIcon className="w-3 h-3" /> Foto do expert</label>
+            <label className="text-sm text-slate-500 flex items-center gap-1"><ImageIcon className="w-3 h-3" /> Foto do expert</label>
             <div className="mt-1 flex items-center gap-3">
               {quiz.presentation.photoUrl && (
                 <img src={quiz.presentation.photoUrl} alt="" className="w-14 h-14 rounded-lg object-cover border border-slate-200 shrink-0" />
               )}
-              <label className="flex-1 flex items-center justify-center gap-1.5 text-xs font-medium text-slate-500 hover:text-violet-600 border border-dashed border-slate-300 hover:border-violet-300 rounded-lg px-3 py-3 cursor-pointer transition">
+              <label className="flex-1 flex items-center justify-center gap-1.5 text-sm font-medium text-slate-500 hover:text-violet-600 border border-dashed border-slate-300 hover:border-violet-300 rounded-lg px-3 py-3 cursor-pointer transition">
                 {uploadingPhoto ? (
                   <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Enviando...</>
                 ) : (
@@ -414,8 +501,8 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
           {quiz.presentation.photoUrl && (
             <div>
               <div className="flex items-center justify-between">
-                <label className="text-xs text-slate-500">Altura da foto</label>
-                <span className="text-xs text-slate-400 font-mono">{quiz.presentation.photoMaxHeight || 340}px</span>
+                <label className="text-sm text-slate-500">Altura da foto</label>
+                <span className="text-sm text-slate-400 font-mono">{quiz.presentation.photoMaxHeight || 340}px</span>
               </div>
               <input
                 type="range"
@@ -429,59 +516,59 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
           )}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs text-slate-500">Badge — título</label>
+              <label className="text-sm text-slate-500">Badge — título</label>
               <input
                 value={quiz.presentation.badgeTitle}
                 onChange={e => set('presentation.badgeTitle', e.target.value)}
-                className="w-full mt-1 text-sm border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
+                className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
               />
             </div>
             <div>
-              <label className="text-xs text-slate-500">Badge — subtítulo</label>
+              <label className="text-sm text-slate-500">Badge — subtítulo</label>
               <input
                 value={quiz.presentation.badgeSubtitle}
                 onChange={e => set('presentation.badgeSubtitle', e.target.value)}
                 placeholder="2ª Edição"
-                className="w-full mt-1 text-sm border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
+                className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
               />
             </div>
           </div>
           <div>
-            <label className="text-xs text-slate-500">Badge — data/horário</label>
+            <label className="text-sm text-slate-500">Badge — data/horário</label>
             <input
               value={quiz.presentation.badgeDateLine}
               onChange={e => set('presentation.badgeDateLine', e.target.value)}
               placeholder="22 e 23 de Agosto · Online e Gratuito · 9h às 17h"
-              className="w-full mt-1 text-sm border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
+              className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs text-slate-500">Título completo</label>
+              <label className="text-sm text-slate-500">Título completo</label>
               <input
                 value={quiz.presentation.title}
                 onChange={e => set('presentation.title', e.target.value)}
                 placeholder="Como vende cabelo todo dia"
-                className="w-full mt-1 text-sm border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
+                className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
               />
             </div>
             <div>
-              <label className="text-xs text-slate-500">Palavra/trecho pra destacar em azul</label>
+              <label className="text-sm text-slate-500">Palavra/trecho pra destacar em azul</label>
               <input
                 value={quiz.presentation.titleHighlight}
                 onChange={e => set('presentation.titleHighlight', e.target.value)}
                 placeholder="vende"
-                className="w-full mt-1 text-sm border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
+                className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
               />
               {quiz.presentation.titleHighlight && !quiz.presentation.title.includes(quiz.presentation.titleHighlight) && (
-                <p className="text-[11px] text-amber-600 mt-1">Esse trecho precisa aparecer dentro do título acima — hoje não aparece.</p>
+                <p className="text-sm text-amber-600 mt-1">Esse trecho precisa aparecer dentro do título acima — hoje não aparece.</p>
               )}
             </div>
           </div>
           <div>
             <div className="flex items-center justify-between">
-              <label className="text-xs text-slate-500">Tamanho da fonte do título</label>
-              <span className="text-xs text-slate-400 font-mono">{quiz.presentation.titleFontSize || 30}px</span>
+              <label className="text-sm text-slate-500">Tamanho da fonte do título</label>
+              <span className="text-sm text-slate-400 font-mono">{quiz.presentation.titleFontSize || 30}px</span>
             </div>
             <input
               type="range"
@@ -494,31 +581,31 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs text-slate-500">Caixa de subtítulo</label>
+              <label className="text-sm text-slate-500">Caixa de subtítulo</label>
               <input
                 value={quiz.presentation.subtitleBox}
                 onChange={e => set('presentation.subtitleBox', e.target.value)}
                 placeholder="Construa seu processo comercial em um fim de semana"
-                className="w-full mt-1 text-sm border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
+                className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
               />
             </div>
             <div>
-              <label className="text-xs text-slate-500">Palavra/trecho em negrito mais forte</label>
+              <label className="text-sm text-slate-500">Palavra/trecho em negrito mais forte</label>
               <input
                 value={quiz.presentation.subtitleBoxBold}
                 onChange={e => set('presentation.subtitleBoxBold', e.target.value)}
                 placeholder="fim de semana"
-                className="w-full mt-1 text-sm border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
+                className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
               />
               {quiz.presentation.subtitleBoxBold && !quiz.presentation.subtitleBox.includes(quiz.presentation.subtitleBoxBold) && (
-                <p className="text-[11px] text-amber-600 mt-1">Esse trecho precisa aparecer dentro da caixa de subtítulo — hoje não aparece.</p>
+                <p className="text-sm text-amber-600 mt-1">Esse trecho precisa aparecer dentro da caixa de subtítulo — hoje não aparece.</p>
               )}
             </div>
           </div>
           <div>
             <div className="flex items-center justify-between">
-              <label className="text-xs text-slate-500">Tamanho da fonte da caixa de subtítulo</label>
-              <span className="text-xs text-slate-400 font-mono">{quiz.presentation.subtitleBoxFontSize || 14}px</span>
+              <label className="text-sm text-slate-500">Tamanho da fonte da caixa de subtítulo</label>
+              <span className="text-sm text-slate-400 font-mono">{quiz.presentation.subtitleBoxFontSize || 14}px</span>
             </div>
             <input
               type="range"
@@ -530,30 +617,30 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
             />
           </div>
           <div>
-            <label className="text-xs text-slate-500">Texto de apoio</label>
+            <label className="text-sm text-slate-500">Texto de apoio</label>
             <textarea
               value={quiz.presentation.bodyText}
               onChange={e => set('presentation.bodyText', e.target.value)}
               rows={3}
-              className="w-full mt-1 text-sm border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition resize-none"
+              className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition resize-none"
             />
           </div>
           <div>
-            <label className="text-xs text-slate-500">Palavra/trecho em negrito mais forte (texto de apoio)</label>
+            <label className="text-sm text-slate-500">Palavra/trecho em negrito mais forte (texto de apoio)</label>
             <input
               value={quiz.presentation.bodyTextBold}
               onChange={e => set('presentation.bodyTextBold', e.target.value)}
               placeholder="fim de semana"
-              className="w-full mt-1 text-sm border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
+              className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
             />
             {quiz.presentation.bodyTextBold && !quiz.presentation.bodyText.includes(quiz.presentation.bodyTextBold) && (
-              <p className="text-[11px] text-amber-600 mt-1">Esse trecho precisa aparecer dentro do texto de apoio — hoje não aparece.</p>
+              <p className="text-sm text-amber-600 mt-1">Esse trecho precisa aparecer dentro do texto de apoio — hoje não aparece.</p>
             )}
           </div>
           <div>
             <div className="flex items-center justify-between">
-              <label className="text-xs text-slate-500">Tamanho da fonte do texto de apoio</label>
-              <span className="text-xs text-slate-400 font-mono">{quiz.presentation.bodyTextFontSize || 14}px</span>
+              <label className="text-sm text-slate-500">Tamanho da fonte do texto de apoio</label>
+              <span className="text-sm text-slate-400 font-mono">{quiz.presentation.bodyTextFontSize || 14}px</span>
             </div>
             <input
               type="range"
@@ -566,22 +653,22 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs text-slate-500">Texto do botão</label>
+              <label className="text-sm text-slate-500">Texto do botão</label>
               <input
                 value={quiz.presentation.buttonLabel}
                 onChange={e => set('presentation.buttonLabel', e.target.value)}
-                className="w-full mt-1 text-sm border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
+                className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
               />
             </div>
             <div>
-              <label className="text-xs text-slate-500">Auto-redirect pro grupo se não clicar (segundos)</label>
+              <label className="text-sm text-slate-500">Auto-redirect pro grupo se não clicar (segundos)</label>
               <input
                 type="number"
                 min={0}
                 value={quiz.presentation.autoRedirectSeconds ?? ''}
                 onChange={e => set('presentation.autoRedirectSeconds', e.target.value === '' ? null : Number(e.target.value))}
                 placeholder="vazio = desativado"
-                className="w-full mt-1 text-sm border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
+                className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
               />
             </div>
           </div>
@@ -592,22 +679,22 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
       <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="w-5 h-5 rounded-full bg-violet-100 text-violet-600 text-[11px] font-semibold flex items-center justify-center shrink-0">2</span>
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+            <span className="w-5 h-5 rounded-full bg-violet-100 text-violet-600 text-sm font-semibold flex items-center justify-center shrink-0">2</span>
+            <p className="text-sm font-semibold text-slate-500 uppercase tracking-wide">
               Perguntas do quiz ({quiz.questions.length}/{MAX_QUESTIONS})
             </p>
           </div>
           <button
             onClick={addQuestion}
             disabled={quiz.questions.length >= MAX_QUESTIONS}
-            className="flex items-center gap-1.5 text-xs font-medium text-violet-600 hover:text-violet-700 disabled:opacity-30 disabled:cursor-not-allowed transition"
+            className="flex items-center gap-1.5 text-sm font-medium text-violet-600 hover:text-violet-700 disabled:opacity-30 disabled:cursor-not-allowed transition"
           >
             <Plus className="w-3.5 h-3.5" /> Adicionar pergunta
           </button>
         </div>
 
         {quiz.questions.length === 0 && (
-          <div className="pl-7 text-center py-8 border border-dashed border-slate-200 rounded-xl text-slate-400 text-sm">
+          <div className="pl-7 text-center py-8 border border-dashed border-slate-200 rounded-xl text-slate-400 text-base">
             Nenhuma pergunta ainda. Adicione até {MAX_QUESTIONS}.
           </div>
         )}
@@ -616,12 +703,12 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
           {quiz.questions.map((q, qi) => (
             <div key={q.id} className={`rounded-xl border p-3 space-y-2 ${q.isMqlQuestion ? 'border-amber-300 bg-amber-50/40' : 'border-slate-200 bg-white'}`}>
               <div className="flex items-center gap-2">
-                <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-500 text-[11px] font-semibold flex items-center justify-center shrink-0">{qi + 1}</span>
+                <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-500 text-sm font-semibold flex items-center justify-center shrink-0">{qi + 1}</span>
                 <input
                   value={q.question}
                   onChange={e => updateQuestion(q.id, 'question', e.target.value)}
                   placeholder="Digite a pergunta..."
-                  className="flex-1 text-sm border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
+                  className="flex-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
                 />
                 <button onClick={() => moveQuestion(q.id, -1)} disabled={qi === 0} className="p-1 text-slate-400 hover:text-slate-600 disabled:opacity-30 transition">
                   <ChevronUp className="w-4 h-4" />
@@ -642,14 +729,14 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
                     onChange={e => updateQuestion(q.id, 'isMqlQuestion', e.target.checked)}
                     className="accent-amber-500 w-3.5 h-3.5"
                   />
-                  <span className="text-xs font-medium text-amber-700 flex items-center gap-1"><Zap className="w-3 h-3" /> Pergunta matadora (MQL)</span>
+                  <span className="text-sm font-medium text-amber-700 flex items-center gap-1"><Zap className="w-3 h-3" /> Pergunta matadora (MQL)</span>
                 </label>
                 {q.isMqlQuestion && (
                   <input
                     value={q.mqlEventName}
                     onChange={e => updateQuestion(q.id, 'mqlEventName', e.target.value)}
                     placeholder="Nome do evento — ex: MQL-workshop-1"
-                    className="flex-1 text-xs border border-amber-200 bg-white rounded-lg px-2.5 py-1 outline-none focus:ring-2 focus:ring-amber-400 transition font-mono"
+                    className="flex-1 text-sm border border-amber-200 bg-white rounded-lg px-2.5 py-1 outline-none focus:ring-2 focus:ring-amber-400 transition font-mono"
                   />
                 )}
               </div>
@@ -661,7 +748,7 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
                       value={opt.label}
                       onChange={e => updateOption(q.id, opt.id, 'label', e.target.value)}
                       placeholder={`Opção ${oi + 1}`}
-                      className="flex-1 text-sm border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
+                      className="flex-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
                     />
                     {q.isMqlQuestion && (
                       <label className="flex items-center gap-1 shrink-0 cursor-pointer select-none bg-amber-50 border border-amber-200 rounded-lg px-2 py-1">
@@ -671,7 +758,7 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
                           onChange={e => updateOption(q.id, opt.id, 'isMqlAnswer', e.target.checked)}
                           className="accent-amber-500 w-3.5 h-3.5"
                         />
-                        <span className="text-[11px] text-amber-700 font-medium">MQL?</span>
+                        <span className="text-sm text-amber-700 font-medium">MQL?</span>
                       </label>
                     )}
                     <button
@@ -683,7 +770,7 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
                     </button>
                   </div>
                 ))}
-                <button onClick={() => addOption(q.id)} className="flex items-center gap-1 text-xs text-slate-400 hover:text-violet-600 transition mt-1">
+                <button onClick={() => addOption(q.id)} className="flex items-center gap-1 text-sm text-slate-400 hover:text-violet-600 transition mt-1">
                   <Plus className="w-3.5 h-3.5" /> Adicionar opção
                 </button>
               </div>
@@ -695,59 +782,59 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
       {/* Etapa 3: Final */}
       <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
         <div className="flex items-center gap-2">
-          <span className="w-5 h-5 rounded-full bg-violet-100 text-violet-600 text-[11px] font-semibold flex items-center justify-center shrink-0">3</span>
-          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Tela final</p>
+          <span className="w-5 h-5 rounded-full bg-violet-100 text-violet-600 text-sm font-semibold flex items-center justify-center shrink-0">3</span>
+          <p className="text-sm font-semibold text-slate-500 uppercase tracking-wide">Tela final</p>
         </div>
         <div className="pl-7 space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs text-slate-500">Título completo</label>
+              <label className="text-sm text-slate-500">Título completo</label>
               <input
                 value={quiz.finalStep.title}
                 onChange={e => set('finalStep.title', e.target.value)}
                 placeholder="Sua vaga está quase garantida!"
-                className="w-full mt-1 text-sm border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
+                className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
               />
             </div>
             <div>
-              <label className="text-xs text-slate-500">Palavra/trecho pra destacar em azul</label>
+              <label className="text-sm text-slate-500">Palavra/trecho pra destacar em azul</label>
               <input
                 value={quiz.finalStep.titleHighlight}
                 onChange={e => set('finalStep.titleHighlight', e.target.value)}
                 placeholder="quase garantida!"
-                className="w-full mt-1 text-sm border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
+                className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
               />
               {quiz.finalStep.titleHighlight && !quiz.finalStep.title.includes(quiz.finalStep.titleHighlight) && (
-                <p className="text-[11px] text-amber-600 mt-1">Esse trecho precisa aparecer dentro do título acima — hoje não aparece.</p>
+                <p className="text-sm text-amber-600 mt-1">Esse trecho precisa aparecer dentro do título acima — hoje não aparece.</p>
               )}
             </div>
           </div>
           <div>
-            <label className="text-xs text-slate-500">Texto de apoio</label>
+            <label className="text-sm text-slate-500">Texto de apoio</label>
             <textarea
               value={quiz.finalStep.bodyText}
               onChange={e => set('finalStep.bodyText', e.target.value)}
               rows={2}
-              className="w-full mt-1 text-sm border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition resize-none"
+              className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition resize-none"
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs text-slate-500">Texto do botão</label>
+              <label className="text-sm text-slate-500">Texto do botão</label>
               <input
                 value={quiz.finalStep.buttonLabel}
                 onChange={e => set('finalStep.buttonLabel', e.target.value)}
-                className="w-full mt-1 text-sm border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
+                className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
               />
             </div>
             <div>
-              <label className="text-xs text-slate-500">Animação da barra + auto-redirect (segundos)</label>
+              <label className="text-sm text-slate-500">Animação da barra + auto-redirect (segundos)</label>
               <input
                 type="number"
                 min={1}
                 value={quiz.finalStep.autoRedirectSeconds ?? 4}
                 onChange={e => set('finalStep.autoRedirectSeconds', Number(e.target.value) || 1)}
-                className="w-full mt-1 text-sm border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
+                className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
               />
             </div>
           </div>
@@ -756,14 +843,14 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
 
       <div className="flex justify-end gap-2 sticky bottom-0 bg-gradient-to-t from-slate-50 pt-4 pb-2">
         {publicUrl && (
-          <a href={publicUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700 border border-slate-200 px-4 py-2 rounded-lg transition bg-white">
+          <a href={publicUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-base text-slate-500 hover:text-slate-700 border border-slate-200 px-4 py-2 rounded-lg transition bg-white">
             <ExternalLink className="w-4 h-4" /> Abrir publicado
           </a>
         )}
         <button
           onClick={onSave}
           disabled={saving || !quiz.name || !quiz.slug}
-          className="flex items-center gap-1.5 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition"
+          className="flex items-center gap-1.5 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white text-base font-medium px-4 py-2 rounded-lg transition"
         >
           {saving ? <><Loader2 className="w-4 h-4 animate-spin" /> Salvando...</> : <><Save className="w-4 h-4" /> Salvar</>}
         </button>
@@ -862,9 +949,9 @@ export default function Quizzes() {
     return (
       <div className="p-6">
         <div className="mb-6">
-          <button onClick={() => setView('list')} className="text-xs text-slate-400 hover:text-slate-600 transition mb-1">← Voltar</button>
-          <h2 className="text-lg font-semibold text-slate-800">{current.id ? 'Editar Quiz' : 'Novo Quiz'}</h2>
-          <p className="text-sm text-slate-400 mt-0.5">Apresentação → até {MAX_QUESTIONS} perguntas → grupo do WhatsApp</p>
+          <button onClick={() => setView('list')} className="text-sm text-slate-400 hover:text-slate-600 transition mb-1">← Voltar</button>
+          <h2 className="text-xl font-semibold text-slate-800">{current.id ? 'Editar Quiz' : 'Novo Quiz'}</h2>
+          <p className="text-base text-slate-400 mt-0.5">Apresentação → até {MAX_QUESTIONS} perguntas → grupo do WhatsApp</p>
         </div>
         <div className="flex gap-6 items-start">
           <div className="flex-1 min-w-0">
@@ -882,12 +969,12 @@ export default function Quizzes() {
     <div className="p-6 max-w-3xl">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h2 className="text-lg font-semibold text-slate-800">Quiz Builder</h2>
-          <p className="text-sm text-slate-400 mt-0.5">Páginas de captação com quiz, tracking de UTM e eventos MQL pro Meta</p>
+          <h2 className="text-xl font-semibold text-slate-800">Quiz Builder</h2>
+          <p className="text-base text-slate-400 mt-0.5">Páginas de captação com quiz, tracking de UTM e eventos MQL pro Meta</p>
         </div>
         <button
           onClick={openNew}
-          className="flex items-center gap-1.5 bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition"
+          className="flex items-center gap-1.5 bg-violet-600 hover:bg-violet-700 text-white text-base font-medium px-4 py-2 rounded-lg transition"
         >
           <Plus className="w-4 h-4" /> Novo Quiz
         </button>
@@ -900,7 +987,7 @@ export default function Quizzes() {
       )}
 
       {!loading && quizzes.length === 0 && (
-        <div className="text-center py-16 border border-dashed border-slate-200 rounded-xl text-slate-400 text-sm">
+        <div className="text-center py-16 border border-dashed border-slate-200 rounded-xl text-slate-400 text-base">
           Nenhum quiz criado ainda.
         </div>
       )}
@@ -914,24 +1001,24 @@ export default function Quizzes() {
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1">
-                  <p className="font-medium text-slate-800 text-sm">{quiz.name}</p>
-                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${quiz.active ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}>
+                  <p className="font-medium text-slate-800 text-base">{quiz.name}</p>
+                  <span className={`text-sm font-medium px-2 py-0.5 rounded-full ${quiz.active ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}>
                     {quiz.active ? 'ativo' : 'inativo'}
                   </span>
                 </div>
                 <div className="flex flex-wrap gap-1.5 mb-3">
-                  <span className="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded">
+                  <span className="text-sm bg-slate-100 text-slate-500 px-2 py-0.5 rounded">
                     {quiz.questions?.length || 0} pergunta{quiz.questions?.length !== 1 ? 's' : ''}
                   </span>
                   {quiz.questions?.filter(q => q.isMqlQuestion).map(q => (
-                    <span key={q.id} className="text-xs bg-amber-50 text-amber-700 px-2 py-0.5 rounded flex items-center gap-1">
+                    <span key={q.id} className="text-sm bg-amber-50 text-amber-700 px-2 py-0.5 rounded flex items-center gap-1">
                       <Zap className="w-3 h-3" /> {q.mqlEventName || 'sem nome de evento'}
                     </span>
                   ))}
                 </div>
                 <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
-                  <p className="text-xs text-slate-400 flex-1 truncate">{QUIZ_PUBLIC_BASE}/{quiz.slug}</p>
-                  <button onClick={() => copyLink(quiz.slug, quiz.id)} className="shrink-0 flex items-center gap-1 text-xs font-medium text-violet-600 hover:text-violet-700 transition">
+                  <p className="text-sm text-slate-400 flex-1 truncate">{QUIZ_PUBLIC_BASE}/{quiz.slug}</p>
+                  <button onClick={() => copyLink(quiz.slug, quiz.id)} className="shrink-0 flex items-center gap-1 text-sm font-medium text-violet-600 hover:text-violet-700 transition">
                     {copiedId === quiz.id ? <><CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> Copiado</> : <><Copy className="w-3.5 h-3.5" /> Copiar</>}
                   </button>
                   <a href={`${QUIZ_PUBLIC_BASE}/${quiz.slug}`} target="_blank" rel="noopener noreferrer" className="shrink-0 text-slate-400 hover:text-slate-600 transition">
@@ -940,13 +1027,13 @@ export default function Quizzes() {
                 </div>
               </div>
               <div className="flex flex-col gap-2 shrink-0">
-                <button onClick={() => openEdit(quiz)} className="flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-violet-600 border border-slate-200 hover:border-violet-300 px-3 py-2 rounded-lg transition">
+                <button onClick={() => openEdit(quiz)} className="flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-violet-600 border border-slate-200 hover:border-violet-300 px-3 py-2 rounded-lg transition">
                   Editar
                 </button>
-                <button onClick={() => openSubmissions(quiz)} className="flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-violet-600 border border-slate-200 hover:border-violet-300 px-3 py-2 rounded-lg transition">
+                <button onClick={() => openSubmissions(quiz)} className="flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-violet-600 border border-slate-200 hover:border-violet-300 px-3 py-2 rounded-lg transition">
                   Respostas
                 </button>
-                <button onClick={() => handleDelete(quiz.id)} className="flex items-center gap-1.5 text-xs font-medium text-slate-400 hover:text-red-500 border border-slate-200 hover:border-red-200 px-3 py-2 rounded-lg transition">
+                <button onClick={() => handleDelete(quiz.id)} className="flex items-center gap-1.5 text-sm font-medium text-slate-400 hover:text-red-500 border border-slate-200 hover:border-red-200 px-3 py-2 rounded-lg transition">
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
               </div>

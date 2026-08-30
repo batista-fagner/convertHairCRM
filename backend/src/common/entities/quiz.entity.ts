@@ -108,8 +108,20 @@ export class Quiz {
   // placeholders {nome} e {resposta_1}..{resposta_6} (respostas do quiz, na
   // ordem em que a pessoa respondeu — ver Lead.quizResponses). Null/vazio =
   // nenhuma mensagem individual é enviada (comportamento atual).
+  //
+  // Serve de mensagem PADRÃO — usada quando nenhuma regra de
+  // welcomeMessageVariants bate com a resposta do lead.
   @Column({ name: 'welcome_message_template', type: 'text', nullable: true })
   welcomeMessageTemplate?: string | null;
+
+  // Mensagens condicionais por resposta — permite personalizar a mensagem de
+  // boas-vindas de acordo com o que o lead respondeu numa pergunta específica
+  // (ex: quem respondeu "Acima de 50" na pergunta de volume de mensagens/dia
+  // recebe uma mensagem diferente de quem respondeu "5 - 10"). Avaliadas na
+  // ordem da lista — a primeira regra cujo questionIndex/optionLabel bate com
+  // lead.quizResponses vence; nenhuma bate → cai no welcomeMessageTemplate.
+  @Column({ name: 'welcome_message_variants', type: 'jsonb', nullable: true })
+  welcomeMessageVariants?: { questionIndex: number; optionLabel: string; template: string }[] | null;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

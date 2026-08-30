@@ -218,10 +218,17 @@ export class GroupJoinService implements OnModuleInit {
    */
   private async sendQuizWelcomeMessage(lead: Lead, phone: string, leadName: string, quizSlug?: string | null) {
     if (!quizSlug) return;
+    const responses = lead.quizResponses || [];
     let template: string | null | undefined;
     try {
       const quiz = await this.quizService.findBySlug(quizSlug);
-      template = quiz.welcomeMessageTemplate;
+      // Regras condicionais primeiro (ex: quem respondeu "Acima de 50" numa
+      // pergunta específica recebe mensagem própria) — primeira que bater
+      // vence. Nenhuma bate → cai na mensagem padrão do quiz.
+      const variant = (quiz.welcomeMessageVariants || []).find(
+        (v) => responses[v.questionIndex - 1]?.answer === v.optionLabel,
+      );
+      template = variant?.template ?? quiz.welcomeMessageTemplate;
     } catch (err: any) {
       this.logger.warn(`Não foi possível carregar quiz "${quizSlug}" pra montar mensagem de boas-vindas: ${err.message}`);
       return;
@@ -229,7 +236,6 @@ export class GroupJoinService implements OnModuleInit {
     if (!template?.trim()) return;
 
     const firstName = leadName.split(' ')[0];
-    const responses = lead.quizResponses || [];
     const message = template
       .replace(/\{nome\}/gi, firstName)
       .replace(/\{resposta_(\d+)\}/gi, (_match, idx) => responses[parseInt(idx, 10) - 1]?.answer ?? '');

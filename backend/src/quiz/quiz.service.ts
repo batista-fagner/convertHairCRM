@@ -123,6 +123,7 @@ export class QuizService {
       fbPixelId: dto.fbPixelId || null,
       fbAccessToken: dto.fbAccessToken || null,
       welcomeMessageTemplate: dto.welcomeMessageTemplate || null,
+      welcomeMessageVariants: dto.welcomeMessageVariants || null,
       presentation: dto.presentation || {},
       questions: dto.questions || [],
       finalStep: dto.finalStep || {},
