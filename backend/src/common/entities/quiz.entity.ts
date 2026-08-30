@@ -102,6 +102,15 @@ export class Quiz {
   @Column({ name: 'final_step', type: 'jsonb' })
   finalStep: QuizFinalStep;
 
+  // Mensagem individual (privada) enviada ao lead quando ele entra no grupo do
+  // WhatsApp vindo deste quiz — em vez da abertura padrão do Efraim/Sofia, que
+  // é pulada pra leads de quiz (ver GroupJoinService, cameFromQuiz). Suporta
+  // placeholders {nome} e {resposta_1}..{resposta_6} (respostas do quiz, na
+  // ordem em que a pessoa respondeu — ver Lead.quizResponses). Null/vazio =
+  // nenhuma mensagem individual é enviada (comportamento atual).
+  @Column({ name: 'welcome_message_template', type: 'text', nullable: true })
+  welcomeMessageTemplate?: string | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

@@ -55,6 +55,12 @@ export class FollowupRule {
   @Column({ name: 'exclude_tag', type: 'varchar', nullable: true })
   excludeTag?: string | null;
 
+  // Inclui SÓ leads que JÁ têm essa tag em lead.tags. Nulo = sem filtro (todos).
+  // Uso típico: "entrou_no_grupo" — disparo em massa pra quem entrou no grupo,
+  // mesmo quem já saiu depois (a tag é permanente, sair só marca groupLeftAt).
+  @Column({ name: 'include_tag', type: 'varchar', nullable: true })
+  includeTag?: string | null;
+
   @Column({ name: 'delay_minutes', type: 'int', default: 60 })
   delayMinutes: number;
 

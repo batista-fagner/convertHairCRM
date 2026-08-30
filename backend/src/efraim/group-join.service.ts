@@ -6,7 +6,8 @@ import { LeadsService } from '../leads/leads.service';
 import { MessagingService } from '../messaging/messaging.service';
 import { FacebookService } from '../facebook/facebook.service';
 import { TrackingService } from '../tracking/tracking.service';
-import { WaStage } from '../common/entities/lead.entity';
+import { QuizService } from '../quiz/quiz.service';
+import { Lead, WaStage } from '../common/entities/lead.entity';
 
 /**
  * Escuta o SSE do uazapi (events=groups) e detecta quando uma pessoa entra
@@ -38,6 +39,7 @@ export class GroupJoinService implements OnModuleInit {
     private readonly messagingService: MessagingService,
     private readonly facebookService: FacebookService,
     private readonly trackingService: TrackingService,
+    private readonly quizService: QuizService,
   ) {
     this.uazapiBaseUrl = config.get('UAZAPI_BASE_URL') || 'https://free.uazapi.com';
     this.uazapiToken = config.get('UAZAPI_TOKEN') || '';
@@ -187,6 +189,7 @@ export class GroupJoinService implements OnModuleInit {
     );
 
     if (cameFromQuiz) {
+      await this.sendQuizWelcomeMessage(lead, phone, leadName, utm?.quizSlug);
       this.logger.log(`Lead via quiz "${utm?.quizSlug}" registrado sem abertura automática: ${lead.id} (${phone}) nome=${leadName}`);
       return;
     }
@@ -205,6 +208,37 @@ export class GroupJoinService implements OnModuleInit {
     });
 
     this.logger.log(`Novo lead via grupo: ${lead.id} (${phone}) nome=${leadName} hasName=${hasName}`);
+  }
+
+  /**
+   * Mensagem individual pro lead que veio de um quiz — configurada por quiz
+   * (Quiz.welcomeMessageTemplate), com placeholders {nome} e {resposta_1}..
+   * {resposta_6} substituídos pelas respostas reais dadas no quiz (na ordem
+   * respondida — lead.quizResponses). Sem template configurado, não envia nada.
+   */
+  private async sendQuizWelcomeMessage(lead: Lead, phone: string, leadName: string, quizSlug?: string | null) {
+    if (!quizSlug) return;
+    let template: string | null | undefined;
+    try {
+      const quiz = await this.quizService.findBySlug(quizSlug);
+      template = quiz.welcomeMessageTemplate;
+    } catch (err: any) {
+      this.logger.warn(`Não foi possível carregar quiz "${quizSlug}" pra montar mensagem de boas-vindas: ${err.message}`);
+      return;
+    }
+    if (!template?.trim()) return;
+
+    const firstName = leadName.split(' ')[0];
+    const responses = lead.quizResponses || [];
+    const message = template
+      .replace(/\{nome\}/gi, firstName)
+      .replace(/\{resposta_(\d+)\}/gi, (_match, idx) => responses[parseInt(idx, 10) - 1]?.answer ?? '');
+
+    await this.messagingService.sendRawMessage(phone, message);
+    await this.leadsService.update(lead.id, {
+      aiContext: [{ role: 'assistant', content: message }],
+      waLastMessageAt: new Date(),
+    });
   }
 
   /** Busca o nome do contato no WhatsApp via uazapi /contacts/info */

@@ -122,6 +122,7 @@ export class QuizService {
       whatsappUrl: dto.whatsappUrl || null,
       fbPixelId: dto.fbPixelId || null,
       fbAccessToken: dto.fbAccessToken || null,
+      welcomeMessageTemplate: dto.welcomeMessageTemplate || null,
       presentation: dto.presentation || {},
       questions: dto.questions || [],
       finalStep: dto.finalStep || {},

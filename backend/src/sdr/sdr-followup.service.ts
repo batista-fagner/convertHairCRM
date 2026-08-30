@@ -102,10 +102,12 @@ export class SdrFollowupService {
       const adTitleOk = rule.adTitle == null || rule.adTitle === lead.ctwaAdTitle;
       const createdAfterOk = rule.createdAfter == null || new Date(lead.createdAt).getTime() >= new Date(rule.createdAfter).getTime();
       const excludeTagOk = rule.excludeTag == null || !(lead.tags || []).includes(rule.excludeTag);
-      if (!stageOk || !campaignOk || !adTitleOk || !createdAfterOk || !excludeTagOk) continue;
+      const includeTagOk = rule.includeTag == null || (lead.tags || []).includes(rule.includeTag);
+      if (!stageOk || !campaignOk || !adTitleOk || !createdAfterOk || !excludeTagOk || !includeTagOk) continue;
 
       const score = (rule.kanbanStage != null ? 1 : 0) + (rule.utmCampaign != null ? 1 : 0)
-        + (rule.adTitle != null ? 1 : 0) + (rule.createdAfter != null ? 1 : 0) + (rule.excludeTag != null ? 1 : 0);
+        + (rule.adTitle != null ? 1 : 0) + (rule.createdAfter != null ? 1 : 0) + (rule.excludeTag != null ? 1 : 0)
+        + (rule.includeTag != null ? 1 : 0);
       if (
         score > bestScore ||
         (score === bestScore && best && (rule.priority < best.priority ||
@@ -405,6 +407,7 @@ export class SdrFollowupService {
     if (rule.adTitle) qb.andWhere('lead.ctwa_ad_title = :adTitle', { adTitle: rule.adTitle });
     if (rule.createdAfter) qb.andWhere('lead.created_at >= :createdAfter', { createdAfter: rule.createdAfter });
     if (rule.excludeTag) qb.andWhere("(lead.tags IS NULL OR NOT (lead.tags @> :excludeTag::jsonb))", { excludeTag: JSON.stringify([rule.excludeTag]) });
+    if (rule.includeTag) qb.andWhere('lead.tags @> :includeTag::jsonb', { includeTag: JSON.stringify([rule.includeTag]) });
 
     const leads = await qb.getMany();
     const videoLimit = await this.getVideoLimit();

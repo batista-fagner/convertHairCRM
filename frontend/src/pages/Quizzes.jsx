@@ -28,6 +28,7 @@ function emptyQuiz() {
     whatsappUrl: '',
     fbPixelId: '',
     fbAccessToken: '',
+    welcomeMessageTemplate: '',
     presentation: {
       badgeTitle: 'Oficina de Vendas',
       badgeSubtitle: '',
@@ -333,6 +334,23 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
             Esse quiz vai mandar os eventos (QuizCompleto, MQL-*) pro pixel/token acima, em vez do pixel padrão do CRM.
           </p>
         )}
+        <div>
+          <label className="text-xs text-slate-500">Mensagem de boas-vindas individual (WhatsApp, ao entrar no grupo)</label>
+          <textarea
+            value={quiz.welcomeMessageTemplate || ''}
+            onChange={e => set('welcomeMessageTemplate', e.target.value)}
+            rows={4}
+            placeholder="Vazio = nenhuma mensagem individual (a Sofia/Efraim também não conversa com esse lead)"
+            className="w-full mt-1 text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-violet-400 transition"
+          />
+          <p className="text-[11px] text-slate-400 mt-1">
+            Placeholders: <code className="bg-slate-100 px-1 rounded">{'{nome}'}</code>
+            {quiz.questions.map((q, i) => (
+              <span key={q.id}> · <code className="bg-slate-100 px-1 rounded">{`{resposta_${i + 1}}`}</code> = "{q.question || `pergunta ${i + 1}`}"</span>
+            ))}
+            {quiz.questions.length === 0 && ' — adicione perguntas abaixo pra ver os placeholders de resposta disponíveis.'}
+          </p>
+        </div>
         {publicUrl && (
           <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
             <p className="text-xs text-slate-400 flex-1 truncate">{publicUrl}</p>

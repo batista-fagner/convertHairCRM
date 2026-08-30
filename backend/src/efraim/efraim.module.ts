@@ -7,9 +7,10 @@ import { LeadsModule } from '../leads/leads.module';
 import { MessagingModule } from '../messaging/messaging.module';
 import { FacebookModule } from '../facebook/facebook.module';
 import { TrackingModule } from '../tracking/tracking.module';
+import { QuizModule } from '../quiz/quiz.module';
 
 @Module({
-  imports: [HttpModule, LeadsModule, MessagingModule, FacebookModule, TrackingModule],
+  imports: [HttpModule, LeadsModule, MessagingModule, FacebookModule, TrackingModule, QuizModule],
   controllers: [EfraimController],
   providers: [EfraimService, GroupJoinService],
 })

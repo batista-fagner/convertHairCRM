@@ -506,7 +506,7 @@ function IgCatchallEditor() {
   )
 }
 
-const EMPTY_RULE = { name: '', enabled: true, kanbanStage: '', utmCampaign: '', adTitle: '', createdAfter: '', excludeTag: 'entrou_no_grupo', delayMinutes: 60, cadenceSteps: null, sendAtHour: '', sendAtMinute: 0, mode: 'manual', text: '', promptOverride: '', ignoreAiPaused: false, videoId: '', videoCaptionOverride: '', buttonLabel: '', buttonUrl: '' }
+const EMPTY_RULE = { name: '', enabled: true, kanbanStage: '', utmCampaign: '', adTitle: '', createdAfter: '', excludeTag: 'entrou_no_grupo', includeTag: '', delayMinutes: 60, cadenceSteps: null, sendAtHour: '', sendAtMinute: 0, mode: 'manual', text: '', promptOverride: '', ignoreAiPaused: false, videoId: '', videoCaptionOverride: '', buttonLabel: '', buttonUrl: '' }
 
 // Cadência: cada toque guarda a espera em minutos, mas a tela edita em
 // dias/horas/minutos — estes helpers convertem nos dois sentidos.
@@ -578,6 +578,7 @@ function FollowupRuleForm({ initial, campaignOptions, adTitleOptions, tagOptions
         adTitle: rule.adTitle || null,
         createdAfter: rule.createdAfter ? new Date(rule.createdAfter).toISOString() : null,
         excludeTag: rule.excludeTag?.trim() || null,
+        includeTag: rule.includeTag?.trim() || null,
         delayMinutes: rule.delayMinutes,
         cadenceSteps: cadence,
         sendAtHour: rule.sendAtHour === '' ? null : parseInt(rule.sendAtHour, 10),
@@ -686,17 +687,31 @@ function FollowupRuleForm({ initial, campaignOptions, adTitleOptions, tagOptions
         </div>
       </div>
 
-      <div className="mb-4">
-        <label className="block text-xs font-medium text-slate-600 mb-1.5">Excluir quem já tem a tag</label>
-        <select
-          value={rule.excludeTag}
-          onChange={e => setRule(r => ({ ...r, excludeTag: e.target.value }))}
-          className="w-full text-sm border border-slate-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-violet-300 bg-white"
-        >
-          <option value="">Nenhuma (sem filtro por tag)</option>
-          {tagOptions.map(t => <option key={t} value={t}>{t}</option>)}
-        </select>
-        <p className="text-[10px] text-slate-400 mt-1">Lead com essa tag NÃO recebe esse disparo.</p>
+      <div className="grid grid-cols-2 gap-3 mb-4">
+        <div>
+          <label className="block text-xs font-medium text-slate-600 mb-1.5">Enviar só pra quem tem a tag</label>
+          <select
+            value={rule.includeTag}
+            onChange={e => setRule(r => ({ ...r, includeTag: e.target.value }))}
+            className="w-full text-sm border border-slate-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-violet-300 bg-white"
+          >
+            <option value="">Nenhuma (sem filtro por tag)</option>
+            {tagOptions.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+          <p className="text-[10px] text-slate-400 mt-1">Só lead com essa tag recebe. Ex: "entrou_no_grupo" pega quem entrou, mesmo quem já saiu depois.</p>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-slate-600 mb-1.5">Excluir quem já tem a tag</label>
+          <select
+            value={rule.excludeTag}
+            onChange={e => setRule(r => ({ ...r, excludeTag: e.target.value }))}
+            className="w-full text-sm border border-slate-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-violet-300 bg-white"
+          >
+            <option value="">Nenhuma (sem filtro por tag)</option>
+            {tagOptions.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+          <p className="text-[10px] text-slate-400 mt-1">Lead com essa tag NÃO recebe esse disparo.</p>
+        </div>
       </div>
 
       {/* Disparo único x cadência de vários dias */}
@@ -1196,6 +1211,7 @@ function FollowupRules() {
                 adTitle: rule.adTitle || '',
                 createdAfter: rule.createdAfter ? rule.createdAfter.slice(0, 16) : '',
                 excludeTag: rule.excludeTag || '',
+                includeTag: rule.includeTag || '',
                 cadenceSteps: Array.isArray(rule.cadenceSteps) && rule.cadenceSteps.length ? rule.cadenceSteps : null,
                 sendAtHour: rule.sendAtHour != null ? rule.sendAtHour : '',
                 sendAtMinute: rule.sendAtMinute ?? 0,
@@ -1238,6 +1254,11 @@ function FollowupRules() {
                   {rule.createdAfter && (
                     <span className="px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-700">
                       desde {new Date(rule.createdAfter).toLocaleDateString('pt-BR')}
+                    </span>
+                  )}
+                  {rule.includeTag && (
+                    <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-emerald-50 text-emerald-700">
+                      <Tag className="w-2.5 h-2.5" /> só "{rule.includeTag}"
                     </span>
                   )}
                   {rule.excludeTag && (

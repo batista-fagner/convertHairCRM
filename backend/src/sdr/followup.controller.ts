@@ -107,6 +107,7 @@ export class FollowupController {
       adTitle: body.adTitle || null,
       createdAfter: body.createdAfter ? new Date(body.createdAfter) : null,
       excludeTag: body.excludeTag || null,
+      includeTag: body.includeTag || null,
       delayMinutes: Math.max(1, body.delayMinutes || 60),
       cadenceSteps,
       sendAtHour: body.sendAtHour != null ? Math.min(23, Math.max(0, body.sendAtHour)) : null,
@@ -136,6 +137,7 @@ export class FollowupController {
     if (body.adTitle !== undefined) rule.adTitle = body.adTitle || null;
     if (body.createdAfter !== undefined) rule.createdAfter = body.createdAfter ? new Date(body.createdAfter) : null;
     if (body.excludeTag !== undefined) rule.excludeTag = body.excludeTag || null;
+    if (body.includeTag !== undefined) rule.includeTag = body.includeTag || null;
     if (body.delayMinutes !== undefined) rule.delayMinutes = Math.max(1, body.delayMinutes);
     if (body.cadenceSteps !== undefined) rule.cadenceSteps = this.sanitizeCadence(body.cadenceSteps);
     if (body.sendAtHour !== undefined) rule.sendAtHour = body.sendAtHour != null ? Math.min(23, Math.max(0, body.sendAtHour)) : null;
