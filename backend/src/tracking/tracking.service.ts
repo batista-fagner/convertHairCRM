@@ -21,7 +21,12 @@ export interface PendingUtm {
 }
 
 const QUEUE_KEY = 'converthair:tracking:utm-queue';
-const TTL_MS = 30 * 60 * 1000;
+// Reduzido de 30min pra 2min (2026-08-30) — janela menor diminui a chance de
+// uma entrada "sem dono" (quem terminou o quiz/LP mas nunca entrou no grupo)
+// ficar viva tempo suficiente pra ser roubada por outra pessoa que entra
+// depois dela (fila é FIFO por timestamp, não por identidade — ver conversa
+// no histórico do quiz sobre o limite físico dessa aproximação).
+const TTL_MS = 2 * 60 * 1000;
 
 /**
  * Fila FIFO de UTMs capturados no clique do botão da LP, agora em Redis (sorted
@@ -33,7 +38,7 @@ const TTL_MS = 30 * 60 * 1000;
  * sem criar um cron novo de limpeza).
  *
  * Quando um lead entra no grupo, GroupJoinService consome o UTM mais antigo
- * (primeiro a clicar = primeiro a entrar). Entradas expiram após 30 minutos.
+ * (primeiro a clicar = primeiro a entrar). Entradas expiram após 2 minutos.
  */
 @Injectable()
 export class TrackingService implements OnModuleDestroy {

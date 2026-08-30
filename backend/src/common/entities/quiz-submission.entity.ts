@@ -3,7 +3,7 @@ import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn } from 'typeor
 // Registro permanente de cada quiz respondido até o fim — gravado no momento
 // do submit (QuizService.submit), independente de a pessoa depois entrar ou
 // não no grupo do WhatsApp. Existe porque as respostas por si só só viravam
-// permanentes via a fila do TrackingService (Redis, TTL de 30min) quando a
+// permanentes via a fila do TrackingService (Redis, TTL de 2min) quando a
 // pessoa entrava no grupo — quem terminava o quiz mas nunca entrava perdia o
 // dado pra sempre. Guarda UTM/fbclid completos pra atribuição por
 // campanha/conjunto/anúncio, sem depender do lead ter telefone ainda.

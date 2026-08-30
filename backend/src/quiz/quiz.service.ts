@@ -228,7 +228,7 @@ export class QuizService {
       quizMqlEvents: Array.from(mqlEvents),
     });
 
-    // Registro permanente — ao contrário da fila acima (Redis, TTL 30min,
+    // Registro permanente — ao contrário da fila acima (Redis, TTL 2min,
     // só vira Lead se a pessoa entrar no grupo), isso fica pra sempre,
     // independente do que acontece depois. Guarda UTM/fbclid completos pra
     // atribuir por campanha/conjunto/anúncio no relatório.
