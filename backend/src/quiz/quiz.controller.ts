@@ -26,6 +26,11 @@ export class QuizController {
     return this.quizService.findById(id);
   }
 
+  @Get('id/:id/submissions')
+  listSubmissions(@Param('id') id: string) {
+    return this.quizService.listSubmissions(id);
+  }
+
   @Post()
   create(@Body() dto: Partial<Quiz>) {
     return this.quizService.create(dto);

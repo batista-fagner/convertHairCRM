@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, Fragment } from 'react'
 import {
   ListChecks, Plus, Trash2, ChevronUp, ChevronDown, Save, Eye,
   Copy, CheckCircle2, ExternalLink, Loader2, Image as ImageIcon, Zap, UploadCloud,
@@ -107,6 +107,96 @@ function QuizPreviewFrame({ quiz }) {
           className="w-full h-full border-0"
           title="Preview do quiz"
         />
+      </div>
+    </div>
+  )
+}
+
+function fmtDate(iso) {
+  if (!iso) return '—'
+  return new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
+// Modal com as respostas salvas permanentemente (quiz_submissions) — inclui
+// UTM completo pra saber de qual campanha/conjunto/anúncio cada resposta veio.
+// Diferente da fila do TrackingService (Redis, expira em 30min e só vira Lead
+// se a pessoa entrar no grupo), isso fica pra sempre desde o momento do submit.
+function SubmissionsModal({ quiz, submissions, loading, onClose }) {
+  const [expandedId, setExpandedId] = useState(null)
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div
+        className="bg-white rounded-xl w-full max-w-4xl max-h-[85vh] flex flex-col"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200">
+          <div>
+            <p className="font-semibold text-slate-800 text-sm">Respostas — {quiz.name}</p>
+            <p className="text-xs text-slate-400 mt-0.5">{submissions.length} pessoa{submissions.length !== 1 ? 's' : ''} completou o quiz</p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
+        </div>
+
+        <div className="overflow-y-auto flex-1">
+          {loading && (
+            <div className="flex items-center justify-center py-16 text-slate-400">
+              <Loader2 className="w-5 h-5 animate-spin" />
+            </div>
+          )}
+          {!loading && submissions.length === 0 && (
+            <div className="text-center py-16 text-slate-400 text-sm">Ninguém completou esse quiz ainda.</div>
+          )}
+          {!loading && submissions.length > 0 && (
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 sticky top-0">
+                <tr className="text-left text-xs text-slate-500 uppercase tracking-wide">
+                  <th className="px-4 py-2 font-medium">Data</th>
+                  <th className="px-4 py-2 font-medium">Campanha</th>
+                  <th className="px-4 py-2 font-medium">Conjunto/Anúncio</th>
+                  <th className="px-4 py-2 font-medium">Origem</th>
+                  <th className="px-4 py-2 font-medium">MQL</th>
+                </tr>
+              </thead>
+              <tbody>
+                {submissions.map(s => (
+                  <Fragment key={s.id}>
+                    <tr
+                      onClick={() => setExpandedId(expandedId === s.id ? null : s.id)}
+                      className="border-t border-slate-100 hover:bg-slate-50 cursor-pointer"
+                    >
+                      <td className="px-4 py-2.5 text-slate-600 whitespace-nowrap">{fmtDate(s.createdAt)}</td>
+                      <td className="px-4 py-2.5 text-slate-600">{s.utmCampaign || '—'}</td>
+                      <td className="px-4 py-2.5 text-slate-600">{s.utmContent || '—'}</td>
+                      <td className="px-4 py-2.5 text-slate-600">{[s.utmSource, s.utmMedium].filter(Boolean).join(' / ') || '—'}</td>
+                      <td className="px-4 py-2.5">
+                        {s.mqlEvents?.length > 0 ? (
+                          <span className="text-xs bg-amber-50 text-amber-700 px-2 py-0.5 rounded flex items-center gap-1 w-fit">
+                            <Zap className="w-3 h-3" /> {s.mqlEvents.join(', ')}
+                          </span>
+                        ) : '—'}
+                      </td>
+                    </tr>
+                    {expandedId === s.id && (
+                      <tr className="bg-slate-50/60">
+                        <td colSpan={5} className="px-4 py-3">
+                          <div className="space-y-1.5">
+                            {(s.answers || []).map((a, i) => (
+                              <p key={i} className="text-xs text-slate-600">
+                                <span className="text-slate-400">{a.question}:</span> <span className="font-medium">{a.answer}</span>
+                              </p>
+                            ))}
+                            {s.fbclid && <p className="text-[11px] text-slate-400 mt-2">fbclid: {s.fbclid}</p>}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
       </div>
     </div>
   )
@@ -671,6 +761,9 @@ export default function Quizzes() {
   const [current, setCurrent] = useState(null)
   const [saving, setSaving] = useState(false)
   const [copiedId, setCopiedId] = useState(null)
+  const [submissionsQuiz, setSubmissionsQuiz] = useState(null)
+  const [submissions, setSubmissions] = useState([])
+  const [loadingSubmissions, setLoadingSubmissions] = useState(false)
 
   useEffect(() => { loadQuizzes() }, [])
 
@@ -724,6 +817,21 @@ export default function Quizzes() {
     if (!confirm('Excluir esse quiz?')) return
     await fetch(`${API}/quiz/${id}`, { method: 'DELETE' })
     loadQuizzes()
+  }
+
+  async function openSubmissions(quiz) {
+    setSubmissionsQuiz(quiz)
+    setLoadingSubmissions(true)
+    try {
+      const res = await fetch(`${API}/quiz/id/${quiz.id}/submissions`)
+      const data = await res.json()
+      setSubmissions(Array.isArray(data) ? data : [])
+    } catch (err) {
+      console.error('Erro ao carregar respostas:', err)
+      setSubmissions([])
+    } finally {
+      setLoadingSubmissions(false)
+    }
   }
 
   function copyLink(slug, id) {
@@ -817,6 +925,9 @@ export default function Quizzes() {
                 <button onClick={() => openEdit(quiz)} className="flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-violet-600 border border-slate-200 hover:border-violet-300 px-3 py-2 rounded-lg transition">
                   Editar
                 </button>
+                <button onClick={() => openSubmissions(quiz)} className="flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-violet-600 border border-slate-200 hover:border-violet-300 px-3 py-2 rounded-lg transition">
+                  Respostas
+                </button>
                 <button onClick={() => handleDelete(quiz.id)} className="flex items-center gap-1.5 text-xs font-medium text-slate-400 hover:text-red-500 border border-slate-200 hover:border-red-200 px-3 py-2 rounded-lg transition">
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
@@ -825,6 +936,15 @@ export default function Quizzes() {
           </div>
         ))}
       </div>
+
+      {submissionsQuiz && (
+        <SubmissionsModal
+          quiz={submissionsQuiz}
+          submissions={submissions}
+          loading={loadingSubmissions}
+          onClose={() => setSubmissionsQuiz(null)}
+        />
+      )}
     </div>
   )
 }

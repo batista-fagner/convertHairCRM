@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { randomUUID } from 'crypto';
 import { Quiz, QuizQuestion } from '../common/entities/quiz.entity';
+import { QuizSubmission } from '../common/entities/quiz-submission.entity';
 import { FacebookService } from '../facebook/facebook.service';
 import { TrackingService } from '../tracking/tracking.service';
 
@@ -50,6 +51,7 @@ export class QuizService {
 
   constructor(
     @InjectRepository(Quiz) private repo: Repository<Quiz>,
+    @InjectRepository(QuizSubmission) private submissionRepo: Repository<QuizSubmission>,
     private facebookService: FacebookService,
     private trackingService: TrackingService,
     private config: ConfigService,
@@ -138,6 +140,10 @@ export class QuizService {
     await this.repo.delete(id);
   }
 
+  listSubmissions(quizId: string): Promise<QuizSubmission[]> {
+    return this.submissionRepo.find({ where: { quizId }, order: { createdAt: 'DESC' } });
+  }
+
   private validateQuestions(questions?: QuizQuestion[]): void {
     if (questions && questions.length > MAX_QUESTIONS) {
       throw new BadRequestException(`Máximo de ${MAX_QUESTIONS} perguntas por quiz`);
@@ -221,6 +227,31 @@ export class QuizService {
       quizResponses: answeredResponses,
       quizMqlEvents: Array.from(mqlEvents),
     });
+
+    // Registro permanente — ao contrário da fila acima (Redis, TTL 30min,
+    // só vira Lead se a pessoa entrar no grupo), isso fica pra sempre,
+    // independente do que acontece depois. Guarda UTM/fbclid completos pra
+    // atribuir por campanha/conjunto/anúncio no relatório.
+    await this.submissionRepo.save(
+      this.submissionRepo.create({
+        quizId: quiz.id,
+        quizSlug: quiz.slug,
+        quizName: quiz.name,
+        answers: answeredResponses,
+        mqlEvents: Array.from(mqlEvents),
+        utmSource: dto.utmSource,
+        utmMedium: dto.utmMedium,
+        utmCampaign: dto.utmCampaign,
+        utmContent: dto.utmContent,
+        utmTerm: dto.utmTerm,
+        fbclid: dto.fbclid,
+        fbc: dto.fbc,
+        fbp: dto.fbp,
+        clickId: dto.clickId,
+        userAgent: dto.userAgent,
+        clientIp: dto.clientIp,
+      }),
+    );
 
     this.logger.log(`Quiz "${slug}" respondido — ${answeredResponses.length} pergunta(s), MQL events: ${Array.from(mqlEvents).join(', ') || 'nenhum'}`);
 
