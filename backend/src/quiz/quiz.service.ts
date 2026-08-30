@@ -184,6 +184,10 @@ export class QuizService {
       fbclid: dto.fbclid,
       fbc: dto.fbc,
       fbp: dto.fbp,
+      // external_id: identificador estável do nosso lado (o clickId que o
+      // navegador já gera e guarda no localStorage) — ajuda o Meta a
+      // reconhecer a mesma pessoa entre eventos, melhora o Event Match Quality.
+      externalId: dto.clickId,
       clientIp: dto.clientIp,
       userAgent: dto.userAgent,
     };
