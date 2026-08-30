@@ -84,7 +84,14 @@ function AnalysisDrawer({ lead, onClose, onAnalyze, analyzing }) {
         <div className="p-6">
           <div className="flex items-start justify-between mb-4">
             <div className="min-w-0">
-              <p className="text-base font-semibold text-slate-800 truncate">{lead?.name || 'Sem nome'}</p>
+              <div className="flex items-center gap-1.5">
+                <p className="text-base font-semibold text-slate-800 truncate">{lead?.name || 'Sem nome'}</p>
+                {lead?.quizSlug && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium whitespace-nowrap">
+                    Tráfego pago
+                  </span>
+                )}
+              </div>
               <p className="text-sm text-slate-400">{lead?.phone}</p>
               <p className="text-xs text-slate-400 mt-1">Entrou {formatEntrada(lead)}</p>
             </div>
@@ -265,7 +272,14 @@ export default function GroupWorkshop() {
                   className={`border-b last:border-0 ${lead.groupLeftAt ? 'bg-red-50 border-red-100 hover:bg-red-100/70' : 'border-slate-100 hover:bg-slate-50/60'}`}
                 >
                   <td className="px-4 py-3">
-                    <p className="font-medium text-slate-800">{lead.name || 'Sem nome'}</p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="font-medium text-slate-800">{lead.name || 'Sem nome'}</p>
+                      {lead.quizSlug && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium whitespace-nowrap" title={`Veio do quiz "${lead.quizSlug}"`}>
+                          Tráfego pago
+                        </span>
+                      )}
+                    </div>
                     <p className="text-xs text-slate-400">{lead.phone}</p>
                   </td>
                   <td className="px-4 py-3 text-slate-500 whitespace-nowrap">

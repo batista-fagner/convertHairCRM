@@ -44,20 +44,36 @@ export class GroupWorkshopService {
     const lead = await this.leadsRepo.findOne({ where: { id: leadId } });
     if (!lead) throw new Error('Lead não encontrado');
 
+    // Lead veio de tráfego pago (respondeu o quiz) — analisa as respostas do
+    // quiz em vez da conversa (esses leads têm aiPaused=true e normalmente
+    // ZERO histórico de chat, já que a Sofia não conversa com eles).
+    const fromQuiz = Boolean(lead.quizSlug) && Array.isArray(lead.quizResponses) && lead.quizResponses.length > 0;
+
     const history: any[] = Array.isArray(lead.aiContext) ? lead.aiContext : [];
-    if (history.length === 0) {
+    if (!fromQuiz && history.length === 0) {
       const insights = { painPoints: null, messagesPerDayMentioned: null, otherNotes: 'Sem histórico de conversa.', generatedAt: new Date().toISOString() };
       await this.leadsRepo.update(leadId, { conversationInsights: insights });
       return { ...lead, conversationInsights: insights };
     }
 
-    const transcript = history
-      .map((m) => `${m.role === 'assistant' ? 'Vendedora' : 'Lead'}: ${m.content}`)
-      .join('\n');
+    const transcript = fromQuiz
+      ? lead.quizResponses!.map((r) => `Pergunta: ${r.question}\nResposta: ${r.answer}`).join('\n\n')
+      : history.map((m) => `${m.role === 'assistant' ? 'Vendedora' : 'Lead'}: ${m.content}`).join('\n');
 
     const model = (await this.settings.get(SDR_MODEL_KEY)) || this.defaultModel;
 
-    const systemPrompt = `Você é um analista de vendas que lê conversas de WhatsApp entre uma vendedora de cabelo/mega hair (Alex, via assistente Sofia) e uma cliente que TAMBÉM vende mega hair (é uma revendedora, não consumidora final).
+    const systemPrompt = fromQuiz ? `Você é um analista de vendas que lê as respostas de um quiz de qualificação respondido por uma pessoa que vende cabelo/mega hair (revendedora, não consumidora final) — ela veio de um anúncio pago, respondeu o quiz e entrou no grupo do Workshop.
+
+O objetivo é preparar a vendedora pra uma ligação/live onde ela vai OFERECER um plano de R$410/mês de uma IA de atendimento automático via WhatsApp (que qualifica lead, responde 24h, tira a revendedora de ter que responder tudo manualmente).
+
+Leia as respostas do quiz abaixo e responda em JSON com este formato exato:
+{
+  "painPoints": "resumo curto (1-2 frases) das dores/dificuldades que dá pra inferir das respostas — ex: alto volume de mensagens sugere dificuldade de dar conta sozinha, etc. null se não der pra inferir nada.",
+  "messagesPerDayMentioned": <número inteiro se alguma resposta indicar quantas mensagens/dia ela recebe (ex: "30 - 50" -> use o valor médio/limite superior como estimativa), senão null>,
+  "otherNotes": "outras informações relevantes pra venda extraídas das respostas: faturamento, se já faz tráfego pago, nível de urgência aparente, etc. null se não há nada relevante além do já capturado."
+}
+
+Responda SOMENTE o JSON, nada além disso. Nunca invente informação que não está nas respostas — use null quando não souber.` : `Você é um analista de vendas que lê conversas de WhatsApp entre uma vendedora de cabelo/mega hair (Alex, via assistente Sofia) e uma cliente que TAMBÉM vende mega hair (é uma revendedora, não consumidora final).
 
 O objetivo é preparar a vendedora pra uma ligação/live onde ela vai OFERECER um plano de R$410/mês de uma IA de atendimento automático via WhatsApp (que qualifica lead, responde 24h, tira a revendedora de ter que responder tudo manualmente).
 
