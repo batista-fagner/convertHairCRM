@@ -300,6 +300,24 @@ export class SdrFollowupService {
         continue;
       }
 
+      // Trava atômica por lead — o lock global do cron (followup_cron_lock) tem
+      // lease de 4min pra um scan que normalmente é rápido, mas uma fila grande
+      // (ex.: cadência resetada pra 100+ leads de uma vez, todos due no mesmo
+      // dia) pode levar bem mais que isso pra processar (10-30s de espaço entre
+      // cada envio). Se isso acontecer, o lock expira no meio do caminho e uma
+      // 2ª execução do scan pega o mesmo lock e reprocessa candidatos que a 1ª
+      // ainda não tinha atualizado no banco — cada execução manda pro mesmo
+      // lead de forma independente. Incidente real: lead 5521978924653 recebeu
+      // 4 variações quase idênticas da mesma mensagem em ~4min (31/08/2026).
+      // Esta trava garante que só UMA execução realmente manda, não importa
+      // quantas rodem em paralelo: o UPDATE só afeta a linha se ninguém mexeu
+      // no followupStep/followupNextAt desde que este lead foi lido.
+      const claimed = await this.claimTouch(lead, cadence);
+      if (!claimed) {
+        this.logger.warn(`[Followup] Lead ${lead.phone} já foi reivindicado por outra execução do scan neste tick — pulando (evita duplicidade)`);
+        continue;
+      }
+
       // Só a partir daqui o lead vai receber algo de verdade neste tick — busca
       // o conteúdo pesado (ai_context, notes) que ficou de fora do select acima.
       const full = await this.leadsRepo.findOne({ where: { id: lead.id }, select: ['id', 'aiContext', 'notes'] });
@@ -312,12 +330,14 @@ export class SdrFollowupService {
         const video = await this.videoRepo.findOne({ where: { id: rule.videoId } });
         if (!video) {
           this.logger.warn(`[Followup] Regra ${rule.id} aponta pra vídeo inexistente (${rule.videoId}) — pulando`);
+          await this.releaseTouchClaim(lead, cadence);
           continue;
         }
         this.rollVideoDayIfNeeded();
         if (this.videoSentToday >= videoLimit) {
           // Estourou o teto do dia — não marca followup_sent_at, tenta amanhã.
           this.logger.log(`[Followup] Teto diário de vídeo atingido (${videoLimit}) — ${lead.phone} fica pra amanhã`);
+          await this.releaseTouchClaim(lead, cadence);
           continue;
         }
 
@@ -341,10 +361,16 @@ export class SdrFollowupService {
           rule,
           cadence ?? undefined,
         );
-        if (!message) continue;
+        if (!message) {
+          await this.releaseTouchClaim(lead, cadence);
+          continue;
+        }
       } else {
         const text = cadence ? cadence.step.text : rule.text;
-        if (!text?.trim()) continue;
+        if (!text?.trim()) {
+          await this.releaseTouchClaim(lead, cadence);
+          continue;
+        }
         message = this.applyLeadPlaceholders(text, lead);
       }
 
@@ -371,6 +397,45 @@ export class SdrFollowupService {
       sent++;
     }
     this.lastSentCount = sent;
+  }
+
+  /**
+   * Reivindica atomicamente o direito de mandar este toque — ver comentário
+   * acima de onde é chamada. Cadência: move followupNextAt pra um valor de
+   * "em processamento" (10min à frente) só se followupStep/followupNextAt
+   * ainda forem exatamente o que foi lido. Disparo único: seta followupSentAt
+   * só se ainda estiver null. Em ambos os casos, affected=0 significa que
+   * outra execução já reivindicou este lead — quem chamou deve pular.
+   */
+  private async claimTouch(lead: Lead, cadence: { index: number } | null): Promise<boolean> {
+    if (cadence) {
+      const result = await this.leadsRepo
+        .createQueryBuilder()
+        .update(Lead)
+        .set({ followupNextAt: () => `now() + interval '10 minutes'` })
+        .where('id = :id', { id: lead.id })
+        .andWhere('followup_step IS NOT DISTINCT FROM :step', { step: lead.followupStep ?? 0 })
+        .andWhere('followup_next_at IS NOT DISTINCT FROM :nextAt', { nextAt: lead.followupNextAt ?? null })
+        .execute();
+      return (result.affected ?? 0) > 0;
+    }
+    const result = await this.leadsRepo
+      .createQueryBuilder()
+      .update(Lead)
+      .set({ followupSentAt: new Date() })
+      .where('id = :id', { id: lead.id })
+      .andWhere('followup_sent_at IS NULL')
+      .execute();
+    return (result.affected ?? 0) > 0;
+  }
+
+  /** Devolve o lead ao estado de antes da reivindicação — usado quando geração/envio falha depois de já ter travado, pra não perder o toque nem deixar o lead preso na trava temporária. */
+  private async releaseTouchClaim(lead: Lead, cadence: { index: number } | null): Promise<void> {
+    if (cadence) {
+      await this.leadsRepo.update(lead.id, { followupNextAt: lead.followupNextAt ?? null });
+    } else {
+      await this.leadsRepo.update(lead.id, { followupSentAt: null });
+    }
   }
 
   /**
