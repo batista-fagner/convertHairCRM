@@ -125,6 +125,22 @@ export class FollowupController {
     return this.rulesRepo.save(rule);
   }
 
+  // Duplica uma regra existente (mesmos filtros/mensagem/cadência) com nome
+  // "(cópia)" — nasce DESATIVADA de propósito, pra não disparar 2x pro mesmo
+  // público até o usuário ajustar o que precisa (ex: outro horário) e ativar.
+  @Post('rules/:id/duplicate')
+  async duplicateRule(@Param('id') id: string) {
+    const original = await this.rulesRepo.findOne({ where: { id } });
+    if (!original) throw new BadRequestException('Regra não encontrada');
+    const { id: _id, createdAt: _createdAt, updatedAt: _updatedAt, ...rest } = original;
+    const copy = this.rulesRepo.create({
+      ...rest,
+      name: `${original.name} (cópia)`,
+      enabled: false,
+    });
+    return this.rulesRepo.save(copy);
+  }
+
   @Patch('rules/:id')
   async updateRule(@Param('id') id: string, @Body() body: Partial<FollowupRule> & { resetCycle?: boolean }) {
     const rule = await this.rulesRepo.findOne({ where: { id } });

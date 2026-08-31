@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Settings as SettingsIcon, Key, Webhook, MessageCircle, Share2, Bot, Save, RotateCcw, Loader2, CheckCircle2, Send, Trash2, Clock, Sparkles, ToggleLeft, ToggleRight, Wifi, WifiOff, Timer, RefreshCw, XCircle, Activity, Plus, Pencil, Tag, Layers, Video } from 'lucide-react'
+import { Settings as SettingsIcon, Key, Webhook, MessageCircle, Share2, Bot, Save, RotateCcw, Loader2, CheckCircle2, Send, Trash2, Clock, Sparkles, ToggleLeft, ToggleRight, Wifi, WifiOff, Timer, RefreshCw, XCircle, Activity, Plus, Pencil, Tag, Layers, Video, Copy } from 'lucide-react'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3002/api'
 
@@ -1118,6 +1118,26 @@ function FollowupRules() {
     }
   }
 
+  const [duplicatingId, setDuplicatingId] = useState(null) // id da regra duplicando agora
+
+  const duplicateRule = async (rule) => {
+    setDuplicatingId(rule.id)
+    try {
+      const res = await fetch(`${API}/followup/rules/${rule.id}/duplicate`, { method: 'POST' })
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.message || 'Erro ao duplicar') }
+      const copy = await res.json()
+      setRules(prev => [...prev, copy])
+      setEditingId(copy.id)
+      setToast(`"${rule.name}" duplicada — ajuste o que precisar e ative quando estiver pronta`)
+      setTimeout(() => setToast(''), 5000)
+    } catch (e) {
+      setToast(`Erro: ${e.message}`)
+      setTimeout(() => setToast(''), 5000)
+    } finally {
+      setDuplicatingId(null)
+    }
+  }
+
   const [resettingId, setResettingId] = useState(null) // id da regra resetando agora
 
   const resetCycleNow = async (rule) => {
@@ -1313,6 +1333,14 @@ function FollowupRules() {
                 </button>
                 <button onClick={() => setEditingId(rule.id)} title="Editar regra" className="p-1.5 text-slate-400 hover:text-violet-600 transition">
                   <Pencil className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => duplicateRule(rule)}
+                  disabled={duplicatingId === rule.id}
+                  title="Duplicar regra — cria uma cópia (desativada) com os mesmos filtros e mensagem, pra você só ajustar o que precisar (ex: outro horário)"
+                  className="p-1.5 text-slate-400 hover:text-violet-600 disabled:opacity-40 transition"
+                >
+                  {duplicatingId === rule.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Copy className="w-4 h-4" />}
                 </button>
                 <button onClick={() => remove(rule)} title="Excluir regra (não pode desfazer)" className="p-1.5 text-slate-400 hover:text-red-600 transition">
                   <Trash2 className="w-4 h-4" />
