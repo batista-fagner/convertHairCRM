@@ -1295,7 +1295,7 @@ function FollowupRules() {
                 <button
                   onClick={() => broadcastNow(rule)}
                   disabled={broadcasting === rule.id}
-                  title="Disparar agora pra todos os leads desta raia (respondendo ou não)"
+                  title="Disparar agora — envia esta mensagem AGORA pra todos os leads que casam com esta regra, mesmo quem já respondeu ou está no meio do prazo de espera"
                   className="p-1.5 text-slate-400 hover:text-emerald-600 disabled:opacity-40 transition"
                 >
                   {broadcasting === rule.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
@@ -1303,18 +1303,18 @@ function FollowupRules() {
                 <button
                   onClick={() => resetCycleNow(rule)}
                   disabled={resettingId === rule.id}
-                  title="Liberar novo ciclo — reenvia pros leads desta raia/campanha que já receberam follow-up e ainda não responderam"
+                  title="Resetar ciclo — libera pra receber follow-up de novo quem já recebeu antes e não respondeu (zera o 'já enviado' desses leads, sem mandar mensagem agora)"
                   className="p-1.5 text-slate-400 hover:text-violet-600 disabled:opacity-40 transition"
                 >
                   {resettingId === rule.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
                 </button>
-                <button onClick={() => toggleEnabled(rule)} title={rule.enabled ? 'Desativar' : 'Ativar'} className="transition">
+                <button onClick={() => toggleEnabled(rule)} title={rule.enabled ? 'Ativa — clique pra desativar (para de disparar sem apagar a regra)' : 'Inativa — clique pra ativar'} className="transition">
                   {rule.enabled ? <ToggleRight className="w-7 h-7 text-violet-600" /> : <ToggleLeft className="w-7 h-7 text-slate-300" />}
                 </button>
-                <button onClick={() => setEditingId(rule.id)} title="Editar" className="p-1.5 text-slate-400 hover:text-violet-600 transition">
+                <button onClick={() => setEditingId(rule.id)} title="Editar regra" className="p-1.5 text-slate-400 hover:text-violet-600 transition">
                   <Pencil className="w-4 h-4" />
                 </button>
-                <button onClick={() => remove(rule)} title="Excluir" className="p-1.5 text-slate-400 hover:text-red-600 transition">
+                <button onClick={() => remove(rule)} title="Excluir regra (não pode desfazer)" className="p-1.5 text-slate-400 hover:text-red-600 transition">
                   <Trash2 className="w-4 h-4" />
                 </button>
               </div>
