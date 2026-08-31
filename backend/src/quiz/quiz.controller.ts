@@ -56,13 +56,6 @@ export class QuizController {
     return publicQuiz;
   }
 
-  @Post(':slug/view')
-  trackView(@Param('slug') slug: string, @Body() dto: any, @Req() req: Request) {
-    const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || '';
-    const userAgent = req.headers['user-agent'] as string | undefined;
-    return this.quizService.trackView(slug, { ...dto, clientIp, userAgent });
-  }
-
   @Post(':slug/submit')
   submit(@Param('slug') slug: string, @Body() dto: any, @Req() req: Request) {
     const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || '';
