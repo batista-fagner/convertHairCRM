@@ -199,7 +199,7 @@ export class SdrGroupJoinService implements OnModuleInit {
       );
 
       if (cameFromQuiz) {
-        await this.sendQuizWelcomeMessage(lead, phone, leadName, utm.quizSlug);
+        await this.sendQuizWelcomeMessage(lead, phone, waName, utm.quizSlug);
       }
 
       this.logger.log(`[GROUP-JOIN-CRM] Novo lead ${lead.id} (${phone}) criado ao entrar no grupo${cameFromQuiz ? ` via quiz "${utm.quizSlug}"` : ''}`);
@@ -287,7 +287,7 @@ export class SdrGroupJoinService implements OnModuleInit {
    * {nome} e {resposta_1}..{resposta_6} substituídos pelas respostas reais.
    * Sem template configurado (padrão nem variante), não envia nada.
    */
-  private async sendQuizWelcomeMessage(lead: Lead, phone: string, leadName: string, quizSlug?: string | null) {
+  private async sendQuizWelcomeMessage(lead: Lead, phone: string, waName: string | null, quizSlug?: string | null) {
     if (!quizSlug) return;
     const responses = lead.quizResponses || [];
     let template: string | null | undefined;
@@ -303,11 +303,16 @@ export class SdrGroupJoinService implements OnModuleInit {
     }
     if (!template?.trim()) return;
 
-    const firstName = leadName.split(' ')[0];
-    const message = template
+    // Sem nome real do WhatsApp (contato sem perfil visível, ou 1ª interação
+    // com essa instância) — em vez de usar o fallback "Novo Lead" (viraria
+    // "Oi Novo!"), tira o placeholder e limpa a pontuação sobrando.
+    const firstName = waName ? waName.split(' ')[0] : '';
+    let message = template
       .replace(/\{nome\}/gi, firstName)
       .replace(/\{resposta_(\d+)\}/gi, (_match, idx) => responses[parseInt(idx, 10) - 1]?.answer ?? '');
-
+    if (!firstName) {
+      message = message.replace(/[ \t]+([!,.?])/g, '$1').replace(/[ \t]{2,}/g, ' ').trim();
+    }
     await this.sendMessage(phone, message);
     const updated = await this.leadsService.update(lead.id, {
       aiContext: [{ role: 'assistant', content: message }],

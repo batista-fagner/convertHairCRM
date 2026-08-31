@@ -189,7 +189,7 @@ export class GroupJoinService implements OnModuleInit {
     );
 
     if (cameFromQuiz) {
-      await this.sendQuizWelcomeMessage(lead, phone, leadName, utm?.quizSlug);
+      await this.sendQuizWelcomeMessage(lead, phone, waName, utm?.quizSlug);
       this.logger.log(`Lead via quiz "${utm?.quizSlug}" registrado sem abertura automática: ${lead.id} (${phone}) nome=${leadName}`);
       return;
     }
@@ -216,7 +216,7 @@ export class GroupJoinService implements OnModuleInit {
    * {resposta_6} substituídos pelas respostas reais dadas no quiz (na ordem
    * respondida — lead.quizResponses). Sem template configurado, não envia nada.
    */
-  private async sendQuizWelcomeMessage(lead: Lead, phone: string, leadName: string, quizSlug?: string | null) {
+  private async sendQuizWelcomeMessage(lead: Lead, phone: string, waName: string | null, quizSlug?: string | null) {
     if (!quizSlug) return;
     const responses = lead.quizResponses || [];
     let template: string | null | undefined;
@@ -235,10 +235,15 @@ export class GroupJoinService implements OnModuleInit {
     }
     if (!template?.trim()) return;
 
-    const firstName = leadName.split(' ')[0];
-    const message = template
+    // Sem nome real do WhatsApp — em vez do fallback "Novo Lead" (viraria
+    // "Oi Novo!"), tira o placeholder e limpa a pontuação sobrando.
+    const firstName = waName ? waName.split(' ')[0] : '';
+    let message = template
       .replace(/\{nome\}/gi, firstName)
       .replace(/\{resposta_(\d+)\}/gi, (_match, idx) => responses[parseInt(idx, 10) - 1]?.answer ?? '');
+    if (!firstName) {
+      message = message.replace(/[ \t]+([!,.?])/g, '$1').replace(/[ \t]{2,}/g, ' ').trim();
+    }
 
     await this.messagingService.sendRawMessage(phone, message);
     await this.leadsService.update(lead.id, {
