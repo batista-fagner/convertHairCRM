@@ -7,6 +7,16 @@ import { firstValueFrom } from 'rxjs';
 import { Lead } from '../common/entities/lead.entity';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { AvatarStorageService } from './avatar-storage.service';
+import { SettingsService } from '../settings/settings.service';
+
+export const CURIOSITY_MESSAGES_KEY = 'curiosity_messages';
+export const DEFAULT_CURIOSITY_MESSAGES = [
+  'Oi, tudo bem? 👋',
+  'Vi seu perfil e achei muito interessante',
+  'Tenho uma coisa que pode te ajudar bastante',
+  'Deixa eu te mostrar uma coisa rápida',
+  'Ops, deixa eu reformular isso aqui 🙈',
+];
 
 type MediaType = 'image' | 'video' | 'document' | 'audio';
 
@@ -32,6 +42,7 @@ export class ManualMessageController {
     private config: ConfigService,
     private realtime: RealtimeGateway,
     private avatarStorage: AvatarStorageService,
+    private settings: SettingsService,
   ) {
     this.uazapiBaseUrl = config.get('SDR_UAZAPI_BASE_URL') || config.get('UAZAPI_BASE_URL') || '';
     this.uazapiToken = config.get('SDR_UAZAPI_TOKEN') || '';
@@ -74,6 +85,65 @@ export class ManualMessageController {
 
     this.logger.log(`[Manual] Operador enviou ${body.type} para ${lead.phone}`);
     return { ok: true };
+  }
+
+  // Estratégia de "gerar curiosidade": manda uma sequência curta de mensagens
+  // e apaga cada uma pra todos (revoke) imediatamente depois de enviada, antes
+  // que o lead consiga ler — ela só vê "Esta mensagem foi apagada" e tende a
+  // responder perguntando o que era, o que abre uma conversa mais natural do
+  // que uma abordagem fria. Cada mensagem é apagada logo após o envio (não
+  // espera mandar as 5 primeiro) pra minimizar a janela em que ela fica visível.
+  @Post(':id/curiosity-blast')
+  async curiosityBlast(@Param('id') id: string) {
+    const lead = await this.leadsRepo.findOne({ where: { id } });
+    if (!lead) throw new HttpException('Lead not found', HttpStatus.NOT_FOUND);
+    if (!this.uazapiToken) {
+      throw new HttpException('WhatsApp não configurado (SDR_UAZAPI_TOKEN ausente)', HttpStatus.SERVICE_UNAVAILABLE);
+    }
+
+    const stored = await this.settings.get(CURIOSITY_MESSAGES_KEY);
+    let messages: string[];
+    try {
+      messages = stored ? JSON.parse(stored) : DEFAULT_CURIOSITY_MESSAGES;
+    } catch {
+      messages = DEFAULT_CURIOSITY_MESSAGES;
+    }
+    messages = messages.map((m) => (m || '').trim()).filter(Boolean);
+    if (messages.length === 0) messages = DEFAULT_CURIOSITY_MESSAGES;
+
+    const phone = lead.phone.startsWith('55') ? lead.phone : `55${lead.phone}`;
+    const headers = { token: this.uazapiToken };
+    let sent = 0;
+    let deleted = 0;
+
+    for (const text of messages) {
+      try {
+        const res = await firstValueFrom(
+          this.http.post(`${this.uazapiBaseUrl}/send/text`, { number: phone, text }, { headers }),
+        );
+        sent++;
+        const messageId = (res.data as any)?.messageid;
+        if (!messageId) continue;
+
+        try {
+          await firstValueFrom(
+            this.http.post(`${this.uazapiBaseUrl}/message/delete`, { number: phone, id: messageId }, { headers }),
+          );
+          deleted++;
+        } catch (delErr: any) {
+          this.logger.warn(`[Curiosity] Falha ao apagar mensagem de ${lead.phone}: ${delErr.message}`);
+        }
+      } catch (sendErr: any) {
+        this.logger.warn(`[Curiosity] Falha ao enviar mensagem de ${lead.phone}: ${sendErr.message}`);
+      }
+      // Pequeno intervalo entre cada ciclo pra não sobrecarregar/disparar
+      // rate-limit da uazapi — não é sobre a curiosidade em si (que já é
+      // resolvida pelo delete imediato), é só espaçamento técnico.
+      await new Promise((r) => setTimeout(r, 400));
+    }
+
+    this.logger.log(`[Curiosity] ${lead.phone}: ${sent} enviadas, ${deleted} apagadas`);
+    return { ok: true, sent, deleted, total: messages.length };
   }
 
   @Post(':id/fetch-avatar')

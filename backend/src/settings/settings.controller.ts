@@ -2,6 +2,7 @@ import { Controller, Get, Put, Post, Body } from '@nestjs/common';
 import { SettingsService } from './settings.service';
 import { SDR_PROMPT_KEY, DEFAULT_SDR_PROMPT, SDR_MODEL_KEY, SDR_DEFAULT_MODEL } from '../sdr/sdr.prompt';
 import { SDR_NOTIFY_PHONES_KEY } from '../sdr/sdr.controller';
+import { CURIOSITY_MESSAGES_KEY, DEFAULT_CURIOSITY_MESSAGES } from '../sdr/manual-message.controller';
 
 @Controller('settings')
 export class SettingsController {
@@ -54,6 +55,28 @@ export class SettingsController {
     const value = phones.join(',');
     await this.settingsService.set(SDR_NOTIFY_PHONES_KEY, value);
     return { phone1: phones[0] ?? '', phone2: phones[1] ?? '' };
+  }
+
+  @Get('curiosity-messages')
+  async getCuriosityMessages() {
+    const stored = await this.settingsService.get(CURIOSITY_MESSAGES_KEY);
+    let messages: string[];
+    try {
+      messages = stored ? JSON.parse(stored) : DEFAULT_CURIOSITY_MESSAGES;
+    } catch {
+      messages = DEFAULT_CURIOSITY_MESSAGES;
+    }
+    return { messages, isCustom: stored != null };
+  }
+
+  @Put('curiosity-messages')
+  async setCuriosityMessages(@Body() body: { messages: string[] }) {
+    const messages = (Array.isArray(body.messages) ? body.messages : [])
+      .map((m) => (m || '').trim())
+      .filter(Boolean)
+      .slice(0, 5);
+    await this.settingsService.set(CURIOSITY_MESSAGES_KEY, JSON.stringify(messages.length ? messages : DEFAULT_CURIOSITY_MESSAGES));
+    return { messages: messages.length ? messages : DEFAULT_CURIOSITY_MESSAGES };
   }
 
 }

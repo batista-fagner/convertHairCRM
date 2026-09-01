@@ -1674,6 +1674,97 @@ function NotifyPhonesConfig() {
   )
 }
 
+function CuriosityMessagesConfig() {
+  const [messages, setMessages] = useState(['', '', '', '', ''])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+
+  useEffect(() => {
+    fetch(`${API}/settings/curiosity-messages`)
+      .then(r => r.json())
+      .then(d => {
+        const msgs = Array.isArray(d.messages) ? d.messages : []
+        setMessages([0, 1, 2, 3, 4].map(i => msgs[i] || ''))
+      })
+      .finally(() => setLoading(false))
+  }, [])
+
+  const save = async () => {
+    setSaving(true)
+    setSaved(false)
+    try {
+      const res = await fetch(`${API}/settings/curiosity-messages`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages }),
+      })
+      const d = await res.json()
+      const msgs = Array.isArray(d.messages) ? d.messages : []
+      setMessages([0, 1, 2, 3, 4].map(i => msgs[i] || ''))
+      setSaved(true)
+      setTimeout(() => setSaved(false), 3000)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const updateAt = (i, value) => {
+    setMessages(prev => prev.map((m, idx) => idx === i ? value : m))
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 p-5 mb-4">
+      <div className="flex items-center gap-2 mb-4">
+        <Sparkles className="w-5 h-5 text-violet-500" />
+        <div>
+          <p className="font-semibold text-slate-800 text-sm">Gerar Curiosidade (follow-up)</p>
+          <p className="text-xs text-slate-400 mt-0.5">
+            5 mensagens enviadas e apagadas na hora (o lead vê "Esta mensagem foi apagada") — usado no botão
+            "Gerar curiosidade" da conversa do lead pra puxar uma resposta natural.
+          </p>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center gap-2 text-slate-400 text-sm py-2">
+          <Loader2 className="w-4 h-4 animate-spin" /> Carregando...
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {messages.map((m, i) => (
+            <div key={i}>
+              <label className="text-xs font-medium text-slate-500 mb-1 block">Mensagem {i + 1}</label>
+              <input
+                type="text"
+                value={m}
+                onChange={e => updateAt(i, e.target.value)}
+                placeholder={`Mensagem ${i + 1}...`}
+                className="w-full text-sm border border-slate-200 rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-violet-300"
+              />
+            </div>
+          ))}
+          <div className="flex items-center gap-3 pt-1">
+            <button
+              onClick={save}
+              disabled={saving}
+              className="flex items-center gap-2 text-sm font-medium bg-violet-500 hover:bg-violet-600 disabled:bg-slate-200 text-white px-4 py-2 rounded-xl transition"
+            >
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              {saving ? 'Salvando...' : 'Salvar'}
+            </button>
+            {saved && (
+              <span className="flex items-center gap-1.5 text-emerald-600 text-sm font-medium">
+                <CheckCircle2 className="w-4 h-4" /> Salvo!
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function Settings() {
   return (
     <div className="p-6 overflow-y-auto">
@@ -1687,6 +1778,8 @@ export default function Settings() {
       <IgCatchallEditor />
 
       <NotifyPhonesConfig />
+
+      <CuriosityMessagesConfig />
 
       <FollowupRules />
 

@@ -357,6 +357,8 @@ function ConversationModal({ lead, onClose, onTogglePause, onAssign, onSaveNotes
   const [sendError, setSendError] = useState('')
   const [isRecording, setIsRecording] = useState(false)
   const [recordSeconds, setRecordSeconds] = useState(0)
+  const [curiosityLoading, setCuriosityLoading] = useState(false)
+  const [curiosityResult, setCuriosityResult] = useState(null)
   const chatBottomRef = useRef(null)
   const textareaRef = useRef(null)
   const fileInputRef = useRef(null)
@@ -513,6 +515,23 @@ function ConversationModal({ lead, onClose, onTogglePause, onAssign, onSaveNotes
     }
   }
 
+  const handleCuriosityBlast = async () => {
+    if (curiosityLoading) return
+    setCuriosityLoading(true)
+    setCuriosityResult(null)
+    try {
+      const res = await fetch(`${API}/leads/${lead.id}/curiosity-blast`, { method: 'POST' })
+      const d = await res.json()
+      if (!res.ok) throw new Error(d.message || `Erro ${res.status}`)
+      setCuriosityResult({ ok: true, text: `${d.deleted}/${d.total} apagadas` })
+    } catch (err) {
+      setCuriosityResult({ ok: false, text: err.message || 'Falha ao disparar' })
+    } finally {
+      setCuriosityLoading(false)
+      setTimeout(() => setCuriosityResult(null), 4000)
+    }
+  }
+
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
@@ -589,6 +608,20 @@ function ConversationModal({ lead, onClose, onTogglePause, onAssign, onSaveNotes
               Notas
               {notesOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
             </button>
+            <button
+              onClick={handleCuriosityBlast}
+              disabled={curiosityLoading}
+              className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg border border-orange-200 text-orange-600 hover:bg-orange-50 disabled:opacity-50 transition shrink-0"
+              title="Manda 5 mensagens e apaga na hora (pra todos) — gera curiosidade pro lead responder"
+            >
+              {curiosityLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Flame className="w-3.5 h-3.5" />}
+              Gerar curiosidade
+            </button>
+            {curiosityResult && (
+              <span className={`text-[11px] font-medium ${curiosityResult.ok ? 'text-emerald-600' : 'text-red-600'}`}>
+                {curiosityResult.text}
+              </span>
+            )}
             <button
               onClick={() => onTogglePause(lead)}
               className="flex items-center gap-2 text-xs font-medium text-slate-600 shrink-0"
