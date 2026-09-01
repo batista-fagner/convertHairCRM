@@ -105,7 +105,7 @@ export class SdrService {
 
   async processMessage(lead: Lead, incomingText: string, openingGreeting?: string): Promise<SdrResponse> {
     // Sanitiza roles inválidos de versões anteriores (ex.: 'lead', 'gabi')
-    const rawHistory: any[] = ((lead.aiContext as any[]) ?? []).filter((m) => !m.internal);
+    const rawHistory: any[] = ((lead.aiContext as any[]) ?? []).filter((m) => !m.internal && !m.whatsappDeleted);
     const history: OpenAI.Chat.ChatCompletionMessageParam[] = rawHistory.map((m) => ({
       role: m.role === 'assistant' ? 'assistant' : 'user',
       content: m.content ?? '',

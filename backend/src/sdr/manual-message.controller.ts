@@ -115,6 +115,11 @@ export class ManualMessageController {
     const headers = { token: this.uazapiToken };
     let sent = 0;
     let deleted = 0;
+    // Uma entrada por mensagem, renderizada no Kanban como balão "Mensagem
+    // apagada" (igual ao WhatsApp real) — não entra no histórico que a IA usa
+    // pra responder (sdr.service.ts/sdr-followup.service.ts/group-workshop.service.ts
+    // filtram `whatsappDeleted: true` antes de montar o prompt do OpenAI).
+    const newEntries: Record<string, any>[] = [];
 
     for (const text of messages) {
       try {
@@ -130,6 +135,12 @@ export class ManualMessageController {
             this.http.post(`${this.uazapiBaseUrl}/message/delete`, { number: phone, id: messageId }, { headers }),
           );
           deleted++;
+          newEntries.push({
+            role: 'assistant',
+            whatsappDeleted: true,
+            content: text,
+            timestamp: new Date().toISOString(),
+          });
         } catch (delErr: any) {
           this.logger.warn(`[Curiosity] Falha ao apagar mensagem de ${lead.phone}: ${delErr.message}`);
         }
@@ -144,18 +155,8 @@ export class ManualMessageController {
 
     this.logger.log(`[Curiosity] ${lead.phone}: ${sent} enviadas, ${deleted} apagadas`);
 
-    // Marcação visível só pro operador (não entra no contexto que a IA usa
-    // pra responder — os mapeamentos em sdr.service.ts/sdr-followup.service.ts
-    // filtram `internal: true` antes de montar o histórico do OpenAI).
     const ctx = Array.isArray(lead.aiContext) ? lead.aiContext : [];
-    await this.leadsRepo.update(id, {
-      aiContext: [...ctx, {
-        role: 'system',
-        internal: true,
-        content: `Sequência de curiosidade disparada (${deleted}/${sent} apagadas)`,
-        timestamp: new Date().toISOString(),
-      }],
-    });
+    await this.leadsRepo.update(id, { aiContext: [...ctx, ...newEntries] });
     const fresh = await this.leadsRepo.findOne({ where: { id } });
     if (fresh) this.realtime.emitLeadUpdated(fresh);
 

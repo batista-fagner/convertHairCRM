@@ -758,7 +758,7 @@ export class SdrFollowupService {
       const model = (await this.settings.get(SDR_MODEL_KEY)) || 'gpt-5.4-mini';
 
       const history: OpenAI.Chat.ChatCompletionMessageParam[] = (Array.isArray(lead.aiContext) ? lead.aiContext : [])
-        .filter((m) => !m.internal)
+        .filter((m) => !m.internal && !m.whatsappDeleted)
         .map((m) => ({
           role: m.role === 'assistant' ? 'assistant' : 'user',
           content: m.content ?? '',

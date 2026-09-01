@@ -49,7 +49,7 @@ export class GroupWorkshopService {
     // ZERO histórico de chat, já que a Sofia não conversa com eles).
     const fromQuiz = Boolean(lead.quizSlug) && Array.isArray(lead.quizResponses) && lead.quizResponses.length > 0;
 
-    const history: any[] = (Array.isArray(lead.aiContext) ? lead.aiContext : []).filter((m: any) => !m.internal);
+    const history: any[] = (Array.isArray(lead.aiContext) ? lead.aiContext : []).filter((m: any) => !m.internal && !m.whatsappDeleted);
     if (!fromQuiz && history.length === 0) {
       const insights = { painPoints: null, messagesPerDayMentioned: null, otherNotes: 'Sem histórico de conversa.', generatedAt: new Date().toISOString() };
       await this.leadsRepo.update(leadId, { conversationInsights: insights });

@@ -663,12 +663,16 @@ function ConversationModal({ lead, onClose, onTogglePause, onAssign, onSaveNotes
             </div>
           )}
           {ctx.map((m, i) => {
-            if (m.internal) {
+            if (m.whatsappDeleted) {
               return (
-                <div key={i} className="flex justify-center">
-                  <span className="text-[11px] text-orange-500 bg-orange-50 border border-orange-100 rounded-full px-3 py-1">
-                    🔥 {m.content}
-                  </span>
+                <div key={i} className="flex justify-end">
+                  <div className="max-w-[72%] px-3.5 py-2 rounded-2xl rounded-tr-sm bg-slate-700 text-slate-300 flex items-center gap-1.5 text-sm italic">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0">
+                      <circle cx="12" cy="12" r="9" />
+                      <path d="M5.5 5.5l13 13" />
+                    </svg>
+                    Mensagem apagada
+                  </div>
                 </div>
               )
             }
