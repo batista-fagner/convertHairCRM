@@ -45,6 +45,15 @@ function StatCard({ label, value, sub }) {
   )
 }
 
+function SectionLabel({ children, hint }) {
+  return (
+    <div className="flex items-baseline gap-2 mb-3 mt-2">
+      <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wide">{children}</h2>
+      {hint && <span className="text-xs text-slate-400">{hint}</span>}
+    </div>
+  )
+}
+
 export default function GroupWorkshopDashboard() {
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -70,22 +79,27 @@ export default function GroupWorkshopDashboard() {
     return <p className="text-sm text-red-600 py-10 text-center">{error || 'Sem dados.'}</p>
   }
 
-  const pctComQuiz = stats.totalLeads > 0 ? Math.round((stats.totalWithQuiz / stats.totalLeads) * 100) : 0
-
   return (
     <div>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
         <StatCard label="Total no grupo" value={stats.totalLeads} />
-        <StatCard label="Responderam o quiz" value={stats.totalWithQuiz} sub={`${pctComQuiz}% do total`} />
-        <StatCard label="Perguntas mapeadas" value="Faturamento · Tráfego · Msgs/dia" />
+        <StatCard label="Vieram do tráfego (quiz)" value={stats.totalTrafego} sub="Responderam o quiz no anúncio" />
+        <StatCard label="Da nossa base (Sofia)" value={stats.totalBase} sub="Já eram lead, responderam no chat" />
       </div>
 
+      <SectionLabel hint={`${stats.totalTrafego} pessoa(s) — respondeu o quiz do anúncio`}>Tráfego pago</SectionLabel>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+        <DistributionCard title="Faturamento mensal" data={stats.faturamento} total={stats.totalTrafego} />
+        <DistributionCard title="Faz tráfego pago?" data={stats.trafegoPago} total={stats.totalTrafego} />
+        <DistributionCard title="Mensagens/dia no WhatsApp" data={stats.mensagensPorDiaTrafego} total={stats.totalTrafego} />
+      </div>
+
+      <SectionLabel hint={`${stats.totalBase} pessoa(s) — qualificada pela Sofia no chat, não veio do quiz`}>
+        Nossa base
+      </SectionLabel>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <DistributionCard title="Faturamento mensal" data={stats.faturamento} total={stats.totalWithQuiz} />
-        <DistributionCard title="Faz tráfego pago?" data={stats.trafegoPago} total={stats.totalWithQuiz} />
-        <DistributionCard title="Mensagens/dia no WhatsApp" data={stats.mensagensPorDia} total={stats.totalWithQuiz} />
+        <DistributionCard title="Mensagens/dia no WhatsApp" data={stats.mensagensPorDiaBase} total={stats.totalBase} />
       </div>
     </div>
   )
 }
-

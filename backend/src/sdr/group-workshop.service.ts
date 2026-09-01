@@ -119,24 +119,55 @@ Responda SOMENTE o JSON, nada além disso. Nunca invente informação que não e
   }
 
   /**
-   * Agregação das respostas do quiz pra dashboard (overview) — usado pra
-   * preparar conteúdo de aula com base em quem realmente está no grupo, não
-   * achismo. Casa a pergunta por palavra-chave (não por índice/id) porque o
-   * texto exato da pergunta pode mudar entre edições do quiz no builder.
+   * Faixas do quiz pra "mensagens por dia" (ver questions em quizzes.slug=
+   * vendendocabelo) — usadas aqui pra bucketizar o `mensagensPorDia` NUMÉRICO
+   * dos leads da base (coletado pela Sofia em texto livre, não pelo quiz) nas
+   * MESMAS faixas, pra dar pra comparar tráfego x base lado a lado.
+   */
+  private static readonly MENSAGENS_BUCKETS: { max: number; label: string }[] = [
+    { max: 10, label: '5 - 10' },
+    { max: 20, label: '10 -20' },
+    { max: 30, label: '20 - 30' },
+    { max: 50, label: '30 - 50' },
+    { max: Infinity, label: 'Acima de 50' },
+  ];
+
+  private bucketMensagensPorDia(n: number): string {
+    return GroupWorkshopService.MENSAGENS_BUCKETS.find((b) => n < b.max)!.label;
+  }
+
+  /**
+   * Agregação das respostas do quiz + dados da Sofia pra dashboard (overview)
+   * — usado pra preparar conteúdo de aula com base em quem realmente está no
+   * grupo, não achismo. Casa a pergunta do quiz por palavra-chave (não por
+   * índice/id) porque o texto exato pode mudar entre edições no builder.
+   *
+   * Duas origens BEM diferentes de lead, não misturar sem avisar:
+   * - "Tráfego" = respondeu o quiz (anúncio pago, ConvertHairPage) — tem
+   *   faturamento e tráfego pago próprios, coletados só ali.
+   * - "Base" = já estava na nossa base e respondeu à Sofia (fluxo de
+   *   qualificação por chat) — não passa pelo quiz, então só tem
+   *   `mensagensPorDia` (numérico) como dado comparável; faturamento/tráfego
+   *   pago não existem pra esse grupo.
    */
   async getQuizStats(): Promise<{
     totalLeads: number;
-    totalWithQuiz: number;
+    totalTrafego: number;
+    totalBase: number;
     faturamento: { label: string; count: number }[];
     trafegoPago: { label: string; count: number }[];
-    mensagensPorDia: { label: string; count: number }[];
+    mensagensPorDiaTrafego: { label: string; count: number }[];
+    mensagensPorDiaBase: { label: string; count: number }[];
   }> {
     const leads = await this.listLeads();
-    const withQuiz = leads.filter((l) => Array.isArray(l.quizResponses) && l.quizResponses.length > 0);
+    const trafego = leads.filter((l) => Array.isArray(l.quizResponses) && l.quizResponses.length > 0);
+    // Base = veio de dentro (não respondeu quiz) e chegou a dar uma estimativa
+    // de volume pra Sofia — sem isso não tem nada comparável pra entrar no gráfico.
+    const base = leads.filter((l) => !(Array.isArray(l.quizResponses) && l.quizResponses.length > 0) && typeof l.mensagensPorDia === 'number');
 
-    const tally = (matchQuestion: (q: string) => boolean): { label: string; count: number }[] => {
+    const tallyQuiz = (matchQuestion: (q: string) => boolean): { label: string; count: number }[] => {
       const counts = new Map<string, number>();
-      for (const lead of withQuiz) {
+      for (const lead of trafego) {
         const responses = lead.quizResponses as { question: string; answer: string }[];
         const match = responses.find((r) => matchQuestion((r.question ?? '').toLowerCase()));
         if (!match?.answer) continue;
@@ -147,12 +178,26 @@ Responda SOMENTE o JSON, nada além disso. Nunca invente informação que não e
         .sort((a, b) => b.count - a.count);
     };
 
+    // Base — bucketiza o número real da Sofia nas mesmas faixas do quiz, em
+    // vez de ordenar alfabeticamente por contagem: aqui a ordem crescente das
+    // faixas importa mais que o ranking (é uma distribuição, não um "top N").
+    const baseCounts = new Map<string, number>();
+    for (const lead of base) {
+      const label = this.bucketMensagensPorDia(lead.mensagensPorDia as number);
+      baseCounts.set(label, (baseCounts.get(label) ?? 0) + 1);
+    }
+    const mensagensPorDiaBase = GroupWorkshopService.MENSAGENS_BUCKETS
+      .map((b) => ({ label: b.label, count: baseCounts.get(b.label) ?? 0 }))
+      .filter((b) => b.count > 0);
+
     return {
       totalLeads: leads.length,
-      totalWithQuiz: withQuiz.length,
-      faturamento: tally((q) => q.includes('faturamento')),
-      trafegoPago: tally((q) => q.includes('trafego') || q.includes('tráfego')),
-      mensagensPorDia: tally((q) => q.includes('mensagens') && q.includes('dia')),
+      totalTrafego: trafego.length,
+      totalBase: base.length,
+      faturamento: tallyQuiz((q) => q.includes('faturamento')),
+      trafegoPago: tallyQuiz((q) => q.includes('trafego') || q.includes('tráfego')),
+      mensagensPorDiaTrafego: tallyQuiz((q) => q.includes('mensagens') && q.includes('dia')),
+      mensagensPorDiaBase,
     };
   }
 
