@@ -118,6 +118,44 @@ Responda SOMENTE o JSON, nada além disso. Nunca invente informação que não e
     }
   }
 
+  /**
+   * Agregação das respostas do quiz pra dashboard (overview) — usado pra
+   * preparar conteúdo de aula com base em quem realmente está no grupo, não
+   * achismo. Casa a pergunta por palavra-chave (não por índice/id) porque o
+   * texto exato da pergunta pode mudar entre edições do quiz no builder.
+   */
+  async getQuizStats(): Promise<{
+    totalLeads: number;
+    totalWithQuiz: number;
+    faturamento: { label: string; count: number }[];
+    trafegoPago: { label: string; count: number }[];
+    mensagensPorDia: { label: string; count: number }[];
+  }> {
+    const leads = await this.listLeads();
+    const withQuiz = leads.filter((l) => Array.isArray(l.quizResponses) && l.quizResponses.length > 0);
+
+    const tally = (matchQuestion: (q: string) => boolean): { label: string; count: number }[] => {
+      const counts = new Map<string, number>();
+      for (const lead of withQuiz) {
+        const responses = lead.quizResponses as { question: string; answer: string }[];
+        const match = responses.find((r) => matchQuestion((r.question ?? '').toLowerCase()));
+        if (!match?.answer) continue;
+        counts.set(match.answer, (counts.get(match.answer) ?? 0) + 1);
+      }
+      return Array.from(counts.entries())
+        .map(([label, count]) => ({ label, count }))
+        .sort((a, b) => b.count - a.count);
+    };
+
+    return {
+      totalLeads: leads.length,
+      totalWithQuiz: withQuiz.length,
+      faturamento: tally((q) => q.includes('faturamento')),
+      trafegoPago: tally((q) => q.includes('trafego') || q.includes('tráfego')),
+      mensagensPorDia: tally((q) => q.includes('mensagens') && q.includes('dia')),
+    };
+  }
+
   /** Roda a análise pra todos os leads do grupo que ainda não têm resumo (ou força refresh de todos, se forceAll=true). */
   async analyzeAll(forceAll = false): Promise<{ analyzed: number; total: number; failed: string[] }> {
     const leads = await this.listLeads();

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import { Users, Loader2, RefreshCw, Sparkles, AlertCircle, X, CheckCircle2, Circle, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Users, Loader2, RefreshCw, Sparkles, AlertCircle, X, CheckCircle2, Circle, ChevronLeft, ChevronRight, BarChart3, List } from 'lucide-react'
+import GroupWorkshopDashboard from './GroupWorkshopDashboard'
 
 const PAGE_SIZE = 20
 
@@ -178,6 +179,7 @@ export default function GroupWorkshop() {
   const [error, setError] = useState('')
   const [selectedId, setSelectedId] = useState(null)
   const [page, setPage] = useState(1)
+  const [view, setView] = useState('leads')
 
   function load() {
     setLoading(true)
@@ -234,19 +236,42 @@ export default function GroupWorkshop() {
             Leads que entraram no grupo do Workshop — {leads.length} pessoa(s) no histórico ({currentlyInGroupCount} atualmente no grupo), {analyzedCount} já analisada(s).
           </p>
         </div>
+        {view === 'leads' && (
+          <button
+            onClick={handleAnalyzeAll}
+            disabled={analyzingAll || loading}
+            className="flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-lg bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50 transition"
+          >
+            {analyzingAll ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+            Analisar pendentes
+          </button>
+        )}
+      </div>
+
+      <div className="flex items-center gap-1 mb-6 border-b border-slate-200">
         <button
-          onClick={handleAnalyzeAll}
-          disabled={analyzingAll || loading}
-          className="flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-lg bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50 transition"
+          onClick={() => setView('leads')}
+          className={`flex items-center gap-1.5 text-sm font-medium px-4 py-2.5 border-b-2 -mb-px transition ${
+            view === 'leads' ? 'border-violet-600 text-violet-700' : 'border-transparent text-slate-500 hover:text-slate-700'
+          }`}
         >
-          {analyzingAll ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-          Analisar pendentes
+          <List className="w-4 h-4" /> Leads
+        </button>
+        <button
+          onClick={() => setView('dashboard')}
+          className={`flex items-center gap-1.5 text-sm font-medium px-4 py-2.5 border-b-2 -mb-px transition ${
+            view === 'dashboard' ? 'border-violet-600 text-violet-700' : 'border-transparent text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          <BarChart3 className="w-4 h-4" /> Análise do quiz
         </button>
       </div>
 
-      {error && <p className="text-sm text-red-600 mb-4">{error}</p>}
-
-      {loading ? (
+      {view === 'dashboard' ? (
+        <GroupWorkshopDashboard />
+      ) : error ? (
+        <p className="text-sm text-red-600 mb-4">{error}</p>
+      ) : loading ? (
         <div className="flex items-center justify-center py-20 text-slate-400">
           <Loader2 className="w-6 h-6 animate-spin" />
         </div>

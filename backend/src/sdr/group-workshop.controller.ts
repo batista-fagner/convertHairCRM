@@ -10,6 +10,11 @@ export class GroupWorkshopController {
     return this.service.listLeads();
   }
 
+  @Get('quiz-stats')
+  async getQuizStats() {
+    return this.service.getQuizStats();
+  }
+
   @Post('leads/:id/analyze')
   async analyzeLead(@Param('id') id: string) {
     return this.service.analyzeLead(id);
