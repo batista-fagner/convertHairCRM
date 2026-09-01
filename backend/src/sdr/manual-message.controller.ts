@@ -143,6 +143,22 @@ export class ManualMessageController {
     }
 
     this.logger.log(`[Curiosity] ${lead.phone}: ${sent} enviadas, ${deleted} apagadas`);
+
+    // Marcação visível só pro operador (não entra no contexto que a IA usa
+    // pra responder — os mapeamentos em sdr.service.ts/sdr-followup.service.ts
+    // filtram `internal: true` antes de montar o histórico do OpenAI).
+    const ctx = Array.isArray(lead.aiContext) ? lead.aiContext : [];
+    await this.leadsRepo.update(id, {
+      aiContext: [...ctx, {
+        role: 'system',
+        internal: true,
+        content: `Sequência de curiosidade disparada (${deleted}/${sent} apagadas)`,
+        timestamp: new Date().toISOString(),
+      }],
+    });
+    const fresh = await this.leadsRepo.findOne({ where: { id } });
+    if (fresh) this.realtime.emitLeadUpdated(fresh);
+
     return { ok: true, sent, deleted, total: messages.length };
   }
 

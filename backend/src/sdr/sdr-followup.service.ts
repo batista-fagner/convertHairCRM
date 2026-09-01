@@ -757,10 +757,12 @@ export class SdrFollowupService {
     try {
       const model = (await this.settings.get(SDR_MODEL_KEY)) || 'gpt-5.4-mini';
 
-      const history: OpenAI.Chat.ChatCompletionMessageParam[] = (Array.isArray(lead.aiContext) ? lead.aiContext : []).map((m) => ({
-        role: m.role === 'assistant' ? 'assistant' : 'user',
-        content: m.content ?? '',
-      }));
+      const history: OpenAI.Chat.ChatCompletionMessageParam[] = (Array.isArray(lead.aiContext) ? lead.aiContext : [])
+        .filter((m) => !m.internal)
+        .map((m) => ({
+          role: m.role === 'assistant' ? 'assistant' : 'user',
+          content: m.content ?? '',
+        }));
 
       const tomBlock = `TOM (isso é o mais importante, não soa como isso hoje):
 - Comece a mensagem com algo que quebre o gelo de forma empática (reconhecendo a correria, o sumiço, sem soar como cobrança) antes de ir pro conteúdo — nunca entre direto na pergunta fria.

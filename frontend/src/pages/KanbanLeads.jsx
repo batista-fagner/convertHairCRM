@@ -663,6 +663,15 @@ function ConversationModal({ lead, onClose, onTogglePause, onAssign, onSaveNotes
             </div>
           )}
           {ctx.map((m, i) => {
+            if (m.internal) {
+              return (
+                <div key={i} className="flex justify-center">
+                  <span className="text-[11px] text-orange-500 bg-orange-50 border border-orange-100 rounded-full px-3 py-1">
+                    🔥 {m.content}
+                  </span>
+                </div>
+              )
+            }
             const isLead = m.role === 'user'
             const isOperator = m.role === 'assistant' && m.source === 'operator'
             return (
