@@ -49,7 +49,8 @@ npm run dev
 
 - **Backend:** Railway → `convertHairCRM/backend/` (root directory = `backend/`)
 - **Landing page:** `ConvertHairPage` → Vercel (`batista-fagner/ConvertHairPage`)
-- **Banco:** Supabase do sócio (DATABASE_URL própria)
+- **Banco:** Supabase próprio — projeto `bsajckksdesgwsyzutnc` (migrado em 2026-09-01, o antigo `lvnljmxppizafpbgolss` estava estourando limite de egress). ⚠️ **Sempre usar o pooler** (`aws-0-us-east-1.pooler.supabase.com`, usuário `postgres.bsajckksdesgwsyzutnc`) — o host direto (`db.<ref>.supabase.co`) só resolve em IPv6 e o Railway não tem saída IPv6 (`ENETUNREACH`), já causou downtime uma vez.
+- **Storage:** mesmo projeto novo, bucket `lead-avatars` (avatares de lead, migrado junto). Carrossel usa Cloudflare R2 (`R2_BUCKET=converthair-ig`), não Supabase Storage.
 
 ---
 
@@ -82,7 +83,7 @@ Faturamento 30k+ → MQL
 
 | Variável | Status | Descrição |
 |----------|--------|-----------|
-| `SUPABASE_DATABASE_URL` | ⚠️ pendente | Banco Supabase do sócio |
+| `SUPABASE_DATABASE_URL` | ✅ configurado | Pooler do projeto `bsajckksdesgwsyzutnc` (migrado 2026-09-01) — nunca usar o host direto (IPv6, ver seção Infraestrutura) |
 | `UAZAPI_TOKEN` | ⚠️ pendente | Token instância WhatsApp dele |
 | `MQL_NOTIFICATION_PHONE` | ⚠️ pendente | Número pra receber notificação MQL |
 | `FB_PIXEL_ID` | ✅ `1749062199421538` | Pixel/dataset "Convert hair" do sócio (corrigido em 2026-08-09 — valor antigo estava errado nesta doc) |
@@ -316,7 +317,8 @@ acompanhar ao vivo.
 - [ ] Testar o funil do Formulário Instantâneo com um envio **real** (só foi testado com payload fake do App Dashboard até agora)
 - [ ] Decidir o "passo 9" do funil MQL+30: como vai ser a abordagem humana pós-captura (WhatsApp exige template aprovado pra iniciar conversa, já que quem preenche o formulário não manda mensagem primeiro) — e só depois disso definir se vale virar Kanban
 - [ ] Separar nos relatórios do Meta o `Purchase` simbólico do MQL (WhatsApp, value=1) da venda real (`Purchase` do botão "Converter Agora") — hoje só têm `event_id` diferentes (evita duplicata), mas aparecem juntos no Ads Manager. Ver opções A/B/C discutidas (Custom Conversion por valor, `content_name`, ou parar de mandar o simbólico)
+- [ ] **Migração Redis+BullMQ do sdr-followup: trocar scan de 5 em 5 min por job por lead (Opção A do plano)** — hoje (`QUEUE_ENGINE=bullmq`, ativado em 2026-08-22) o `SdrFollowupQueueService` só trocou quem aciona o scan (era `@Cron`, agora é `upsertJobScheduler` do BullMQ), mas o disparo continua sendo uma varredura completa a cada 5 min (`runFollowupScan()` em `sdr-followup.service.ts`), não orientado a evento. Ficou assim de propósito na migração (ver `sdr-followup-scan.processor.ts` e plano em `/Users/fagnerbatista/.claude/plans/spicy-humming-boole.md`, seção "Fase 3") por ser a área de maior risco do sistema (envia WhatsApp real, já causou duplicidade uma vez). Trocar para job por lead — agendado exatamente pro momento do próximo toque de cada lead, sem scan nenhum — elimina esse polling residual. Mexe em 5 pontos de mutação de estado (`sendFollowup`/`sendFollowupVideo`, reset em massa no `followup.controller.ts`, reset por resposta em `sdr.controller.ts`, `broadcastNow()`) — fazer isolado, com bastante teste antes de subir em produção.
 
 ---
 
-**Última atualização:** 2026-08-09
+**Última atualização:** 2026-08-23
