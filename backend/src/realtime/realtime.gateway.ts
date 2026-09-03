@@ -99,4 +99,12 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   emitIgPostUpdated(post: IgPost) {
     this.server?.emit('igpost:updated', post);
   }
+
+  // --- Disparo em massa pro Grupo WhatsApp (tela /group-workshop) ---
+  // Progresso ao vivo enquanto o disparo roda em background (pode levar
+  // dezenas de minutos, ver GroupWorkshopService.runBroadcast).
+
+  emitGroupBroadcastProgress(payload: { sent: number; total: number; failed: number; done: boolean }) {
+    this.server?.emit('groupbroadcast:progress', payload);
+  }
 }

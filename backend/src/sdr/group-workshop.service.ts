@@ -2,12 +2,21 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
+import { HttpService } from '@nestjs/axios';
+import { firstValueFrom } from 'rxjs';
 import OpenAI from 'openai';
 import { Lead } from '../common/entities/lead.entity';
 import { SettingsService } from '../settings/settings.service';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { SDR_MODEL_KEY, SDR_DEFAULT_MODEL } from './sdr.prompt';
 
 const JOIN_TAG = 'entrou_no_grupo';
+
+// Limites do intervalo entre envios do disparo em massa — evita tanto um
+// valor absurdo (0s = rajada, pode derrubar a instância) quanto um valor
+// tão alto que o disparo pra ~100 pessoas leve horas.
+const MIN_DELAY_FLOOR_SEC = 1;
+const MAX_DELAY_CEIL_SEC = 120;
 
 // Tela "Entraram no Grupo" (menu Funil) — pra Fagner/Alex saberem com quem vão
 // falar na live antes de vender o plano de R$410. Além dos campos estruturados
@@ -21,14 +30,21 @@ export class GroupWorkshopService {
   private readonly logger = new Logger(GroupWorkshopService.name);
   private readonly openai: OpenAI;
   private readonly defaultModel: string;
+  private readonly uazapiBaseUrl: string;
+  private readonly uazapiToken: string;
+  private broadcasting = false;
 
   constructor(
     @InjectRepository(Lead) private readonly leadsRepo: Repository<Lead>,
     private readonly settings: SettingsService,
+    private readonly http: HttpService,
+    private readonly realtime: RealtimeGateway,
     config: ConfigService,
   ) {
     this.openai = new OpenAI({ apiKey: config.get('OPENAI_API_KEY') });
     this.defaultModel = config.get('SDR_OPENAI_MODEL') || SDR_DEFAULT_MODEL;
+    this.uazapiBaseUrl = config.get('SDR_UAZAPI_BASE_URL') || config.get('UAZAPI_BASE_URL') || '';
+    this.uazapiToken = config.get('SDR_UAZAPI_TOKEN') || '';
   }
 
   async listLeads(): Promise<Lead[]> {
@@ -216,5 +232,95 @@ Responda SOMENTE o JSON, nada além disso. Nunca invente informação que não e
       }
     }
     return { analyzed, total: leads.length, failed };
+  }
+
+  isBroadcasting(): boolean {
+    return this.broadcasting;
+  }
+
+  private applyPlaceholders(text: string, lead: Lead): string {
+    const firstName = lead.name?.trim()?.split(/\s+/)[0];
+    return text.replace(/\{\{\s*nome\s*\}\}/gi, firstName || 'tudo bem');
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /**
+   * Dispara uma mensagem única pra todo mundo que já entrou no grupo do
+   * Workshop (mesma lista da aba "Leads" desta tela — inclui quem já saiu do
+   * grupo depois, a tag "entrou_no_grupo" não é removida). Pensado pro dia do
+   * lançamento: aviso da live/oferta pra toda a base do grupo de uma vez.
+   *
+   * Roda em background (pode levar dezenas de minutos com ~100 leads) —
+   * devolve na hora só a contagem de quem vai receber, e publica progresso
+   * via socket (`groupbroadcast:progress`) pra tela acompanhar ao vivo.
+   */
+  async broadcast(text: string, minDelaySec: number, maxDelaySec: number): Promise<{ started: boolean; total: number }> {
+    if (this.broadcasting) throw new Error('Já existe um disparo em massa em andamento — aguarde terminar.');
+
+    const trimmed = text?.trim();
+    if (!trimmed) throw new Error('Mensagem vazia.');
+    if (!this.uazapiToken) throw new Error('Token do WhatsApp (SDR_UAZAPI_TOKEN) não configurado.');
+
+    const min = Math.max(MIN_DELAY_FLOOR_SEC, Math.min(minDelaySec || MIN_DELAY_FLOOR_SEC, MAX_DELAY_CEIL_SEC));
+    const max = Math.max(min, Math.min(maxDelaySec || min, MAX_DELAY_CEIL_SEC));
+
+    const leads = await this.listLeads();
+    const targets = leads.filter((l) => l.phone);
+
+    this.broadcasting = true;
+    this.runBroadcast(targets, trimmed, min, max).finally(() => {
+      this.broadcasting = false;
+    });
+
+    return { started: true, total: targets.length };
+  }
+
+  private async runBroadcast(leads: Lead[], text: string, minSec: number, maxSec: number): Promise<void> {
+    const total = leads.length;
+    let sent = 0;
+    let failed = 0;
+    this.realtime.emitGroupBroadcastProgress({ sent, total, failed, done: false });
+
+    for (let i = 0; i < leads.length; i++) {
+      const lead = leads[i];
+      if (i > 0) {
+        const delayMs = (minSec + Math.random() * (maxSec - minSec)) * 1000;
+        await this.sleep(delayMs);
+      }
+
+      try {
+        const message = this.applyPlaceholders(text, lead);
+        const phone = lead.phone.startsWith('55') ? lead.phone : `55${lead.phone}`;
+        await firstValueFrom(
+          this.http.post(
+            `${this.uazapiBaseUrl}/send/text`,
+            { number: phone, text: message },
+            { headers: { token: this.uazapiToken } },
+          ),
+        );
+
+        const ctx = Array.isArray(lead.aiContext) ? lead.aiContext : [];
+        await this.leadsRepo.update(lead.id, {
+          aiContext: [...ctx, { role: 'assistant', content: message, timestamp: new Date().toISOString() }],
+          waLastMessageAt: new Date(),
+        });
+        const fresh = await this.leadsRepo.findOne({ where: { id: lead.id } });
+        if (fresh) this.realtime.emitLeadUpdated(fresh);
+
+        sent++;
+        this.logger.log(`[Disparo em massa] Enviado para ${lead.phone} (${sent}/${total})`);
+      } catch (err: any) {
+        failed++;
+        this.logger.error(`[Disparo em massa] Erro ao enviar para ${lead.phone}: ${err.message}`);
+      }
+
+      this.realtime.emitGroupBroadcastProgress({ sent, total, failed, done: false });
+    }
+
+    this.realtime.emitGroupBroadcastProgress({ sent, total, failed, done: true });
+    this.logger.log(`[Disparo em massa] Concluído: ${sent}/${total} enviados, ${failed} falharam.`);
   }
 }

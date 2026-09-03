@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
-import { Users, Loader2, RefreshCw, Sparkles, AlertCircle, X, CheckCircle2, Circle, ChevronLeft, ChevronRight, BarChart3, List } from 'lucide-react'
+import { Users, Loader2, RefreshCw, Sparkles, AlertCircle, X, CheckCircle2, Circle, ChevronLeft, ChevronRight, BarChart3, List, Send } from 'lucide-react'
 import GroupWorkshopDashboard from './GroupWorkshopDashboard'
+import GroupWorkshopBroadcast from './GroupWorkshopBroadcast'
 
 const PAGE_SIZE = 20
 
@@ -265,10 +266,20 @@ export default function GroupWorkshop() {
         >
           <BarChart3 className="w-4 h-4" /> Análise do quiz
         </button>
+        <button
+          onClick={() => setView('broadcast')}
+          className={`flex items-center gap-1.5 text-sm font-medium px-4 py-2.5 border-b-2 -mb-px transition ${
+            view === 'broadcast' ? 'border-violet-600 text-violet-700' : 'border-transparent text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          <Send className="w-4 h-4" /> Disparo em massa
+        </button>
       </div>
 
       {view === 'dashboard' ? (
         <GroupWorkshopDashboard />
+      ) : view === 'broadcast' ? (
+        <GroupWorkshopBroadcast leads={leads} />
       ) : error ? (
         <p className="text-sm text-red-600 mb-4">{error}</p>
       ) : loading ? (
