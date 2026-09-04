@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Users, Loader2, RefreshCw, Sparkles, AlertCircle, X, CheckCircle2, Circle, ChevronLeft, ChevronRight, BarChart3, List, Send } from 'lucide-react'
+import { Users, Loader2, RefreshCw, Sparkles, AlertCircle, X, CheckCircle2, Circle, ChevronLeft, ChevronRight, BarChart3, List, Send, Search } from 'lucide-react'
 import GroupWorkshopDashboard from './GroupWorkshopDashboard'
 import GroupWorkshopBroadcast from './GroupWorkshopBroadcast'
 
@@ -181,6 +181,7 @@ export default function GroupWorkshop() {
   const [selectedId, setSelectedId] = useState(null)
   const [page, setPage] = useState(1)
   const [view, setView] = useState('leads')
+  const [search, setSearch] = useState('')
 
   function load() {
     setLoading(true)
@@ -222,9 +223,19 @@ export default function GroupWorkshop() {
   const currentlyInGroupCount = leads.filter(l => !l.groupLeftAt).length
   const selectedLead = leads.find(l => l.id === selectedId) || null
 
-  const totalPages = Math.max(1, Math.ceil(leads.length / PAGE_SIZE))
+  const searchTrim = search.trim()
+  const searchDigits = searchTrim.replace(/\D/g, '')
+  const filteredLeads = searchTrim
+    ? leads.filter(l => {
+        const nameMatch = (l.name || '').toLowerCase().includes(searchTrim.toLowerCase())
+        const phoneMatch = searchDigits.length > 0 && (l.phone || '').replace(/\D/g, '').includes(searchDigits)
+        return nameMatch || phoneMatch
+      })
+    : leads
+
+  const totalPages = Math.max(1, Math.ceil(filteredLeads.length / PAGE_SIZE))
   const currentPage = Math.min(page, totalPages)
-  const pageLeads = leads.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
+  const pageLeads = filteredLeads.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
 
   return (
     <div className="p-6">
@@ -276,6 +287,23 @@ export default function GroupWorkshop() {
         </button>
       </div>
 
+      {view === 'leads' && !loading && !error && leads.length > 0 && (
+        <div className="relative mb-4 max-w-sm">
+          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          <input
+            value={search}
+            onChange={e => { setSearch(e.target.value); setPage(1) }}
+            placeholder="Buscar por nome ou número..."
+            className="w-full pl-9 pr-8 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500"
+          />
+          {search && (
+            <button onClick={() => { setSearch(''); setPage(1) }} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+      )}
+
       {view === 'dashboard' ? (
         <GroupWorkshopDashboard />
       ) : view === 'broadcast' ? (
@@ -288,6 +316,8 @@ export default function GroupWorkshop() {
         </div>
       ) : leads.length === 0 ? (
         <p className="text-sm text-slate-400 text-center py-20">Ninguém entrou no grupo ainda.</p>
+      ) : filteredLeads.length === 0 ? (
+        <p className="text-sm text-slate-400 text-center py-20">Nenhum lead encontrado para "{search}".</p>
       ) : (
         <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto">
           <table className="w-full text-sm">
@@ -349,7 +379,7 @@ export default function GroupWorkshop() {
           {totalPages > 1 && (
             <div className="flex items-center justify-between px-4 py-3 border-t border-slate-200">
               <p className="text-xs text-slate-400">
-                Página {currentPage} de {totalPages} — {leads.length} pessoa(s) no total
+                Página {currentPage} de {totalPages} — {filteredLeads.length} pessoa(s) {search ? 'encontrada(s)' : 'no total'}
               </p>
               <div className="flex items-center gap-2">
                 <button
