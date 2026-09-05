@@ -1,6 +1,7 @@
 import { Controller, Get, Param, Query, Delete, Patch, Post, Body, HttpException, HttpStatus, Logger } from '@nestjs/common';
 import { LeadsService } from './leads.service';
 import { FacebookService } from '../facebook/facebook.service';
+import { QuizService } from '../quiz/quiz.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { KanbanStage } from '../common/entities/lead.entity';
 
@@ -11,8 +12,25 @@ export class LeadsController {
   constructor(
     private leadsService: LeadsService,
     private facebookService: FacebookService,
+    private quizService: QuizService,
     private realtime: RealtimeGateway,
   ) {}
+
+  // Se o lead veio de um quiz com pixel/CAPI próprio, o Purchase precisa ir pra esse
+  // pixel — não pro global — senão a campanha do quiz nunca vê a conversão de verdade.
+  // findBySlug lança se o quiz foi desativado/removido depois; não pode derrubar a
+  // conversão do lead por isso, então falha em silêncio (loga e segue sem override).
+  private async _resolveQuizPixelOverride(quizSlug?: string | null): Promise<{ pixelId?: string; accessToken?: string } | undefined> {
+    if (!quizSlug) return undefined;
+    try {
+      const quiz = await this.quizService.findBySlug(quizSlug);
+      if (!quiz.fbPixelId && !quiz.fbAccessToken) return undefined;
+      return { pixelId: quiz.fbPixelId ?? undefined, accessToken: quiz.fbAccessToken ?? undefined };
+    } catch (err) {
+      this.logger.warn(`Não foi possível resolver pixel do quiz "${quizSlug}" pra atribuir o Purchase: ${err.message}`);
+      return undefined;
+    }
+  }
 
   @Post()
   async createManual(@Body() body: { name: string; phone: string; instagram?: string; revenueRange?: string }) {
@@ -129,7 +147,8 @@ export class LeadsController {
   @Patch(':id/convert')
   async convert(@Param('id') id: string, @Body() body: { value?: number }) {
     const lead = await this.leadsService.markAsConverted(id);
-    this.facebookService.sendPurchaseEvent(lead, body.value ?? 3000).catch((err) =>
+    const pixelOverride = await this._resolveQuizPixelOverride(lead.quizSlug);
+    this.facebookService.sendPurchaseEvent(lead, body.value ?? 3000, pixelOverride).catch((err) =>
       this.logger.error(`Erro ao enviar evento Purchase (conversão manual) do lead ${id}: ${err.message}`),
     );
     return lead;

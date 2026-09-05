@@ -234,12 +234,26 @@ export class FacebookService {
     await this.sendEvent(eventName, userData, undefined, lead.ctwaSourceUrl, { ctwa, eventId: `lead-${lead.id}` });
   }
 
-  async sendPurchaseEvent(lead: Lead, value: number): Promise<void> {
+  // pixelOverride: pixel/token dedicados de campanha (ex: lead veio de um quiz com pixel
+  // próprio) — sem isso, a conversão real cairia no par global e o algoritmo daquela
+  // campanha nunca aprenderia com a venda de verdade. Quem resolve o override é o
+  // chamador (LeadsController, olhando lead.quizSlug), pra não criar dependência
+  // circular entre FacebookModule e QuizModule.
+  async sendPurchaseEvent(
+    lead: Lead,
+    value: number,
+    pixelOverride?: { pixelId?: string; accessToken?: string },
+  ): Promise<void> {
     const userData = this.buildUserData(lead);
     // Discriminador "purchase-" (não "mql-") pra não colidir com o Purchase
     // simbólico do sendMqlEvent (CTWA) — são 2 eventos de negócio distintos pro
     // mesmo lead, cada um com seu próprio event_id de dedup.
-    await this.sendEvent('Purchase', userData, { value, currency: 'BRL' }, lead.ctwaSourceUrl, { ctwa: Boolean(lead.ctwaClid), eventId: `purchase-${lead.id}` });
+    await this.sendEvent('Purchase', userData, { value, currency: 'BRL' }, lead.ctwaSourceUrl, {
+      ctwa: Boolean(lead.ctwaClid),
+      eventId: `purchase-${lead.id}`,
+      pixelId: pixelOverride?.pixelId,
+      accessToken: pixelOverride?.accessToken,
+    });
   }
 
   async sendMqlEvent(lead: Lead, extra?: { fbp?: string; fbc?: string; userAgent?: string; clientIp?: string }): Promise<void> {
