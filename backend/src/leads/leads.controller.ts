@@ -1,4 +1,5 @@
-import { Controller, Get, Param, Query, Delete, Patch, Post, Body, HttpException, HttpStatus, Logger } from '@nestjs/common';
+import { Controller, Get, Param, Query, Delete, Patch, Post, Body, Headers, UnauthorizedException, HttpException, HttpStatus, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { LeadsService } from './leads.service';
 import { FacebookService } from '../facebook/facebook.service';
 import { QuizService } from '../quiz/quiz.service';
@@ -14,6 +15,7 @@ export class LeadsController {
     private facebookService: FacebookService,
     private quizService: QuizService,
     private realtime: RealtimeGateway,
+    private config: ConfigService,
   ) {}
 
   // Se o lead veio de um quiz com pixel/CAPI próprio, o Purchase precisa ir pra esse
@@ -152,6 +154,40 @@ export class LeadsController {
       this.logger.error(`Erro ao enviar evento Purchase (conversão manual) do lead ${id}: ${err.message}`),
     );
     return lead;
+  }
+
+  // Chamado pelo fisio-secretary quando um pagamento (PIX ou cartão) é confirmado pela
+  // primeira vez pra um cliente novo — permite atribuir o Purchase automaticamente ao lead
+  // de origem, sem precisar clicar em "Converter Lead" manualmente aqui. Autenticado por
+  // token compartilhado (não é rota pública). Telefone casado por sufixo (ver
+  // findByPhoneSuffix) porque o número digitado no checkout pode vir formatado diferente
+  // do que o WhatsApp reportou quando o lead entrou no grupo.
+  @Post('auto-convert')
+  async autoConvert(@Body() body: { phone: string; value: number }, @Headers('x-internal-token') token?: string) {
+    const expected = this.config.get<string>('INTERNAL_API_TOKEN');
+    if (!expected || token !== expected) {
+      throw new UnauthorizedException('Token inválido');
+    }
+    if (!body?.phone || !Number.isFinite(Number(body.value))) {
+      throw new HttpException('phone e value são obrigatórios', HttpStatus.BAD_REQUEST);
+    }
+
+    const lead = await this.leadsService.findByPhoneSuffix(body.phone);
+    if (!lead) {
+      this.logger.warn(`[AUTO-CONVERT] Nenhum lead encontrado pro telefone ${body.phone} — cliente novo sem lead de origem rastreável`);
+      return { ok: true, matched: false };
+    }
+    if (lead.status === 'convertido') {
+      return { ok: true, matched: true, alreadyConverted: true, leadId: lead.id };
+    }
+
+    const converted = await this.leadsService.markAsConverted(lead.id);
+    const pixelOverride = await this._resolveQuizPixelOverride(converted.quizSlug);
+    this.facebookService.sendPurchaseEvent(converted, Number(body.value), pixelOverride).catch((err) =>
+      this.logger.error(`Erro ao enviar evento Purchase (conversão automática) do lead ${converted.id}: ${err.message}`),
+    );
+    this.logger.log(`[AUTO-CONVERT] Lead ${converted.id} (${converted.name}) convertido automaticamente via fisio-secretary — valor R$ ${body.value}`);
+    return { ok: true, matched: true, leadId: converted.id };
   }
 
   @Delete(':id')

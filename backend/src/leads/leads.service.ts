@@ -35,6 +35,19 @@ export class LeadsService {
     return this.leadsRepo.findOne({ where: { phone } });
   }
 
+  // Telefone chega em formatos inconsistentes entre sistemas (com/sem 9º dígito, com/sem
+  // DDI) — compara só os últimos 8 dígitos, mesmo esquema já usado no fisio-secretary pra
+  // cruzar clientes pagantes com o lead de origem. Pega o mais recente se houver mais de um.
+  async findByPhoneSuffix(phone: string): Promise<Lead | null> {
+    const suffix = phone.replace(/\D/g, '').slice(-8);
+    if (suffix.length < 8) return null;
+    return this.leadsRepo
+      .createQueryBuilder('lead')
+      .where('lead.phone LIKE :suffix', { suffix: `%${suffix}` })
+      .orderBy('lead.created_at', 'DESC')
+      .getOne();
+  }
+
   async findAll(opts?: { campaignId?: string; page?: number; limit?: number; source?: 'all' | 'ig_dm' | 'paid'; search?: string }): Promise<{ data: Lead[]; total: number; page: number; totalPages: number }> {
     const page = opts?.page || 1;
     const limit = opts?.limit || 6;
