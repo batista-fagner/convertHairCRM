@@ -71,7 +71,7 @@ const NAV_GROUPS = [
   {
     label: 'Conteúdo',
     items: [
-      { icon: Sparkles, label: 'Carrossel IG', path: '/content', disabled: true },
+      { icon: Sparkles, label: 'Carrossel IG', path: '/content' },
       { icon: Video, label: 'Vídeos', path: '/videos' },
       { icon: Image, label: 'Posts IG', path: '/instagram-posts' },
     ],
