@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Param, Body, Req, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Param, Body, Query, Req, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request } from 'express';
 import { QuizService } from './quiz.service';
@@ -44,6 +44,11 @@ export class QuizController {
   @Delete(':id')
   remove(@Param('id') id: string) {
     return this.quizService.remove(id);
+  }
+
+  @Get('check-whatsapp-group')
+  checkWhatsappGroup(@Query('url') url: string) {
+    return this.quizService.checkWhatsappGroupLink(url);
   }
 
   // --- Público (ConvertHairPage) ---

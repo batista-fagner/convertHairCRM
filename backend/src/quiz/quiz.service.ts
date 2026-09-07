@@ -2,12 +2,23 @@ import { Injectable, Logger, NotFoundException, BadRequestException } from '@nes
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
+import { HttpService } from '@nestjs/axios';
+import { firstValueFrom } from 'rxjs';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { randomUUID } from 'crypto';
 import { Quiz, QuizQuestion } from '../common/entities/quiz.entity';
 import { QuizSubmission } from '../common/entities/quiz-submission.entity';
 import { FacebookService } from '../facebook/facebook.service';
 import { TrackingService } from '../tracking/tracking.service';
+
+export interface WhatsappGroupCheckResult {
+  ok: boolean;
+  error?: string;
+  groupName?: string;
+  isMember?: boolean;
+  isAdmin?: boolean;
+  instanceNumber?: string;
+}
 
 const MAX_QUESTIONS = 6;
 const MAX_IMAGE_SIZE_MB = 10;
@@ -55,6 +66,7 @@ export class QuizService {
     private facebookService: FacebookService,
     private trackingService: TrackingService,
     private config: ConfigService,
+    private http: HttpService,
   ) {
     // Mesmo bucket R2 já usado pelos posts do Instagram (ig-posts.service.ts)
     // — sem necessidade de bucket/credenciais separados só pra foto do quiz.
@@ -269,5 +281,61 @@ export class QuizService {
       redirectUrl: quiz.whatsappUrl || '',
       mqlEvents: Array.from(mqlEvents),
     };
+  }
+
+  /**
+   * Diagnóstico usado no Quiz Builder: confere se o link de convite de grupo
+   * digitado no campo "Link do WhatsApp" aponta pra um grupo onde a instância
+   * uazapi (SDR_UAZAPI_TOKEN — a mesma que detecta entrada no grupo via SSE em
+   * sdr-group-join.service.ts) já está dentro, e como admin. Sem isso, criar um
+   * grupo novo e trocar só o link não é suficiente — a instância precisa ser
+   * adicionada manualmente no grupo (o WhatsApp não avisa quem entra em grupos
+   * de que não faz parte). Não modifica nada, só lê.
+   */
+  async checkWhatsappGroupLink(url: string): Promise<WhatsappGroupCheckResult> {
+    const match = (url || '').match(/chat\.whatsapp\.com\/([A-Za-z0-9]+)/);
+    if (!match) {
+      return { ok: false, error: 'Isso não parece um link de convite do WhatsApp (chat.whatsapp.com/...)' };
+    }
+
+    const uazapiBaseUrl = this.config.get('SDR_UAZAPI_BASE_URL') || this.config.get('UAZAPI_BASE_URL') || 'https://free.uazapi.com';
+    const uazapiToken = this.config.get('SDR_UAZAPI_TOKEN') || '';
+    if (!uazapiToken) {
+      return { ok: false, error: 'SDR_UAZAPI_TOKEN não configurado no servidor' };
+    }
+
+    let groupName: string;
+    try {
+      const preview = await firstValueFrom(this.http.get(`https://chat.whatsapp.com/${match[1]}`));
+      const titleMatch = (preview.data as string).match(/property="og:title" content="([^"]+)"/);
+      if (!titleMatch) {
+        return { ok: false, error: 'Não consegui identificar o grupo desse link (pode estar expirado ou inválido)' };
+      }
+      groupName = titleMatch[1];
+    } catch (err: any) {
+      return { ok: false, error: `Não consegui abrir o link de convite: ${err.message}` };
+    }
+
+    let status: any;
+    let groups: any[];
+    try {
+      [status, groups] = await Promise.all([
+        firstValueFrom(this.http.get(`${uazapiBaseUrl}/instance/status`, { headers: { token: uazapiToken } })).then((r) => r.data),
+        firstValueFrom(this.http.get(`${uazapiBaseUrl}/group/list`, { headers: { token: uazapiToken } })).then((r) => r.data?.groups || []),
+      ]);
+    } catch (err: any) {
+      return { ok: false, error: `Não consegui consultar o uazapi: ${err.message}`, groupName };
+    }
+
+    const instanceNumber: string = status?.instance?.owner || '';
+    const group = groups.find((g) => (g.Name || '').trim().toLowerCase() === groupName.trim().toLowerCase());
+    if (!group) {
+      return { ok: false, error: `Grupo "${groupName}" encontrado no link, mas a instância não é membro dele ainda — adicione o número ${instanceNumber} no grupo.`, groupName, isMember: false, instanceNumber };
+    }
+
+    const participant = (group.Participants || []).find((p: any) => String(p.PhoneNumber || '').startsWith(instanceNumber));
+    const isAdmin = Boolean(participant?.IsAdmin || participant?.IsSuperAdmin);
+
+    return { ok: true, groupName, isMember: true, isAdmin, instanceNumber };
   }
 }

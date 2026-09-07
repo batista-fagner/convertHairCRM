@@ -206,6 +206,22 @@ function SubmissionsModal({ quiz, submissions, loading, onClose }) {
 
 function QuizBuilder({ quiz, onChange, onSave, saving }) {
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
+  const [groupCheck, setGroupCheck] = useState(null)
+  const [checkingGroup, setCheckingGroup] = useState(false)
+
+  async function checkWhatsappGroup() {
+    if (!quiz.whatsappUrl) return
+    setCheckingGroup(true)
+    setGroupCheck(null)
+    try {
+      const res = await fetch(`${API}/quiz/check-whatsapp-group?url=${encodeURIComponent(quiz.whatsappUrl)}`)
+      setGroupCheck(await res.json())
+    } catch (err) {
+      setGroupCheck({ ok: false, error: 'Falha ao consultar o servidor' })
+    } finally {
+      setCheckingGroup(false)
+    }
+  }
 
   function set(path, value) {
     onChange(prev => {
@@ -302,12 +318,38 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
         </div>
         <div>
           <label className="text-sm text-slate-500">Link do grupo do WhatsApp (destino final)</label>
-          <input
-            value={quiz.whatsappUrl || ''}
-            onChange={e => set('whatsappUrl', e.target.value)}
-            placeholder="https://chat.whatsapp.com/..."
-            className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
-          />
+          <div className="flex gap-2 mt-1">
+            <input
+              value={quiz.whatsappUrl || ''}
+              onChange={e => { set('whatsappUrl', e.target.value); setGroupCheck(null) }}
+              placeholder="https://chat.whatsapp.com/..."
+              className="w-full text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
+            />
+            <button
+              type="button"
+              onClick={checkWhatsappGroup}
+              disabled={!quiz.whatsappUrl || checkingGroup}
+              className="shrink-0 flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-50 transition"
+            >
+              {checkingGroup ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+              Verificar grupo
+            </button>
+          </div>
+          <p className="text-sm text-slate-400 mt-1">
+            Confere se o número que detecta quem entra no grupo (Sofia) já está dentro desse grupo e como admin —
+            precisa disso pra criar o lead e mandar a mensagem de boas-vindas automaticamente. Grupo novo? Adicione
+            o número lá antes de testar.
+          </p>
+          {groupCheck && (
+            groupCheck.ok ? (
+              <p className={`text-sm mt-1.5 flex items-center gap-1.5 ${groupCheck.isAdmin ? 'text-emerald-600' : 'text-amber-600'}`}>
+                <CheckCircle2 size={14} />
+                Grupo "{groupCheck.groupName}" — número {groupCheck.instanceNumber} {groupCheck.isAdmin ? 'é admin ✓' : 'está no grupo, mas não é admin (recomendado deixar como admin)'}
+              </p>
+            ) : (
+              <p className="text-sm mt-1.5 text-red-600">{groupCheck.error}</p>
+            )
+          )}
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
