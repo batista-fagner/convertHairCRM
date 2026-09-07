@@ -123,7 +123,7 @@ function fmtDate(iso) {
 // UTM completo pra saber de qual campanha/conjunto/anúncio cada resposta veio.
 // Diferente da fila do TrackingService (Redis, expira em 30min e só vira Lead
 // se a pessoa entrar no grupo), isso fica pra sempre desde o momento do submit.
-function SubmissionsModal({ quiz, submissions, loading, onClose }) {
+function SubmissionsModal({ quiz, submissions, loading, onClose, onDelete }) {
   const [expandedId, setExpandedId] = useState(null)
 
   return (
@@ -158,6 +158,7 @@ function SubmissionsModal({ quiz, submissions, loading, onClose }) {
                   <th className="px-4 py-2 font-medium">Conjunto/Anúncio</th>
                   <th className="px-4 py-2 font-medium">Origem</th>
                   <th className="px-4 py-2 font-medium">MQL</th>
+                  <th className="px-4 py-2 font-medium w-8"></th>
                 </tr>
               </thead>
               <tbody>
@@ -178,10 +179,19 @@ function SubmissionsModal({ quiz, submissions, loading, onClose }) {
                           </span>
                         ) : '—'}
                       </td>
+                      <td className="px-4 py-2.5 text-right">
+                        <button
+                          onClick={e => { e.stopPropagation(); onDelete(s.id) }}
+                          className="text-slate-300 hover:text-red-500 transition"
+                          title="Excluir resposta"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </td>
                     </tr>
                     {expandedId === s.id && (
                       <tr className="bg-slate-50/60">
-                        <td colSpan={5} className="px-4 py-3">
+                        <td colSpan={6} className="px-4 py-3">
                           <div className="space-y-1.5">
                             {(s.answers || []).map((a, i) => (
                               <p key={i} className="text-sm text-slate-600">
@@ -981,6 +991,12 @@ export default function Quizzes() {
     }
   }
 
+  async function handleDeleteSubmission(id) {
+    if (!confirm('Excluir essa resposta?')) return
+    await fetch(`${API}/quiz/submissions/${id}`, { method: 'DELETE' })
+    setSubmissions(prev => prev.filter(s => s.id !== id))
+  }
+
   function copyLink(slug, id) {
     navigator.clipboard.writeText(`${QUIZ_PUBLIC_BASE}/${slug}`)
     setCopiedId(id)
@@ -1090,6 +1106,7 @@ export default function Quizzes() {
           submissions={submissions}
           loading={loadingSubmissions}
           onClose={() => setSubmissionsQuiz(null)}
+          onDelete={handleDeleteSubmission}
         />
       )}
     </div>

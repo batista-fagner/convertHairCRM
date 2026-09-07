@@ -31,6 +31,11 @@ export class QuizController {
     return this.quizService.listSubmissions(id);
   }
 
+  @Delete('submissions/:submissionId')
+  deleteSubmission(@Param('submissionId') submissionId: string) {
+    return this.quizService.deleteSubmission(submissionId);
+  }
+
   @Post()
   create(@Body() dto: Partial<Quiz>) {
     return this.quizService.create(dto);

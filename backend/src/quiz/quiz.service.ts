@@ -158,6 +158,11 @@ export class QuizService {
     return this.submissionRepo.find({ where: { quizId }, order: { createdAt: 'DESC' } });
   }
 
+  async deleteSubmission(id: string): Promise<{ success: true }> {
+    await this.submissionRepo.delete(id);
+    return { success: true };
+  }
+
   private validateQuestions(questions?: QuizQuestion[]): void {
     if (questions && questions.length > MAX_QUESTIONS) {
       throw new BadRequestException(`Máximo de ${MAX_QUESTIONS} perguntas por quiz`);
