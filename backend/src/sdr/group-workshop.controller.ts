@@ -21,8 +21,8 @@ export class GroupWorkshopController {
   }
 
   @Post('broadcast')
-  async broadcast(@Body() body: { text: string; minDelaySec?: number; maxDelaySec?: number; groupJid?: string }) {
-    return this.service.broadcast(body.text, body.minDelaySec ?? 10, body.maxDelaySec ?? 30, body.groupJid);
+  async broadcast(@Body() body: { text: string; minDelaySec?: number; maxDelaySec?: number; groupJid?: string; videoId?: string }) {
+    return this.service.broadcast(body.text, body.minDelaySec ?? 10, body.maxDelaySec ?? 30, body.groupJid, body.videoId);
   }
 
   @Get('quiz-stats')

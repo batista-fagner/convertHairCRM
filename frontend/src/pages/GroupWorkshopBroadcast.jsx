@@ -16,7 +16,7 @@ function formatEta(totalSeconds) {
   return `${min} min`
 }
 
-function ConfirmModal({ total, text, onConfirm, onCancel }) {
+function ConfirmModal({ total, text, videoName, onConfirm, onCancel }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
       <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
@@ -25,11 +25,13 @@ function ConfirmModal({ total, text, onConfirm, onCancel }) {
           <h3 className="font-bold text-slate-800">Confirmar disparo em massa</h3>
         </div>
         <p className="text-sm text-slate-600 mb-4">
-          Isso vai enviar uma mensagem de WhatsApp pra <strong>{total} pessoa(s)</strong> que entraram no grupo. Não tem como cancelar no meio nem desfazer depois de começar.
+          Isso vai enviar {videoName ? <>o vídeo <strong>"{videoName}"</strong></> : 'uma mensagem'} de WhatsApp pra <strong>{total} pessoa(s)</strong> que entraram no grupo. Não tem como cancelar no meio nem desfazer depois de começar.
         </p>
-        <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 mb-5 text-sm text-slate-700 whitespace-pre-wrap max-h-40 overflow-y-auto">
-          {text}
-        </div>
+        {text && (
+          <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 mb-5 text-sm text-slate-700 whitespace-pre-wrap max-h-40 overflow-y-auto">
+            {text}
+          </div>
+        )}
         <div className="flex justify-end gap-2">
           <button onClick={onCancel} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition">
             Cancelar
@@ -45,6 +47,8 @@ function ConfirmModal({ total, text, onConfirm, onCancel }) {
 
 export default function GroupWorkshopBroadcast({ leads, groupJid }) {
   const [text, setText] = useState('')
+  const [videos, setVideos] = useState([])
+  const [videoId, setVideoId] = useState('')
   const [minDelaySec, setMinDelaySec] = useState(10)
   const [maxDelaySec, setMaxDelaySec] = useState(30)
   const [showConfirm, setShowConfirm] = useState(false)
@@ -55,12 +59,19 @@ export default function GroupWorkshopBroadcast({ leads, groupJid }) {
   const targets = useMemo(() => leads.filter(l => l.phone), [leads])
   const total = targets.length
   const sampleName = targets.find(l => l.name?.trim())?.name?.trim()?.split(/\s+/)[0]
+  const selectedVideo = videos.find(v => v.id === videoId)
 
   // Se a página foi recarregada no meio de um disparo, retoma o acompanhamento.
   useEffect(() => {
     fetch(`${API}/group-workshop/broadcast-status`)
       .then(r => r.json())
       .then(d => { if (d.running) setSending(true) })
+      .catch(() => {})
+    // Reaproveita a mesma biblioteca de vídeos do follow-up (Configurações) —
+    // não faz sentido ter upload duplicado.
+    fetch(`${API}/followup/videos`)
+      .then(r => r.json())
+      .then(setVideos)
       .catch(() => {})
   }, [])
 
@@ -74,7 +85,7 @@ export default function GroupWorkshopBroadcast({ leads, groupJid }) {
   const validRange = minDelaySec >= 1 && maxDelaySec >= minDelaySec
   const etaLow = total > 1 ? (total - 1) * minDelaySec : 0
   const etaHigh = total > 1 ? (total - 1) * maxDelaySec : 0
-  const canSend = text.trim().length > 0 && total > 0 && validRange && !sending
+  const canSend = (text.trim().length > 0 || videoId) && total > 0 && validRange && !sending
 
   async function handleConfirmedSend() {
     setError('')
@@ -85,7 +96,7 @@ export default function GroupWorkshopBroadcast({ leads, groupJid }) {
       const res = await fetch(`${API}/group-workshop/broadcast`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: text.trim(), minDelaySec, maxDelaySec, groupJid: groupJid || undefined }),
+        body: JSON.stringify({ text: text.trim(), minDelaySec, maxDelaySec, groupJid: groupJid || undefined, videoId: videoId || undefined }),
       })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
@@ -103,18 +114,39 @@ export default function GroupWorkshopBroadcast({ leads, groupJid }) {
   return (
     <div className="max-w-2xl">
       <div className="bg-white rounded-xl border border-slate-200 p-5 mb-5">
-        <label className="block text-sm font-semibold text-slate-800 mb-2">Mensagem</label>
+        <label className="block text-sm font-semibold text-slate-800 mb-2">Vídeo (opcional)</label>
+        <select
+          value={videoId}
+          onChange={e => setVideoId(e.target.value)}
+          disabled={sending}
+          className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-300 disabled:bg-slate-50 bg-white"
+        >
+          <option value="">Nenhum — só texto</option>
+          {videos.map(v => (
+            <option key={v.id} value={v.id}>{v.name}</option>
+          ))}
+        </select>
+        <p className="text-xs text-slate-400 mt-1.5">
+          Reaproveita a biblioteca de vídeos de Configurações → Follow-up. Cadastre um vídeo novo por lá antes, se precisar.
+        </p>
+      </div>
+
+      <div className="bg-white rounded-xl border border-slate-200 p-5 mb-5">
+        <label className="block text-sm font-semibold text-slate-800 mb-2">
+          {videoId ? 'Legenda do vídeo (opcional)' : 'Mensagem'}
+        </label>
         <textarea
           value={text}
           onChange={e => setText(e.target.value)}
           disabled={sending}
           rows={6}
-          placeholder={'Ex: Oi {{nome}}, hoje é o dia! A live começa às 20h...'}
+          placeholder={selectedVideo?.caption || 'Ex: Oi {{nome}}, hoje é o dia! A live começa às 20h...'}
           className="w-full text-sm border border-slate-200 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-violet-300 disabled:bg-slate-50 disabled:text-slate-400"
         />
         <p className="text-xs text-slate-400 mt-1.5">
           Use <code className="bg-slate-100 px-1 rounded">{'{{nome}}'}</code> pra personalizar com o primeiro nome de cada pessoa
           {sampleName && <> — vira "{sampleName}" pra quem tem nome cadastrado, ou "tudo bem" pra quem não tem.</>}
+          {videoId && ' Se deixar em branco, vai sem legenda.'}
         </p>
       </div>
 
@@ -198,7 +230,7 @@ export default function GroupWorkshopBroadcast({ leads, groupJid }) {
 
       <div className="flex items-center justify-between">
         <p className="text-sm text-slate-500">
-          Vai enviar pra <strong className="text-slate-700">{total}</strong> pessoa(s) que entraram no grupo.
+          Vai enviar {selectedVideo ? <>o vídeo <strong className="text-slate-700">"{selectedVideo.name}"</strong></> : 'a mensagem'} pra <strong className="text-slate-700">{total}</strong> pessoa(s) que entraram no grupo.
         </p>
         <button
           onClick={() => setShowConfirm(true)}
@@ -214,6 +246,7 @@ export default function GroupWorkshopBroadcast({ leads, groupJid }) {
         <ConfirmModal
           total={total}
           text={text.trim()}
+          videoName={selectedVideo?.name}
           onConfirm={handleConfirmedSend}
           onCancel={() => setShowConfirm(false)}
         />

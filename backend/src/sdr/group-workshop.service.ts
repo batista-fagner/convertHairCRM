@@ -6,6 +6,7 @@ import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import OpenAI from 'openai';
 import { Lead } from '../common/entities/lead.entity';
+import { FollowupVideo } from '../common/entities/followup-video.entity';
 import { SettingsService } from '../settings/settings.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { SDR_MODEL_KEY, SDR_DEFAULT_MODEL } from './sdr.prompt';
@@ -36,6 +37,7 @@ export class GroupWorkshopService {
 
   constructor(
     @InjectRepository(Lead) private readonly leadsRepo: Repository<Lead>,
+    @InjectRepository(FollowupVideo) private readonly videoRepo: Repository<FollowupVideo>,
     private readonly settings: SettingsService,
     private readonly http: HttpService,
     private readonly realtime: RealtimeGateway,
@@ -292,12 +294,18 @@ Responda SOMENTE o JSON, nada além disso. Nunca invente informação que não e
    * devolve na hora só a contagem de quem vai receber, e publica progresso
    * via socket (`groupbroadcast:progress`) pra tela acompanhar ao vivo.
    */
-  async broadcast(text: string, minDelaySec: number, maxDelaySec: number, groupJid?: string): Promise<{ started: boolean; total: number }> {
+  async broadcast(text: string, minDelaySec: number, maxDelaySec: number, groupJid?: string, videoId?: string): Promise<{ started: boolean; total: number }> {
     if (this.broadcasting) throw new Error('Já existe um disparo em massa em andamento — aguarde terminar.');
 
-    const trimmed = text?.trim();
-    if (!trimmed) throw new Error('Mensagem vazia.');
+    const trimmed = text?.trim() || '';
+    if (!trimmed && !videoId) throw new Error('Mensagem vazia.');
     if (!this.uazapiToken) throw new Error('Token do WhatsApp (SDR_UAZAPI_TOKEN) não configurado.');
+
+    let video: FollowupVideo | null = null;
+    if (videoId) {
+      video = await this.videoRepo.findOne({ where: { id: videoId } });
+      if (!video) throw new Error('Vídeo não encontrado.');
+    }
 
     const min = Math.max(MIN_DELAY_FLOOR_SEC, Math.min(minDelaySec || MIN_DELAY_FLOOR_SEC, MAX_DELAY_CEIL_SEC));
     const max = Math.max(min, Math.min(maxDelaySec || min, MAX_DELAY_CEIL_SEC));
@@ -306,14 +314,14 @@ Responda SOMENTE o JSON, nada além disso. Nunca invente informação que não e
     const targets = leads.filter((l) => l.phone);
 
     this.broadcasting = true;
-    this.runBroadcast(targets, trimmed, min, max).finally(() => {
+    this.runBroadcast(targets, trimmed, min, max, video).finally(() => {
       this.broadcasting = false;
     });
 
     return { started: true, total: targets.length };
   }
 
-  private async runBroadcast(leads: Lead[], text: string, minSec: number, maxSec: number): Promise<void> {
+  private async runBroadcast(leads: Lead[], text: string, minSec: number, maxSec: number, video: FollowupVideo | null): Promise<void> {
     const total = leads.length;
     let sent = 0;
     let failed = 0;
@@ -327,19 +335,34 @@ Responda SOMENTE o JSON, nada além disso. Nunca invente informação que não e
       }
 
       try {
-        const message = this.applyPlaceholders(text, lead);
+        const message = text ? this.applyPlaceholders(text, lead) : '';
         const phone = lead.phone.startsWith('55') ? lead.phone : `55${lead.phone}`;
-        await firstValueFrom(
-          this.http.post(
-            `${this.uazapiBaseUrl}/send/text`,
-            { number: phone, text: message },
-            { headers: { token: this.uazapiToken } },
-          ),
-        );
+
+        if (video) {
+          // Mesmo endpoint/formato usado pelo follow-up (ver sendFollowupVideo
+          // em sdr-followup.service.ts) — /send/media com a URL pública do
+          // Supabase Storage, texto vira legenda do vídeo.
+          await firstValueFrom(
+            this.http.post(
+              `${this.uazapiBaseUrl}/send/media`,
+              { number: phone, file: video.publicUrl, type: 'video', text: message, delay: 1000 },
+              { headers: { token: this.uazapiToken } },
+            ),
+          );
+        } else {
+          await firstValueFrom(
+            this.http.post(
+              `${this.uazapiBaseUrl}/send/text`,
+              { number: phone, text: message },
+              { headers: { token: this.uazapiToken } },
+            ),
+          );
+        }
 
         const ctx = Array.isArray(lead.aiContext) ? lead.aiContext : [];
+        const marker = video ? `[sistema: vídeo "${video.name}" enviado no disparo em massa]${message ? ` legenda: ${message}` : ''}` : message;
         await this.leadsRepo.update(lead.id, {
-          aiContext: [...ctx, { role: 'assistant', content: message, timestamp: new Date().toISOString() }],
+          aiContext: [...ctx, { role: 'assistant', content: marker, timestamp: new Date().toISOString() }],
           waLastMessageAt: new Date(),
         });
         const fresh = await this.leadsRepo.findOne({ where: { id: lead.id } });
