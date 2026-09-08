@@ -47,13 +47,48 @@ export class GroupWorkshopService {
     this.uazapiToken = config.get('SDR_UAZAPI_TOKEN') || '';
   }
 
-  async listLeads(): Promise<Lead[]> {
-    return this.leadsRepo
+  async listLeads(groupJid?: string): Promise<Lead[]> {
+    const qb = this.leadsRepo
       .createQueryBuilder('lead')
-      .where("lead.tags @> :tag::jsonb", { tag: JSON.stringify([JOIN_TAG]) })
+      .where("lead.tags @> :tag::jsonb", { tag: JSON.stringify([JOIN_TAG]) });
+    if (groupJid) qb.andWhere('lead.group_jid = :groupJid', { groupJid });
+    return qb
       .orderBy('lead.group_joined_at', 'DESC', 'NULLS LAST')
       .addOrderBy('lead.created_at', 'DESC')
       .getMany();
+  }
+
+  /**
+   * Grupos distintos que já têm gente marcada com "entrou_no_grupo", com
+   * contagem — usado pro filtro na tela (Leads + disparo em massa). Nome
+   * resolvido ao vivo via uazapi (não fica salvo no lead, pra não desatualizar
+   * se o grupo for renomeado); sem token/erro na chamada, cai pro JID cru.
+   */
+  async listGroups(): Promise<{ jid: string; name: string; count: number }[]> {
+    const rows: { group_jid: string; count: string }[] = await this.leadsRepo
+      .createQueryBuilder('lead')
+      .select('lead.group_jid', 'group_jid')
+      .addSelect('COUNT(*)', 'count')
+      .where("lead.tags @> :tag::jsonb", { tag: JSON.stringify([JOIN_TAG]) })
+      .andWhere('lead.group_jid IS NOT NULL')
+      .groupBy('lead.group_jid')
+      .getRawMany();
+
+    let namesByJid: Record<string, string> = {};
+    if (this.uazapiToken) {
+      try {
+        const res = await firstValueFrom(
+          this.http.get(`${this.uazapiBaseUrl}/group/list`, { headers: { token: this.uazapiToken } }),
+        );
+        for (const g of res.data?.groups || []) namesByJid[g.JID] = g.Name;
+      } catch (err: any) {
+        this.logger.warn(`Não foi possível resolver nomes de grupo via uazapi: ${err.message}`);
+      }
+    }
+
+    return rows
+      .map((r) => ({ jid: r.group_jid, name: namesByJid[r.group_jid] || r.group_jid, count: parseInt(r.count, 10) }))
+      .sort((a, b) => b.count - a.count);
   }
 
   async analyzeLead(leadId: string): Promise<Lead> {
@@ -257,7 +292,7 @@ Responda SOMENTE o JSON, nada além disso. Nunca invente informação que não e
    * devolve na hora só a contagem de quem vai receber, e publica progresso
    * via socket (`groupbroadcast:progress`) pra tela acompanhar ao vivo.
    */
-  async broadcast(text: string, minDelaySec: number, maxDelaySec: number): Promise<{ started: boolean; total: number }> {
+  async broadcast(text: string, minDelaySec: number, maxDelaySec: number, groupJid?: string): Promise<{ started: boolean; total: number }> {
     if (this.broadcasting) throw new Error('Já existe um disparo em massa em andamento — aguarde terminar.');
 
     const trimmed = text?.trim();
@@ -267,7 +302,7 @@ Responda SOMENTE o JSON, nada além disso. Nunca invente informação que não e
     const min = Math.max(MIN_DELAY_FLOOR_SEC, Math.min(minDelaySec || MIN_DELAY_FLOOR_SEC, MAX_DELAY_CEIL_SEC));
     const max = Math.max(min, Math.min(maxDelaySec || min, MAX_DELAY_CEIL_SEC));
 
-    const leads = await this.listLeads();
+    const leads = await this.listLeads(groupJid);
     const targets = leads.filter((l) => l.phone);
 
     this.broadcasting = true;

@@ -6,8 +6,13 @@ export class GroupWorkshopController {
   constructor(private readonly service: GroupWorkshopService) {}
 
   @Get('leads')
-  async listLeads() {
-    return this.service.listLeads();
+  async listLeads(@Query('groupJid') groupJid?: string) {
+    return this.service.listLeads(groupJid);
+  }
+
+  @Get('groups')
+  async listGroups() {
+    return this.service.listGroups();
   }
 
   @Get('broadcast-status')
@@ -16,8 +21,8 @@ export class GroupWorkshopController {
   }
 
   @Post('broadcast')
-  async broadcast(@Body() body: { text: string; minDelaySec?: number; maxDelaySec?: number }) {
-    return this.service.broadcast(body.text, body.minDelaySec ?? 10, body.maxDelaySec ?? 30);
+  async broadcast(@Body() body: { text: string; minDelaySec?: number; maxDelaySec?: number; groupJid?: string }) {
+    return this.service.broadcast(body.text, body.minDelaySec ?? 10, body.maxDelaySec ?? 30, body.groupJid);
   }
 
   @Get('quiz-stats')

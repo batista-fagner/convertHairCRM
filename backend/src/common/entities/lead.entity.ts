@@ -266,6 +266,12 @@ export class Lead {
   @Column({ name: 'group_left_at', type: 'timestamp', nullable: true })
   groupLeftAt?: Date | null;
 
+  // JID do grupo de WhatsApp onde a entrada foi detectada (ver SdrGroupJoinService).
+  // Null pra leads que entraram antes desse campo existir. Permite ter vários grupos
+  // simultâneos (ex.: um novo por edição do workshop) e filtrar/disparar por grupo.
+  @Column({ name: 'group_jid', type: 'varchar', nullable: true })
+  groupJid?: string | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

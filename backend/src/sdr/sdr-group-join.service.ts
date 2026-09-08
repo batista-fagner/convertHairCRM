@@ -128,10 +128,12 @@ export class SdrGroupJoinService implements OnModuleInit {
     // precisa filtrar por grupo específico (ver aviso no topo do arquivo).
     this.logger.debug(`[GROUP-JOIN-CRM] Evento bruto: ${JSON.stringify(evt.event).slice(0, 500)}`);
 
+    const groupJid: string | undefined = evt.event?.JID;
+
     for (const jid of Array.isArray(joins) ? joins : []) {
       const phone = String(jid).split('@')[0].replace(/\D/g, '');
       if (!phone) continue;
-      this.handleJoin(phone).catch((err) =>
+      this.handleJoin(phone, groupJid).catch((err) =>
         this.logger.error(`Erro ao processar entrada no grupo (CRM, ${phone}): ${err.message}`),
       );
     }
@@ -145,7 +147,7 @@ export class SdrGroupJoinService implements OnModuleInit {
     }
   }
 
-  private async handleJoin(phone: string) {
+  private async handleJoin(phone: string, groupJid?: string) {
     const dedupKey = phone;
     if (this.recentJoins.has(dedupKey)) return;
     this.recentJoins.add(dedupKey);
@@ -190,6 +192,7 @@ export class SdrGroupJoinService implements OnModuleInit {
         isMql: Boolean(utm.quizMqlEvents?.length),
         tags: [JOIN_TAG],
         groupJoinedAt: new Date(),
+        groupJid,
         aiPaused: cameFromQuiz,
       });
       this.realtime.emitLeadCreated(lead);
@@ -209,9 +212,11 @@ export class SdrGroupJoinService implements OnModuleInit {
     const tags = lead.tags || [];
     if (tags.includes(JOIN_TAG)) {
       // Reentrada depois de ter saído — limpa o "saiu do grupo" (senão a tela
-      // continua sinalizando em vermelho alguém que já voltou).
-      if (lead.groupLeftAt) {
-        const updated = await this.leadsService.update(lead.id, { groupLeftAt: null });
+      // continua sinalizando em vermelho alguém que já voltou). Também atualiza
+      // o groupJid: pode ter entrado num grupo diferente do da 1ª vez (ex.:
+      // saiu do grupo antigo e entrou no novo).
+      if (lead.groupLeftAt || (groupJid && lead.groupJid !== groupJid)) {
+        const updated = await this.leadsService.update(lead.id, { groupLeftAt: null, groupJid: groupJid ?? lead.groupJid });
         this.realtime.emitLeadUpdated(updated);
         this.logger.log(`[GROUP-JOIN-CRM] Lead ${lead.id} (${phone}) reentrou no grupo — "saiu do grupo" limpo`);
       } else {
@@ -220,7 +225,7 @@ export class SdrGroupJoinService implements OnModuleInit {
       return;
     }
 
-    const updated = await this.leadsService.update(lead.id, { tags: [...tags, JOIN_TAG], groupJoinedAt: new Date() });
+    const updated = await this.leadsService.update(lead.id, { tags: [...tags, JOIN_TAG], groupJoinedAt: new Date(), groupJid });
     this.realtime.emitLeadUpdated(updated);
     this.logger.log(`[GROUP-JOIN-CRM] Lead ${lead.id} (${phone}, isMql=${lead.isMql}) marcado como "${JOIN_TAG}"`);
   }

@@ -174,6 +174,8 @@ function AnalysisDrawer({ lead, onClose, onAnalyze, analyzing }) {
 
 export default function GroupWorkshop() {
   const [leads, setLeads] = useState([])
+  const [groups, setGroups] = useState([])
+  const [groupFilter, setGroupFilter] = useState('')
   const [loading, setLoading] = useState(true)
   const [analyzingId, setAnalyzingId] = useState(null)
   const [analyzingAll, setAnalyzingAll] = useState(false)
@@ -190,6 +192,10 @@ export default function GroupWorkshop() {
       .then(data => { setLeads(data); setPage(1) })
       .catch(() => setError('Erro ao carregar leads'))
       .finally(() => setLoading(false))
+    fetch(`${API}/group-workshop/groups`)
+      .then(r => r.json())
+      .then(setGroups)
+      .catch(() => {})
   }
 
   useEffect(() => { load() }, [])
@@ -223,15 +229,17 @@ export default function GroupWorkshop() {
   const currentlyInGroupCount = leads.filter(l => !l.groupLeftAt).length
   const selectedLead = leads.find(l => l.id === selectedId) || null
 
+  const groupLeads = groupFilter ? leads.filter(l => l.groupJid === groupFilter) : leads
+
   const searchTrim = search.trim()
   const searchDigits = searchTrim.replace(/\D/g, '')
   const filteredLeads = searchTrim
-    ? leads.filter(l => {
+    ? groupLeads.filter(l => {
         const nameMatch = (l.name || '').toLowerCase().includes(searchTrim.toLowerCase())
         const phoneMatch = searchDigits.length > 0 && (l.phone || '').replace(/\D/g, '').includes(searchDigits)
         return nameMatch || phoneMatch
       })
-    : leads
+    : groupLeads
 
   const totalPages = Math.max(1, Math.ceil(filteredLeads.length / PAGE_SIZE))
   const currentPage = Math.min(page, totalPages)
@@ -287,6 +295,22 @@ export default function GroupWorkshop() {
         </button>
       </div>
 
+      {(view === 'leads' || view === 'broadcast') && !loading && !error && leads.length > 0 && groups.length > 0 && (
+        <div className="mb-4 max-w-sm">
+          <label className="block text-xs font-medium text-slate-500 mb-1">Grupo do WhatsApp</label>
+          <select
+            value={groupFilter}
+            onChange={e => { setGroupFilter(e.target.value); setPage(1) }}
+            className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white"
+          >
+            <option value="">Todos os grupos ({leads.length})</option>
+            {groups.map(g => (
+              <option key={g.jid} value={g.jid}>{g.name} ({g.count})</option>
+            ))}
+          </select>
+        </div>
+      )}
+
       {view === 'leads' && !loading && !error && leads.length > 0 && (
         <div className="relative mb-4 max-w-sm">
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -307,7 +331,7 @@ export default function GroupWorkshop() {
       {view === 'dashboard' ? (
         <GroupWorkshopDashboard />
       ) : view === 'broadcast' ? (
-        <GroupWorkshopBroadcast leads={leads} />
+        <GroupWorkshopBroadcast leads={groupLeads} groupJid={groupFilter} />
       ) : error ? (
         <p className="text-sm text-red-600 mb-4">{error}</p>
       ) : loading ? (

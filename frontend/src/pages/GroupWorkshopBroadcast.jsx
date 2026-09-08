@@ -43,7 +43,7 @@ function ConfirmModal({ total, text, onConfirm, onCancel }) {
   )
 }
 
-export default function GroupWorkshopBroadcast({ leads }) {
+export default function GroupWorkshopBroadcast({ leads, groupJid }) {
   const [text, setText] = useState('')
   const [minDelaySec, setMinDelaySec] = useState(10)
   const [maxDelaySec, setMaxDelaySec] = useState(30)
@@ -85,7 +85,7 @@ export default function GroupWorkshopBroadcast({ leads }) {
       const res = await fetch(`${API}/group-workshop/broadcast`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: text.trim(), minDelaySec, maxDelaySec }),
+        body: JSON.stringify({ text: text.trim(), minDelaySec, maxDelaySec, groupJid: groupJid || undefined }),
       })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
