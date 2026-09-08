@@ -13,6 +13,13 @@ import { SDR_MODEL_KEY, SDR_DEFAULT_MODEL } from './sdr.prompt';
 
 const JOIN_TAG = 'entrou_no_grupo';
 
+// Apelido pro filtro da tela — o nome real do grupo no WhatsApp ("Workshop
+// HOJE AS 20H") é genérico e some de contexto quando surgem outras edições.
+// Ajuste aqui conforme surgirem novos grupos/edições do workshop.
+const GROUP_NAME_OVERRIDES: Record<string, string> = {
+  '120363411787862962@g.us': 'Workshop 1 edição',
+};
+
 // Limites do intervalo entre envios do disparo em massa — evita tanto um
 // valor absurdo (0s = rajada, pode derrubar a instância) quanto um valor
 // tão alto que o disparo pra ~100 pessoas leve horas.
@@ -89,7 +96,7 @@ export class GroupWorkshopService {
     }
 
     return rows
-      .map((r) => ({ jid: r.group_jid, name: namesByJid[r.group_jid] || r.group_jid, count: parseInt(r.count, 10) }))
+      .map((r) => ({ jid: r.group_jid, name: GROUP_NAME_OVERRIDES[r.group_jid] || namesByJid[r.group_jid] || r.group_jid, count: parseInt(r.count, 10) }))
       .sort((a, b) => b.count - a.count);
   }
 
