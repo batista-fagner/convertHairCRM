@@ -25,6 +25,11 @@ export class GroupWorkshopController {
     return this.service.broadcast(body.text, body.minDelaySec ?? 10, body.maxDelaySec ?? 30, body.groupJid, body.videoId);
   }
 
+  @Post('broadcast/cancel')
+  async cancelBroadcast() {
+    return this.service.cancelBroadcast();
+  }
+
   @Get('quiz-stats')
   async getQuizStats() {
     return this.service.getQuizStats();

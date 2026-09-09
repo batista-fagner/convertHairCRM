@@ -109,6 +109,20 @@ export default function GroupWorkshopBroadcast({ leads, groupJid }) {
     }
   }
 
+  const [cancelling, setCancelling] = useState(false)
+
+  async function handleCancel() {
+    if (!confirm('Cancelar o disparo? Quem já recebeu, recebeu — o resto não vai mais sair.')) return
+    setCancelling(true)
+    try {
+      await fetch(`${API}/group-workshop/broadcast/cancel`, { method: 'POST' })
+    } catch {
+      setError('Erro ao cancelar o disparo')
+    } finally {
+      setCancelling(false)
+    }
+  }
+
   const pct = progress && progress.total > 0 ? Math.round(((progress.sent + progress.failed) / progress.total) * 100) : 0
 
   return (
@@ -209,13 +223,13 @@ export default function GroupWorkshopBroadcast({ leads, groupJid }) {
         <div className="bg-white rounded-xl border border-slate-200 p-5 mb-5">
           <div className="flex items-center justify-between text-sm mb-2">
             <span className="font-medium text-slate-700">
-              {progress.done ? 'Disparo concluído' : 'Enviando...'}
+              {progress.done ? (progress.cancelled ? 'Disparo cancelado' : 'Disparo concluído') : 'Enviando...'}
             </span>
             <span className="text-slate-500">{progress.sent + progress.failed} / {progress.total}</span>
           </div>
           <div className="h-2.5 rounded-full bg-slate-100 overflow-hidden">
             <div
-              className={`h-full rounded-full transition-all ${progress.done ? 'bg-emerald-500' : 'bg-violet-600'}`}
+              className={`h-full rounded-full transition-all ${progress.done ? (progress.cancelled ? 'bg-amber-500' : 'bg-emerald-500') : 'bg-violet-600'}`}
               style={{ width: `${pct}%` }}
             />
           </div>
@@ -224,7 +238,20 @@ export default function GroupWorkshopBroadcast({ leads, groupJid }) {
             {progress.failed > 0 && (
               <span className="flex items-center gap-1 text-rose-600"><XCircle className="w-3.5 h-3.5" /> {progress.failed} falhou(aram)</span>
             )}
+            {progress.cancelled && (
+              <span className="flex items-center gap-1 text-amber-600"><AlertTriangle className="w-3.5 h-3.5" /> {progress.total - progress.sent - progress.failed} não enviada(s) (cancelado)</span>
+            )}
           </div>
+          {!progress.done && (
+            <button
+              onClick={handleCancel}
+              disabled={cancelling}
+              className="mt-4 flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-rose-200 text-rose-600 hover:bg-rose-50 disabled:opacity-50 transition"
+            >
+              {cancelling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <XCircle className="w-3.5 h-3.5" />}
+              {cancelling ? 'Cancelando...' : 'Cancelar disparo'}
+            </button>
+          )}
         </div>
       )}
 

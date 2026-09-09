@@ -104,7 +104,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   // Progresso ao vivo enquanto o disparo roda em background (pode levar
   // dezenas de minutos, ver GroupWorkshopService.runBroadcast).
 
-  emitGroupBroadcastProgress(payload: { sent: number; total: number; failed: number; done: boolean }) {
+  emitGroupBroadcastProgress(payload: { sent: number; total: number; failed: number; done: boolean; cancelled?: boolean }) {
     this.server?.emit('groupbroadcast:progress', payload);
   }
 }

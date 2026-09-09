@@ -41,6 +41,7 @@ export class GroupWorkshopService {
   private readonly uazapiBaseUrl: string;
   private readonly uazapiToken: string;
   private broadcasting = false;
+  private cancelRequested = false;
 
   constructor(
     @InjectRepository(Lead) private readonly leadsRepo: Repository<Lead>,
@@ -282,6 +283,18 @@ Responda SOMENTE o JSON, nada além disso. Nunca invente informação que não e
     return this.broadcasting;
   }
 
+  /**
+   * Pede o cancelamento do disparo em andamento — não interrompe um envio já
+   * em voo, mas para antes do próximo (verificado no início de cada iteração
+   * e depois do delay entre envios em runBroadcast). Quem já recebeu, recebeu;
+   * não tem como "desenviar".
+   */
+  cancelBroadcast(): { cancelling: boolean } {
+    if (!this.broadcasting) throw new Error('Não há disparo em andamento.');
+    this.cancelRequested = true;
+    return { cancelling: true };
+  }
+
   private applyPlaceholders(text: string, lead: Lead): string {
     const firstName = lead.name?.trim()?.split(/\s+/)[0];
     return text.replace(/\{\{\s*nome\s*\}\}/gi, firstName || 'tudo bem');
@@ -321,6 +334,7 @@ Responda SOMENTE o JSON, nada além disso. Nunca invente informação que não e
     const targets = leads.filter((l) => l.phone);
 
     this.broadcasting = true;
+    this.cancelRequested = false;
     this.runBroadcast(targets, trimmed, min, max, video).finally(() => {
       this.broadcasting = false;
     });
@@ -334,11 +348,23 @@ Responda SOMENTE o JSON, nada além disso. Nunca invente informação que não e
     let failed = 0;
     this.realtime.emitGroupBroadcastProgress({ sent, total, failed, done: false });
 
+    let cancelled = false;
     for (let i = 0; i < leads.length; i++) {
+      if (this.cancelRequested) {
+        cancelled = true;
+        this.logger.log(`[Disparo em massa] Cancelado pelo operador em ${sent}/${total}.`);
+        break;
+      }
+
       const lead = leads[i];
       if (i > 0) {
         const delayMs = (minSec + Math.random() * (maxSec - minSec)) * 1000;
         await this.sleep(delayMs);
+        if (this.cancelRequested) {
+          cancelled = true;
+          this.logger.log(`[Disparo em massa] Cancelado pelo operador em ${sent}/${total}.`);
+          break;
+        }
       }
 
       try {
@@ -385,7 +411,11 @@ Responda SOMENTE o JSON, nada além disso. Nunca invente informação que não e
       this.realtime.emitGroupBroadcastProgress({ sent, total, failed, done: false });
     }
 
-    this.realtime.emitGroupBroadcastProgress({ sent, total, failed, done: true });
-    this.logger.log(`[Disparo em massa] Concluído: ${sent}/${total} enviados, ${failed} falharam.`);
+    this.realtime.emitGroupBroadcastProgress({ sent, total, failed, done: true, cancelled });
+    this.logger.log(
+      cancelled
+        ? `[Disparo em massa] Interrompido: ${sent}/${total} enviados, ${failed} falharam, resto cancelado.`
+        : `[Disparo em massa] Concluído: ${sent}/${total} enviados, ${failed} falharam.`,
+    );
   }
 }
