@@ -224,14 +224,14 @@ export class QuizService {
       .sendCustomEvent('QuizCompleto', eventPayload, eventSourceUrl, `quiz-complete-${dto.clickId || randomUUID()}`, pixelOverride)
       .catch((err) => this.logger.error(`Erro ao enviar QuizCompleto: ${err.message}`));
 
-    // "Lead" é evento PADRÃO do Meta — voltou a disparar aqui (fim do quiz,
-    // todas as perguntas respondidas), não mais na 1ª tela. Motivo: ter Lead
-    // na abertura da página deixava esse evento quase idêntico a PageView —
-    // a campanha otimizava pra "abriu a página" (sinal fraco, muito volume)
-    // em vez de "terminou o quiz" (sinal real), gastando rápido sem retorno.
-    this.facebookService
-      .sendCustomEvent('Lead', eventPayload, eventSourceUrl, `quiz-lead-${dto.clickId || randomUUID()}`, pixelOverride)
-      .catch((err) => this.logger.error(`Erro ao enviar Lead: ${err.message}`));
+    // "Lead" (evento PADRÃO do Meta) NÃO dispara mais aqui — voltou a ser
+    // disparado só quando a pessoa efetivamente entra no grupo do WhatsApp
+    // (ver SdrGroupJoinService.handleJoin), pro pixel deste mesmo quiz.
+    // Antes disparava nos dois momentos com event_id diferentes (sem dedup) e
+    // o disparo daqui ainda ia pro pixel global, não pro pixel do quiz — 2
+    // bugs corrigidos em 2026-09-10: contagem duplicada de Lead + evento no
+    // pixel errado. "QuizCompleto" continua sendo o sinal de quem terminou o
+    // quiz, independente de entrar no grupo depois ou não.
 
     for (const eventName of mqlEvents) {
       this.facebookService

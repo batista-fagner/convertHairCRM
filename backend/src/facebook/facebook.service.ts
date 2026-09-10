@@ -220,7 +220,11 @@ export class FacebookService {
     }
   }
 
-  async sendLeadEvent(lead: Lead, extra?: { fbp?: string; fbc?: string; userAgent?: string; clientIp?: string }): Promise<void> {
+  async sendLeadEvent(
+    lead: Lead,
+    extra?: { fbp?: string; fbc?: string; userAgent?: string; clientIp?: string },
+    pixelOverride?: { pixelId?: string; accessToken?: string },
+  ): Promise<void> {
     const userData = this.buildUserData(lead);
     if (extra?.fbp) userData['fbp'] = extra.fbp;
     // Prefere o _fbc cookie do browser (timestamp correto do clique) sobre o construído no backend
@@ -231,7 +235,12 @@ export class FacebookService {
     // WhatsApp CTWA (business_messaging) só aceita "LeadSubmitted"/"Purchase" como
     // nome de evento — "Lead" customizado só é aceito no fluxo de site (LP/form).
     const eventName = ctwa ? 'LeadSubmitted' : 'Lead';
-    await this.sendEvent(eventName, userData, undefined, lead.ctwaSourceUrl, { ctwa, eventId: `lead-${lead.id}` });
+    await this.sendEvent(eventName, userData, undefined, lead.ctwaSourceUrl, {
+      ctwa,
+      eventId: `lead-${lead.id}`,
+      pixelId: pixelOverride?.pixelId,
+      accessToken: pixelOverride?.accessToken,
+    });
   }
 
   // pixelOverride: pixel/token dedicados de campanha (ex: lead veio de um quiz com pixel

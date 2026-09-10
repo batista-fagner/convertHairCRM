@@ -197,7 +197,12 @@ export class SdrGroupJoinService implements OnModuleInit {
       });
       this.realtime.emitLeadCreated(lead);
 
-      this.facebookService.sendLeadEvent(lead, { fbp: lead.fbp, fbc: lead.fbc }).catch((err) =>
+      // Lead que veio de quiz manda o "Lead" pro pixel daquele quiz (não o
+      // global) — é o único disparo desse evento padrão pra esses leads desde
+      // 2026-09-10 (antes tinha um 2º disparo, duplicado e no pixel errado,
+      // dentro de QuizService.submit — removido).
+      const pixelOverride = cameFromQuiz ? await this._resolveQuizPixelOverride(utm.quizSlug) : undefined;
+      this.facebookService.sendLeadEvent(lead, { fbp: lead.fbp, fbc: lead.fbc }, pixelOverride).catch((err) =>
         this.logger.error(`Erro ao enviar Lead event ao Facebook: ${err.message}`),
       );
 
@@ -283,6 +288,23 @@ export class SdrGroupJoinService implements OnModuleInit {
       );
     } catch (err: any) {
       this.logger.error(`[GROUP-JOIN-CRM] Erro ao enviar mensagem para ${phone}: ${err.message}`);
+    }
+  }
+
+  // Mesmo padrão do LeadsController (Purchase manual/automático) — resolvido
+  // aqui em vez de no QuizModule pra não criar dependência circular entre
+  // FacebookModule e QuizModule. findBySlug lança se o quiz foi desativado
+  // depois; não pode derrubar o disparo do Lead por isso, então falha em
+  // silêncio (loga e segue sem override, cai pro pixel global).
+  private async _resolveQuizPixelOverride(quizSlug?: string | null): Promise<{ pixelId?: string; accessToken?: string } | undefined> {
+    if (!quizSlug) return undefined;
+    try {
+      const quiz = await this.quizService.findBySlug(quizSlug);
+      if (!quiz.fbPixelId && !quiz.fbAccessToken) return undefined;
+      return { pixelId: quiz.fbPixelId ?? undefined, accessToken: quiz.fbAccessToken ?? undefined };
+    } catch (err: any) {
+      this.logger.warn(`Não foi possível resolver pixel do quiz "${quizSlug}" pra atribuir o Lead: ${err.message}`);
+      return undefined;
     }
   }
 
