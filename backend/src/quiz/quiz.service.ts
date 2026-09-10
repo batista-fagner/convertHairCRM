@@ -232,9 +232,17 @@ export class QuizService {
     // Evento amplo — todo mundo que termina o quiz, independente de qualificar.
     // Necessário pro Meta ter volume suficiente pra otimizar (um evento MQL
     // sozinho, se raro, trava a campanha em aprendizado).
-    this.facebookService
-      .sendCustomEvent('QuizCompleto', eventPayload, eventSourceUrl, `quiz-complete-${dto.clickId || randomUUID()}`, pixelOverride)
-      .catch((err) => this.logger.error(`Erro ao enviar QuizCompleto: ${err.message}`));
+    //
+    // Só dispara se o quiz tiver pergunta de verdade — um quiz de 0 perguntas
+    // (ex.: landing só com botão, usado em remarketing) dispararia isso no
+    // simples clique, sem nenhum "quiz" sendo respondido de fato. Como esse
+    // evento é reaproveitado (mesma custom conversion) em todas as campanhas,
+    // deixar disparar aqui sujaria o sinal pras outras também.
+    if (quiz.questions.length > 0) {
+      this.facebookService
+        .sendCustomEvent('QuizCompleto', eventPayload, eventSourceUrl, `quiz-complete-${dto.clickId || randomUUID()}`, pixelOverride)
+        .catch((err) => this.logger.error(`Erro ao enviar QuizCompleto: ${err.message}`));
+    }
 
     // "Lead" (evento PADRÃO do Meta) NÃO dispara mais aqui — voltou a ser
     // disparado só quando a pessoa efetivamente entra no grupo do WhatsApp
