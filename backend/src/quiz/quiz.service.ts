@@ -127,6 +127,7 @@ export class QuizService {
 
   async create(dto: Partial<Quiz>): Promise<Quiz> {
     this.validateQuestions(dto.questions);
+    this.validateAccessToken(dto.fbAccessToken);
     const quiz = this.repo.create({
       name: dto.name,
       slug: dto.slug,
@@ -145,6 +146,7 @@ export class QuizService {
 
   async update(id: string, dto: Partial<Quiz>): Promise<Quiz> {
     if (dto.questions) this.validateQuestions(dto.questions);
+    if ('fbAccessToken' in dto) this.validateAccessToken(dto.fbAccessToken);
     await this.findById(id);
     await this.repo.update(id, dto);
     return this.findById(id);
@@ -161,6 +163,16 @@ export class QuizService {
   async deleteSubmission(id: string): Promise<{ success: true }> {
     await this.submissionRepo.delete(id);
     return { success: true };
+  }
+
+  // CAPI Access Token virou obrigatório em 2026-09-10 — desde que o pixel
+  // client-side foi removido (ConvertHairPage/Quiz.tsx), todo evento desse
+  // quiz depende exclusivamente do CAPI, então sem token o quiz não manda
+  // sinal nenhum pro Meta.
+  private validateAccessToken(token?: string | null): void {
+    if (!token?.trim()) {
+      throw new BadRequestException('CAPI Access Token é obrigatório');
+    }
   }
 
   private validateQuestions(questions?: QuizQuestion[]): void {

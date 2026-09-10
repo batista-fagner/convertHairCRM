@@ -372,14 +372,19 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
             />
           </div>
           <div>
-            <label className="text-sm text-slate-500">CAPI Access Token (opcional)</label>
+            <label className="text-sm text-slate-500">CAPI Access Token *</label>
             <input
               type="password"
               value={quiz.fbAccessToken || ''}
               onChange={e => set('fbAccessToken', e.target.value)}
-              placeholder="vazio = usa o token padrão do CRM"
-              className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition font-mono"
+              placeholder="obrigatório — os eventos desse quiz só vão via CAPI"
+              className={`w-full mt-1 text-base border rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition font-mono ${
+                quiz.fbAccessToken?.trim() ? 'border-slate-200' : 'border-red-300'
+              }`}
             />
+            {!quiz.fbAccessToken?.trim() && (
+              <p className="text-sm text-red-600 mt-1">Obrigatório — sem token esse quiz não manda nenhum evento pro Meta.</p>
+            )}
           </div>
         </div>
         {(quiz.fbPixelId || quiz.fbAccessToken) && (
@@ -901,7 +906,7 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
         )}
         <button
           onClick={onSave}
-          disabled={saving || !quiz.name || !quiz.slug}
+          disabled={saving || !quiz.name || !quiz.slug || !quiz.fbAccessToken?.trim()}
           className="flex items-center gap-1.5 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white text-base font-medium px-4 py-2 rounded-lg transition"
         >
           {saving ? <><Loader2 className="w-4 h-4 animate-spin" /> Salvando...</> : <><Save className="w-4 h-4" /> Salvar</>}
