@@ -25,6 +25,7 @@ import {
   Camera,
   FileSpreadsheet,
   ListChecks,
+  Radar,
 } from 'lucide-react'
 
 const NAV_GROUPS = [
@@ -44,6 +45,7 @@ const NAV_GROUPS = [
       { icon: Users, label: 'Leads', path: '/leads' },
       { icon: KanbanSquare, label: 'Kanban', path: '/kanban' },
       { icon: FileSpreadsheet, label: 'Formulário Instantâneo', path: '/instant-form-leads' },
+      { icon: Radar, label: 'Prospecção', path: '/prospeccao' },
       { icon: Users, label: 'Grupo WhatsApp', path: '/group-workshop' },
     ],
   },
@@ -100,6 +102,7 @@ const PAGE_TITLES = {
   '/videos': 'Vídeos de Follow-up',
   '/instagram-posts': 'Posts no Instagram',
   '/kanban': 'Kanban de Leads',
+  '/prospeccao': 'Prospecção',
   '/settings': 'Configurações',
 }
 

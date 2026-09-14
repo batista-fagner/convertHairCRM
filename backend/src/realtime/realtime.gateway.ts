@@ -7,6 +7,7 @@ import { SmsMessage } from '../sms/entities/sms-message.entity';
 import { IgConversation } from '../instagram-automation/ig-conversation.entity';
 import { IgMessage } from '../instagram-automation/ig-message.entity';
 import { IgPost } from '../ig-posts/ig-post.entity';
+import { Prospect } from '../prospecting/prospect.entity';
 
 /**
  * Gateway Socket.IO usado pelo Kanban para refletir em tempo real as
@@ -106,5 +107,19 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
 
   emitGroupBroadcastProgress(payload: { sent: number; total: number; failed: number; done: boolean; cancelled?: boolean }) {
     this.server?.emit('groupbroadcast:progress', payload);
+  }
+
+  // --- Prospecção ativa (ConvertIQ) ---
+
+  emitProspectCreated(prospect: Prospect) {
+    this.server?.emit('prospect:created', prospect);
+  }
+
+  emitProspectUpdated(prospect: Prospect) {
+    this.server?.emit('prospect:updated', prospect);
+  }
+
+  emitProspectSeedChanged(username: string) {
+    this.server?.emit('prospect:seed-changed', { username });
   }
 }

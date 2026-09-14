@@ -18,6 +18,7 @@ import { IgPost } from './ig-posts/ig-post.entity';
 import { Quiz } from './common/entities/quiz.entity';
 import { QuizSubmission } from './common/entities/quiz-submission.entity';
 import { Carousel } from './carousel/carousel.entity';
+import { Prospect } from './prospecting/prospect.entity';
 import { LeadsModule } from './leads/leads.module';
 import { EnrichmentModule } from './enrichment/enrichment.module';
 import { FormsModule } from './forms/forms.module';
@@ -34,6 +35,7 @@ import { InstantFormsModule } from './instant-forms/instant-forms.module';
 import { QueueModule } from './queue/queue.module';
 import { QuizModule } from './quiz/quiz.module';
 import { CarouselModule } from './carousel/carousel.module';
+import { ProspectingModule } from './prospecting/prospecting.module';
 
 @Module({
   imports: [
@@ -51,7 +53,7 @@ import { CarouselModule } from './carousel/carousel.module';
         // Supabase exige SSL; `DATABASE_SSL=false` permite apontar para um
         // Postgres local descartável ao testar sem tocar em produção.
         ssl: config.get('DATABASE_SSL') === 'false' ? false : { rejectUnauthorized: false },
-        entities: [Lead, Campaign, Form, InstagramAutomation, IgConversation, IgMessage, IgCommentEvent, Setting, FollowupRule, FollowupVideo, SmsContact, SmsMessage, IgPost, Quiz, QuizSubmission, Carousel],
+        entities: [Lead, Campaign, Form, InstagramAutomation, IgConversation, IgMessage, IgCommentEvent, Setting, FollowupRule, FollowupVideo, SmsContact, SmsMessage, IgPost, Quiz, QuizSubmission, Carousel, Prospect],
         synchronize: true,
         logging: false,
         timezone: 'Z',
@@ -72,6 +74,7 @@ import { CarouselModule } from './carousel/carousel.module';
     InstantFormsModule,
     QuizModule,
     CarouselModule,
+    ProspectingModule,
   ],
 })
 export class AppModule {}
