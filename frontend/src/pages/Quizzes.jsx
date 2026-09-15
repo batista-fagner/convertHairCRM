@@ -179,12 +179,12 @@ function FunnelModal({ quiz, funnel, loading, onClose }) {
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div
-        className="bg-white rounded-xl w-full max-w-2xl max-h-[85vh] flex flex-col"
+        className="bg-white rounded-xl w-[95vw] max-w-5xl h-[90vh] flex flex-col"
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200">
           <div>
-            <p className="font-semibold text-slate-800 text-base">Funil de abandono — {quiz.name}</p>
+            <p className="font-semibold text-slate-800 text-base">{quiz.name}</p>
             <p className="text-sm text-slate-400 mt-0.5">
               {loading ? 'Carregando...' : `${total} sessão${total !== 1 ? 'ões' : ''} iniciada${total !== 1 ? 's' : ''}`}
             </p>
@@ -192,7 +192,7 @@ function FunnelModal({ quiz, funnel, loading, onClose }) {
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
         </div>
 
-        <div className="overflow-y-auto flex-1 p-5">
+        <div className="overflow-y-auto flex-1 p-6">
           {loading && (
             <div className="flex items-center justify-center py-16 text-slate-400">
               <Loader2 className="w-5 h-5 animate-spin" />
@@ -204,18 +204,18 @@ function FunnelModal({ quiz, funnel, loading, onClose }) {
             </div>
           )}
           {!loading && funnel && total > 0 && (
-            <div className="space-y-3">
+            <div className="max-w-3xl mx-auto space-y-5">
               {funnel.steps.map((step, idx) => {
                 const pct = total > 0 ? Math.round((step.reached / total) * 100) : 0
                 const prevReached = idx === 0 ? total : funnel.steps[idx - 1].reached
                 const dropFromPrev = prevReached - step.reached
                 return (
                   <div key={step.questionIndex}>
-                    <div className="flex items-baseline justify-between text-sm mb-1 gap-2">
+                    <div className="flex items-baseline justify-between text-base mb-1.5 gap-2">
                       <span className="text-slate-700 font-medium truncate">P{idx + 1}. {step.question}</span>
-                      <span className="text-slate-500 shrink-0">{step.reached} ({pct}%)</span>
+                      <span className="text-slate-500 shrink-0 font-medium">{step.reached} ({pct}%)</span>
                     </div>
-                    <div className="h-3 rounded-full bg-slate-100 overflow-hidden">
+                    <div className="h-4 rounded-full bg-slate-100 overflow-hidden">
                       <div
                         className="h-full rounded-full bg-violet-600"
                         style={{ width: `${pct}%`, opacity: 0.4 + 0.6 * (1 - idx / Math.max(1, funnel.steps.length - 1)) }}
@@ -228,14 +228,14 @@ function FunnelModal({ quiz, funnel, loading, onClose }) {
                 )
               })}
 
-              <div className="pt-3 mt-3 border-t border-slate-200">
-                <div className="flex items-baseline justify-between text-sm mb-1">
+              <div className="pt-4 mt-4 border-t border-slate-200">
+                <div className="flex items-baseline justify-between text-base mb-1.5">
                   <span className="text-emerald-700 font-semibold">Completou o quiz</span>
-                  <span className="text-slate-500">
+                  <span className="text-slate-500 font-medium">
                     {funnel.totalCompleted} ({total > 0 ? Math.round((funnel.totalCompleted / total) * 100) : 0}%)
                   </span>
                 </div>
-                <div className="h-3 rounded-full bg-slate-100 overflow-hidden">
+                <div className="h-4 rounded-full bg-slate-100 overflow-hidden">
                   <div
                     className="h-full rounded-full bg-emerald-600"
                     style={{ width: `${total > 0 ? Math.round((funnel.totalCompleted / total) * 100) : 0}%` }}
