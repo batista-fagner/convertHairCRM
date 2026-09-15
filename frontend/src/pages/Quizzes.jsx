@@ -58,6 +58,7 @@ function emptyQuiz() {
       buttonLabel: 'ENTRAR NO GRUPO DO WHATSAPP',
       autoRedirectSeconds: 4,
     },
+    salesPage: emptySalesPage(),
   }
 }
 
@@ -70,6 +71,49 @@ function emptyQuestion() {
     options: [
       { id: uid(), label: '', isMqlAnswer: false },
       { id: uid(), label: '', isMqlAnswer: false },
+    ],
+  }
+}
+
+// Página de venda pós-quiz — usada só por quizzes com checkoutUrl preenchido
+// (ver ConvertHairPage/src/pages/Oferta5Fornecedores.tsx). Layout/cores ficam
+// fixos no código da página; só o conteúdo abaixo é editável aqui.
+function emptySalesPage() {
+  return {
+    headlineBadge: 'Você está qualificada',
+    headlineTitle: 'Chega de arriscar com fornecedor. Receba os 5 validados por quem já testou na prática',
+    headlineHighlight: '5 validados',
+    headlineSubtitle: 'Fornecedor errado é prejuízo garantido. Fornecedor certo é risco zero — cabelo de verdade, margem boa e sem susto.',
+    dores: [
+      { titulo: 'Golpe de fornecedor', texto: 'Paga adiantado e o fornecedor some, atrasa ou manda menos do que combinou.' },
+      { titulo: 'Cabelo de baixa qualidade', texto: 'Vem misturado, embola fácil e não é 100% humano de verdade.' },
+      { titulo: 'Cliente perdido', texto: 'A cliente reclama, devolve ou nunca mais compra de você por causa da qualidade.' },
+    ],
+    ofertaBadge: 'O que você recebe',
+    ofertaTitle: '5 fornecedores validados pessoalmente, prontos pra você chamar hoje',
+    ofertaSubtitle: 'Cada um já foi filtrado pelos 4 critérios abaixo — o mesmo padrão usado por quem já vende cabelo todo santo dia.',
+    criterios: ['Fios inteiros, pontas cheias', '100% humano, sem mistura sintética', 'Preço com margem boa de revenda', 'Entrega fácil, sem enrolação'],
+    fornecedores: [
+      { numero: 1, diferencial: 'Indiano, linha fabril', detalhe: 'Alta escala pra quem revende em volume', imagem: '' },
+      { numero: 2, diferencial: 'Indiano, preço de entrada', detalhe: 'Ótimo custo-benefício pra quem tá começando', imagem: '' },
+      { numero: 3, diferencial: 'Especialista em coloridos e loiros', detalhe: 'Entrega rápida, ideal pra pedidos urgentes', imagem: '' },
+      { numero: 4, diferencial: 'Parceria internacional', detalhe: 'Cabelo brasileiro, importação direta', imagem: '' },
+      { numero: 5, diferencial: 'Referência no mercado', detalhe: 'Mais de 30 anos de experiência e confiança', imagem: '' },
+    ],
+    valorAncoragemTexto: 'Só o fornecedor principal da lista já foi avaliado publicamente em R$ 10.000 de valor percebido.',
+    precoDe: 'R$ 997',
+    precoPor: 'R$ 47',
+    valorRodape: 'Pra quem fatura R$ 10 mil/mês ou mais, isso representa menos de 0,5% do seu faturamento — pra nunca mais depender de sorte na hora de escolher fornecedor.',
+    depoimentoTexto: 'Só com essa lista eu economizei mais de R$ 20 mil comprando direto na fonte certa, sem pagar por intermediário.',
+    depoimentoAutor: 'Relato real de uma participante do Workshop Como Vender Cabelo Todo Santo Dia',
+    garantiaTitulo: 'Contato direto, sem enrolação',
+    garantiaTexto: 'Você recebe o nome e o WhatsApp de cada um dos 5 fornecedores. Se algum não responder ou não bater com o combinado, você fala com a gente e a gente resolve.',
+    ctaTitulo: 'Pare de arriscar com fornecedor. Comece hoje com quem já é validado.',
+    ctaBotaoLabel: 'Quero os 5 fornecedores agora',
+    faq: [
+      { pergunta: 'Funciona pra qualquer estado do Brasil?', resposta: 'Sim — os 5 fornecedores atendem por WhatsApp/envio, independente de onde você está.' },
+      { pergunta: 'Recebo os contatos na hora?', resposta: 'Sim, o acesso é liberado automaticamente assim que o pagamento é confirmado.' },
+      { pergunta: 'Preciso comprar uma quantidade mínima?', resposta: 'Cada fornecedor tem sua própria condição — isso vem detalhado junto com o contato de cada um.' },
     ],
   }
 }
@@ -219,6 +263,8 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
   const [groupCheck, setGroupCheck] = useState(null)
   const [checkingGroup, setCheckingGroup] = useState(false)
+  const [salesPageOpen, setSalesPageOpen] = useState(Boolean(quiz.checkoutUrl))
+  const [uploadingFornecedorIdx, setUploadingFornecedorIdx] = useState(null)
 
   async function checkWhatsappGroup() {
     if (!quiz.whatsappUrl) return
@@ -241,6 +287,32 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
       const parts = path.split('.')
       for (let i = 0; i < parts.length - 1; i++) obj = obj[parts[i]]
       obj[parts[parts.length - 1]] = value
+      return next
+    })
+  }
+
+  // Helpers genéricos pra arrays dentro de salesPage (dores, criterios,
+  // fornecedores, faq) — path aponta pro array (ex: 'salesPage.dores').
+  function addArrayItem(path, item) {
+    onChange(prev => {
+      const next = structuredClone(prev)
+      let obj = next
+      const parts = path.split('.')
+      for (let i = 0; i < parts.length - 1; i++) obj = obj[parts[i]]
+      const key = parts[parts.length - 1]
+      obj[key] = [...(obj[key] || []), item]
+      return next
+    })
+  }
+
+  function removeArrayItem(path, idx) {
+    onChange(prev => {
+      const next = structuredClone(prev)
+      let obj = next
+      const parts = path.split('.')
+      for (let i = 0; i < parts.length - 1; i++) obj = obj[parts[i]]
+      const key = parts[parts.length - 1]
+      obj[key] = (obj[key] || []).filter((_, i) => i !== idx)
       return next
     })
   }
@@ -912,6 +984,360 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
         </div>
       </div>
 
+      {/* Etapa 4: Página de venda — só usada se checkoutUrl estiver preenchido */}
+      <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+        <button
+          type="button"
+          onClick={() => setSalesPageOpen(v => !v)}
+          className="w-full flex items-center justify-between gap-2"
+        >
+          <span className="flex items-center gap-2">
+            <span className="w-5 h-5 rounded-full bg-violet-100 text-violet-600 text-sm font-semibold flex items-center justify-center shrink-0">4</span>
+            <p className="text-sm font-semibold text-slate-500 uppercase tracking-wide">Página de venda (oferta)</p>
+          </span>
+          {salesPageOpen ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+        </button>
+        <p className="pl-7 text-sm text-slate-400 -mt-2">
+          Só é usada por quizzes que vendem um produto (link de checkout preenchido lá em cima). Layout e cores
+          são fixos — aqui você edita só o texto, as fotos e os valores.
+        </p>
+
+        {salesPageOpen && (
+          <div className="pl-7 space-y-5">
+            {/* Headline */}
+            <div className="space-y-3">
+              <p className="text-sm font-semibold text-slate-500">Headline</p>
+              <div>
+                <label className="text-sm text-slate-500">Badge</label>
+                <input
+                  value={quiz.salesPage.headlineBadge || ''}
+                  onChange={e => set('salesPage.headlineBadge', e.target.value)}
+                  className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-sm text-slate-500">Título</label>
+                  <textarea
+                    value={quiz.salesPage.headlineTitle || ''}
+                    onChange={e => set('salesPage.headlineTitle', e.target.value)}
+                    rows={2}
+                    className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition resize-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm text-slate-500">Trecho pra destacar (precisa aparecer no título)</label>
+                  <input
+                    value={quiz.salesPage.headlineHighlight || ''}
+                    onChange={e => set('salesPage.headlineHighlight', e.target.value)}
+                    className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-sm text-slate-500">Subtítulo</label>
+                <textarea
+                  value={quiz.salesPage.headlineSubtitle || ''}
+                  onChange={e => set('salesPage.headlineSubtitle', e.target.value)}
+                  rows={2}
+                  className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition resize-none"
+                />
+              </div>
+            </div>
+
+            {/* Dores */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-semibold text-slate-500">Dores (cards da seção 2)</p>
+                <button
+                  type="button"
+                  onClick={() => addArrayItem('salesPage.dores', { titulo: '', texto: '' })}
+                  className="flex items-center gap-1 text-sm font-medium text-violet-600 hover:text-violet-700"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Adicionar
+                </button>
+              </div>
+              {(quiz.salesPage.dores || []).map((dor, idx) => (
+                <div key={idx} className="flex gap-2 items-start bg-slate-50 border border-slate-200 rounded-lg p-3">
+                  <div className="flex-1 space-y-2">
+                    <input
+                      value={dor.titulo}
+                      onChange={e => set(`salesPage.dores.${idx}.titulo`, e.target.value)}
+                      placeholder="Título da dor"
+                      className="w-full text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
+                    />
+                    <textarea
+                      value={dor.texto}
+                      onChange={e => set(`salesPage.dores.${idx}.texto`, e.target.value)}
+                      rows={2}
+                      placeholder="Texto"
+                      className="w-full text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition resize-none"
+                    />
+                  </div>
+                  <button type="button" onClick={() => removeArrayItem('salesPage.dores', idx)} className="shrink-0 text-slate-400 hover:text-red-500 transition p-1.5">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            {/* Oferta */}
+            <div className="space-y-3">
+              <p className="text-sm font-semibold text-slate-500">Oferta (seção 3/4)</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-sm text-slate-500">Badge</label>
+                  <input
+                    value={quiz.salesPage.ofertaBadge || ''}
+                    onChange={e => set('salesPage.ofertaBadge', e.target.value)}
+                    className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm text-slate-500">Título</label>
+                  <input
+                    value={quiz.salesPage.ofertaTitle || ''}
+                    onChange={e => set('salesPage.ofertaTitle', e.target.value)}
+                    className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-sm text-slate-500">Subtítulo</label>
+                <textarea
+                  value={quiz.salesPage.ofertaSubtitle || ''}
+                  onChange={e => set('salesPage.ofertaSubtitle', e.target.value)}
+                  rows={2}
+                  className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition resize-none"
+                />
+              </div>
+            </div>
+
+            {/* Critérios (pills) */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-semibold text-slate-500">Critérios de qualidade (selos)</p>
+                <button
+                  type="button"
+                  onClick={() => addArrayItem('salesPage.criterios', '')}
+                  className="flex items-center gap-1 text-sm font-medium text-violet-600 hover:text-violet-700"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Adicionar
+                </button>
+              </div>
+              {(quiz.salesPage.criterios || []).map((c, idx) => (
+                <div key={idx} className="flex gap-2 items-center">
+                  <input
+                    value={c}
+                    onChange={e => set(`salesPage.criterios.${idx}`, e.target.value)}
+                    className="flex-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
+                  />
+                  <button type="button" onClick={() => removeArrayItem('salesPage.criterios', idx)} className="shrink-0 text-slate-400 hover:text-red-500 transition p-1.5">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            {/* Fornecedores */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-semibold text-slate-500">Fornecedores (cards com foto)</p>
+                <button
+                  type="button"
+                  onClick={() => addArrayItem('salesPage.fornecedores', { numero: (quiz.salesPage.fornecedores || []).length + 1, diferencial: '', detalhe: '', imagem: '' })}
+                  className="flex items-center gap-1 text-sm font-medium text-violet-600 hover:text-violet-700"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Adicionar
+                </button>
+              </div>
+              {(quiz.salesPage.fornecedores || []).map((f, idx) => (
+                <div key={idx} className="flex gap-3 items-start bg-slate-50 border border-slate-200 rounded-lg p-3">
+                  {f.imagem && (
+                    <img src={f.imagem} alt="" className="w-16 h-16 rounded-lg object-cover border border-slate-200 shrink-0" />
+                  )}
+                  <div className="flex-1 space-y-2">
+                    <p className="text-sm text-slate-400">Fornecedor {idx + 1}</p>
+                    <input
+                      value={f.diferencial}
+                      onChange={e => set(`salesPage.fornecedores.${idx}.diferencial`, e.target.value)}
+                      placeholder="Diferencial (ex: Indiano, linha fabril)"
+                      className="w-full text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
+                    />
+                    <input
+                      value={f.detalhe}
+                      onChange={e => set(`salesPage.fornecedores.${idx}.detalhe`, e.target.value)}
+                      placeholder="Detalhe complementar"
+                      className="w-full text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
+                    />
+                    <label className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-violet-600 border border-dashed border-slate-300 hover:border-violet-300 rounded-lg px-3 py-1.5 cursor-pointer transition">
+                      {uploadingFornecedorIdx === idx ? (
+                        <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Enviando...</>
+                      ) : (
+                        <><UploadCloud className="w-3.5 h-3.5" /> {f.imagem ? 'Trocar foto' : 'Enviar foto'}</>
+                      )}
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        className="hidden"
+                        disabled={uploadingFornecedorIdx !== null}
+                        onChange={async e => {
+                          const file = e.target.files?.[0]
+                          if (!file) return
+                          setUploadingFornecedorIdx(idx)
+                          try {
+                            const formData = new FormData()
+                            formData.append('file', file)
+                            const res = await fetch(`${API}/quiz/upload-image`, { method: 'POST', body: formData })
+                            if (!res.ok) throw new Error((await res.json().catch(() => ({}))).message || 'Erro no upload')
+                            const data = await res.json()
+                            set(`salesPage.fornecedores.${idx}.imagem`, data.url)
+                          } catch (err) {
+                            alert(err.message || 'Erro ao enviar imagem')
+                          } finally {
+                            setUploadingFornecedorIdx(null)
+                            e.target.value = ''
+                          }
+                        }}
+                      />
+                    </label>
+                  </div>
+                  <button type="button" onClick={() => removeArrayItem('salesPage.fornecedores', idx)} className="shrink-0 text-slate-400 hover:text-red-500 transition p-1.5">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            {/* Valor */}
+            <div className="space-y-3">
+              <p className="text-sm font-semibold text-slate-500">Ancoragem de valor</p>
+              <textarea
+                value={quiz.salesPage.valorAncoragemTexto || ''}
+                onChange={e => set('salesPage.valorAncoragemTexto', e.target.value)}
+                rows={2}
+                placeholder="Texto de ancoragem (ex: valor já revelado ao vivo)"
+                className="w-full text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition resize-none"
+              />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-sm text-slate-500">Preço "de" (riscado)</label>
+                  <input
+                    value={quiz.salesPage.precoDe || ''}
+                    onChange={e => set('salesPage.precoDe', e.target.value)}
+                    className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm text-slate-500">Preço "por" (destaque)</label>
+                  <input
+                    value={quiz.salesPage.precoPor || ''}
+                    onChange={e => set('salesPage.precoPor', e.target.value)}
+                    className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
+                  />
+                </div>
+              </div>
+              <textarea
+                value={quiz.salesPage.valorRodape || ''}
+                onChange={e => set('salesPage.valorRodape', e.target.value)}
+                rows={2}
+                placeholder="Texto de rodapé (ex: menos de 0,5% do seu faturamento)"
+                className="w-full text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition resize-none"
+              />
+            </div>
+
+            {/* Depoimento */}
+            <div className="space-y-3">
+              <p className="text-sm font-semibold text-slate-500">Prova social</p>
+              <textarea
+                value={quiz.salesPage.depoimentoTexto || ''}
+                onChange={e => set('salesPage.depoimentoTexto', e.target.value)}
+                rows={2}
+                placeholder="Texto do depoimento"
+                className="w-full text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition resize-none"
+              />
+              <input
+                value={quiz.salesPage.depoimentoAutor || ''}
+                onChange={e => set('salesPage.depoimentoAutor', e.target.value)}
+                placeholder="Atribuição (ex: Relato real de uma participante...)"
+                className="w-full text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
+              />
+            </div>
+
+            {/* Garantia */}
+            <div className="space-y-3">
+              <p className="text-sm font-semibold text-slate-500">Garantia</p>
+              <input
+                value={quiz.salesPage.garantiaTitulo || ''}
+                onChange={e => set('salesPage.garantiaTitulo', e.target.value)}
+                placeholder="Título"
+                className="w-full text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
+              />
+              <textarea
+                value={quiz.salesPage.garantiaTexto || ''}
+                onChange={e => set('salesPage.garantiaTexto', e.target.value)}
+                rows={2}
+                placeholder="Texto"
+                className="w-full text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition resize-none"
+              />
+            </div>
+
+            {/* CTA */}
+            <div className="space-y-3">
+              <p className="text-sm font-semibold text-slate-500">Chamada final (CTA)</p>
+              <input
+                value={quiz.salesPage.ctaTitulo || ''}
+                onChange={e => set('salesPage.ctaTitulo', e.target.value)}
+                placeholder="Título acima do botão"
+                className="w-full text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
+              />
+              <input
+                value={quiz.salesPage.ctaBotaoLabel || ''}
+                onChange={e => set('salesPage.ctaBotaoLabel', e.target.value)}
+                placeholder="Texto do botão"
+                className="w-full text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
+              />
+            </div>
+
+            {/* FAQ */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-semibold text-slate-500">Perguntas rápidas (FAQ)</p>
+                <button
+                  type="button"
+                  onClick={() => addArrayItem('salesPage.faq', { pergunta: '', resposta: '' })}
+                  className="flex items-center gap-1 text-sm font-medium text-violet-600 hover:text-violet-700"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Adicionar
+                </button>
+              </div>
+              {(quiz.salesPage.faq || []).map((f, idx) => (
+                <div key={idx} className="flex gap-2 items-start bg-slate-50 border border-slate-200 rounded-lg p-3">
+                  <div className="flex-1 space-y-2">
+                    <input
+                      value={f.pergunta}
+                      onChange={e => set(`salesPage.faq.${idx}.pergunta`, e.target.value)}
+                      placeholder="Pergunta"
+                      className="w-full text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
+                    />
+                    <textarea
+                      value={f.resposta}
+                      onChange={e => set(`salesPage.faq.${idx}.resposta`, e.target.value)}
+                      rows={2}
+                      placeholder="Resposta"
+                      className="w-full text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition resize-none"
+                    />
+                  </div>
+                  <button type="button" onClick={() => removeArrayItem('salesPage.faq', idx)} className="shrink-0 text-slate-400 hover:text-red-500 transition p-1.5">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
       <div className="flex justify-end gap-2 sticky bottom-0 bg-gradient-to-t from-slate-50 pt-4 pb-2">
         {publicUrl && (
           <a href={publicUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-base text-slate-500 hover:text-slate-700 border border-slate-200 px-4 py-2 rounded-lg transition bg-white">
@@ -963,7 +1389,7 @@ export default function Quizzes() {
   }
 
   function openEdit(quiz) {
-    setCurrent(structuredClone(quiz))
+    setCurrent(structuredClone({ ...quiz, salesPage: quiz.salesPage || emptySalesPage() }))
     setView('builder')
   }
 

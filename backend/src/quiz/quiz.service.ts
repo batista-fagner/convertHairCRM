@@ -141,6 +141,7 @@ export class QuizService {
       presentation: dto.presentation || {},
       questions: dto.questions || [],
       finalStep: dto.finalStep || {},
+      salesPage: dto.salesPage || null,
     });
     return this.repo.save(quiz);
   }

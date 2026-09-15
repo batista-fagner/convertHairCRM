@@ -47,6 +47,53 @@ export interface QuizPresentation {
   autoRedirectSeconds?: number | null;
 }
 
+export interface SalesPageDor {
+  titulo: string;
+  texto: string;
+}
+
+export interface SalesPageFornecedor {
+  numero: number;
+  diferencial: string;
+  detalhe: string;
+  imagem?: string;
+}
+
+export interface SalesPageFaq {
+  pergunta: string;
+  resposta: string;
+}
+
+// Conteúdo da página de venda pós-quiz (fora deste repo, ver
+// ConvertHairPage/src/pages/Oferta5Fornecedores.tsx) — existe pra quizzes que
+// vendem um produto (checkoutUrl preenchido) em vez de só direcionar pro
+// grupo do WhatsApp. Layout/cores ficam fixos no código da página; só o
+// CONTEÚDO abaixo é editável aqui no builder, no mesmo espírito de
+// presentation/finalStep.
+export interface SalesPage {
+  headlineBadge?: string;
+  headlineTitle?: string;
+  headlineHighlight?: string;
+  headlineSubtitle?: string;
+  dores?: SalesPageDor[];
+  ofertaBadge?: string;
+  ofertaTitle?: string;
+  ofertaSubtitle?: string;
+  criterios?: string[];
+  fornecedores?: SalesPageFornecedor[];
+  valorAncoragemTexto?: string;
+  precoDe?: string;
+  precoPor?: string;
+  valorRodape?: string;
+  depoimentoTexto?: string;
+  depoimentoAutor?: string;
+  garantiaTitulo?: string;
+  garantiaTexto?: string;
+  ctaTitulo?: string;
+  ctaBotaoLabel?: string;
+  faq?: SalesPageFaq[];
+}
+
 export interface QuizFinalStep {
   title?: string;
   titleHighlight?: string;
@@ -108,6 +155,9 @@ export class Quiz {
 
   @Column({ name: 'final_step', type: 'jsonb' })
   finalStep: QuizFinalStep;
+
+  @Column({ name: 'sales_page', type: 'jsonb', nullable: true })
+  salesPage?: SalesPage | null;
 
   // Mensagem individual (privada) enviada ao lead quando ele entra no grupo do
   // WhatsApp vindo deste quiz — em vez da abertura padrão do Efraim/Sofia, que
