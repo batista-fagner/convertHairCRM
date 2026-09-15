@@ -133,6 +133,7 @@ export class QuizService {
       slug: dto.slug,
       active: dto.active ?? true,
       whatsappUrl: dto.whatsappUrl || null,
+      checkoutUrl: dto.checkoutUrl || null,
       fbPixelId: dto.fbPixelId || null,
       fbAccessToken: dto.fbAccessToken || null,
       welcomeMessageTemplate: dto.welcomeMessageTemplate || null,

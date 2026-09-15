@@ -26,6 +26,7 @@ function emptyQuiz() {
     slug: '',
     active: true,
     whatsappUrl: '',
+    checkoutUrl: '',
     fbPixelId: '',
     fbAccessToken: '',
     welcomeMessageTemplate: '',
@@ -360,6 +361,19 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
               <p className="text-sm mt-1.5 text-red-600">{groupCheck.error}</p>
             )
           )}
+        </div>
+        <div>
+          <label className="text-sm text-slate-500">Link de checkout (opcional)</label>
+          <input
+            value={quiz.checkoutUrl || ''}
+            onChange={e => set('checkoutUrl', e.target.value)}
+            placeholder="https://pay.kiwify.com.br/... ou link da Hotmart/Stripe"
+            className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
+          />
+          <p className="text-sm text-slate-400 mt-1">
+            Preencha só se esse quiz vende um produto (ex: funil de oferta) — a página final de venda usa esse link
+            no botão de compra. Vazio = quiz normal, sem oferta.
+          </p>
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>

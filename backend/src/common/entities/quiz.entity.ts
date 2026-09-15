@@ -83,6 +83,13 @@ export class Quiz {
   @Column({ name: 'whatsapp_url', type: 'varchar', nullable: true })
   whatsappUrl?: string | null;
 
+  // Link de pagamento externo (Kiwify/Hotmart/Stripe Payment Link etc) — usado
+  // pela página final de venda (fora deste repo) como destino do botão de
+  // compra, quando esse quiz vende um produto em vez de só direcionar pro
+  // grupo do WhatsApp. Null/vazio = quiz sem oferta de checkout.
+  @Column({ name: 'checkout_url', type: 'varchar', nullable: true })
+  checkoutUrl?: string | null;
+
   // Pixel/CAPI dedicados dessa campanha — null/vazio usa o par global
   // (FB_PIXEL_ID/FB_ACCESS_TOKEN) usado pelo resto do CRM (Lead/MQL do
   // WhatsApp etc). Existe pra campanhas que precisam de um pixel próprio,
