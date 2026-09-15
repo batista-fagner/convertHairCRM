@@ -168,6 +168,88 @@ function fmtDate(iso) {
 // UTM completo pra saber de qual campanha/conjunto/anúncio cada resposta veio.
 // Diferente da fila do TrackingService (Redis, expira em 30min e só vira Lead
 // se a pessoa entrar no grupo), isso fica pra sempre desde o momento do submit.
+// Funil de abandono — 1 barra por pergunta (quantas sessões chegaram até
+// ali, incluindo quem foi além) + 1 barra final de quem completou de
+// verdade. Escala sequencial de magnitude: um hue só (violeta, a cor de
+// destaque do resto da tela), do mais escuro (mais gente) ao mais claro —
+// nunca cores diferentes por barra, isso seria categórico, não sequencial.
+function FunnelModal({ quiz, funnel, loading, onClose }) {
+  const total = funnel?.totalStarted || 0
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div
+        className="bg-white rounded-xl w-full max-w-2xl max-h-[85vh] flex flex-col"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200">
+          <div>
+            <p className="font-semibold text-slate-800 text-base">Funil de abandono — {quiz.name}</p>
+            <p className="text-sm text-slate-400 mt-0.5">
+              {loading ? 'Carregando...' : `${total} sessão${total !== 1 ? 'ões' : ''} iniciada${total !== 1 ? 's' : ''}`}
+            </p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
+        </div>
+
+        <div className="overflow-y-auto flex-1 p-5">
+          {loading && (
+            <div className="flex items-center justify-center py-16 text-slate-400">
+              <Loader2 className="w-5 h-5 animate-spin" />
+            </div>
+          )}
+          {!loading && funnel && total === 0 && (
+            <div className="text-center py-16 text-slate-400 text-base">
+              Ninguém abriu esse quiz ainda desde que o rastreio de progresso foi ativado.
+            </div>
+          )}
+          {!loading && funnel && total > 0 && (
+            <div className="space-y-3">
+              {funnel.steps.map((step, idx) => {
+                const pct = total > 0 ? Math.round((step.reached / total) * 100) : 0
+                const prevReached = idx === 0 ? total : funnel.steps[idx - 1].reached
+                const dropFromPrev = prevReached - step.reached
+                return (
+                  <div key={step.questionIndex}>
+                    <div className="flex items-baseline justify-between text-sm mb-1 gap-2">
+                      <span className="text-slate-700 font-medium truncate">P{idx + 1}. {step.question}</span>
+                      <span className="text-slate-500 shrink-0">{step.reached} ({pct}%)</span>
+                    </div>
+                    <div className="h-3 rounded-full bg-slate-100 overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-violet-600"
+                        style={{ width: `${pct}%`, opacity: 0.4 + 0.6 * (1 - idx / Math.max(1, funnel.steps.length - 1)) }}
+                      />
+                    </div>
+                    {idx > 0 && dropFromPrev > 0 && (
+                      <p className="text-sm text-red-500 mt-1">↓ {dropFromPrev} saíram antes de chegar aqui</p>
+                    )}
+                  </div>
+                )
+              })}
+
+              <div className="pt-3 mt-3 border-t border-slate-200">
+                <div className="flex items-baseline justify-between text-sm mb-1">
+                  <span className="text-emerald-700 font-semibold">Completou o quiz</span>
+                  <span className="text-slate-500">
+                    {funnel.totalCompleted} ({total > 0 ? Math.round((funnel.totalCompleted / total) * 100) : 0}%)
+                  </span>
+                </div>
+                <div className="h-3 rounded-full bg-slate-100 overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-emerald-600"
+                    style={{ width: `${total > 0 ? Math.round((funnel.totalCompleted / total) * 100) : 0}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function SubmissionsModal({ quiz, submissions, loading, onClose, onDelete }) {
   const [expandedId, setExpandedId] = useState(null)
 
@@ -1367,6 +1449,9 @@ export default function Quizzes() {
   const [submissionsQuiz, setSubmissionsQuiz] = useState(null)
   const [submissions, setSubmissions] = useState([])
   const [loadingSubmissions, setLoadingSubmissions] = useState(false)
+  const [funnelQuiz, setFunnelQuiz] = useState(null)
+  const [funnel, setFunnel] = useState(null)
+  const [loadingFunnel, setLoadingFunnel] = useState(false)
 
   useEffect(() => { loadQuizzes() }, [])
 
@@ -1451,6 +1536,20 @@ export default function Quizzes() {
       setSubmissions([])
     } finally {
       setLoadingSubmissions(false)
+    }
+  }
+
+  async function openFunnel(quiz) {
+    setFunnelQuiz(quiz)
+    setLoadingFunnel(true)
+    try {
+      const res = await fetch(`${API}/quiz/id/${quiz.id}/funnel`)
+      setFunnel(await res.json())
+    } catch (err) {
+      console.error('Erro ao carregar funil:', err)
+      setFunnel(null)
+    } finally {
+      setLoadingFunnel(false)
     }
   }
 
@@ -1567,6 +1666,9 @@ export default function Quizzes() {
                 <button onClick={() => openSubmissions(quiz)} className="flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-violet-600 border border-slate-200 hover:border-violet-300 px-3 py-2 rounded-lg transition">
                   Respostas
                 </button>
+                <button onClick={() => openFunnel(quiz)} className="flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-violet-600 border border-slate-200 hover:border-violet-300 px-3 py-2 rounded-lg transition">
+                  Funil
+                </button>
                 <button onClick={() => handleDelete(quiz.id)} className="flex items-center gap-1.5 text-sm font-medium text-slate-400 hover:text-red-500 border border-slate-200 hover:border-red-200 px-3 py-2 rounded-lg transition">
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
@@ -1583,6 +1685,15 @@ export default function Quizzes() {
           loading={loadingSubmissions}
           onClose={() => setSubmissionsQuiz(null)}
           onDelete={handleDeleteSubmission}
+        />
+      )}
+
+      {funnelQuiz && (
+        <FunnelModal
+          quiz={funnelQuiz}
+          funnel={funnel}
+          loading={loadingFunnel}
+          onClose={() => setFunnelQuiz(null)}
         />
       )}
     </div>

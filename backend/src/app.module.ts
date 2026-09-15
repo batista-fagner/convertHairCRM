@@ -17,6 +17,7 @@ import { SmsMessage } from './sms/entities/sms-message.entity';
 import { IgPost } from './ig-posts/ig-post.entity';
 import { Quiz } from './common/entities/quiz.entity';
 import { QuizSubmission } from './common/entities/quiz-submission.entity';
+import { QuizProgress } from './common/entities/quiz-progress.entity';
 import { Carousel } from './carousel/carousel.entity';
 import { Prospect } from './prospecting/prospect.entity';
 import { LeadsModule } from './leads/leads.module';
@@ -53,7 +54,7 @@ import { ProspectingModule } from './prospecting/prospecting.module';
         // Supabase exige SSL; `DATABASE_SSL=false` permite apontar para um
         // Postgres local descartável ao testar sem tocar em produção.
         ssl: config.get('DATABASE_SSL') === 'false' ? false : { rejectUnauthorized: false },
-        entities: [Lead, Campaign, Form, InstagramAutomation, IgConversation, IgMessage, IgCommentEvent, Setting, FollowupRule, FollowupVideo, SmsContact, SmsMessage, IgPost, Quiz, QuizSubmission, Carousel, Prospect],
+        entities: [Lead, Campaign, Form, InstagramAutomation, IgConversation, IgMessage, IgCommentEvent, Setting, FollowupRule, FollowupVideo, SmsContact, SmsMessage, IgPost, Quiz, QuizSubmission, QuizProgress, Carousel, Prospect],
         synchronize: true,
         logging: false,
         timezone: 'Z',

@@ -31,6 +31,11 @@ export class QuizController {
     return this.quizService.listSubmissions(id);
   }
 
+  @Get('id/:id/funnel')
+  getFunnel(@Param('id') id: string) {
+    return this.quizService.getFunnel(id);
+  }
+
   @Delete('submissions/:submissionId')
   deleteSubmission(@Param('submissionId') submissionId: string) {
     return this.quizService.deleteSubmission(submissionId);
@@ -71,5 +76,10 @@ export class QuizController {
     const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || '';
     const userAgent = req.headers['user-agent'] as string | undefined;
     return this.quizService.submit(slug, { ...dto, clientIp, userAgent });
+  }
+
+  @Post(':slug/progress')
+  trackProgress(@Param('slug') slug: string, @Body() dto: any) {
+    return this.quizService.trackProgress(slug, dto);
   }
 }

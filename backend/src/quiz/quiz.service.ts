@@ -8,6 +8,7 @@ import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { randomUUID } from 'crypto';
 import { Quiz, QuizQuestion } from '../common/entities/quiz.entity';
 import { QuizSubmission } from '../common/entities/quiz-submission.entity';
+import { QuizProgress } from '../common/entities/quiz-progress.entity';
 import { FacebookService } from '../facebook/facebook.service';
 import { TrackingService } from '../tracking/tracking.service';
 
@@ -38,6 +39,14 @@ interface SubmitAnswer {
   optionId: string;
 }
 
+interface ProgressDto {
+  clickId: string;
+  // -1 = abriu o quiz mas ainda não respondeu nenhuma pergunta ("started").
+  questionIndex: number;
+  questionId?: string;
+  optionId?: string;
+}
+
 interface SubmitDto {
   answers: SubmitAnswer[];
   utmSource?: string;
@@ -63,6 +72,7 @@ export class QuizService {
   constructor(
     @InjectRepository(Quiz) private repo: Repository<Quiz>,
     @InjectRepository(QuizSubmission) private submissionRepo: Repository<QuizSubmission>,
+    @InjectRepository(QuizProgress) private progressRepo: Repository<QuizProgress>,
     private facebookService: FacebookService,
     private trackingService: TrackingService,
     private config: ConfigService,
@@ -123,6 +133,77 @@ export class QuizService {
     const quiz = await this.repo.findOne({ where: { slug, active: true } });
     if (!quiz) throw new NotFoundException(`Quiz "${slug}" não encontrado ou inativo`);
     return quiz;
+  }
+
+  /**
+   * Registra o progresso do quiz público pergunta a pergunta — chamado pelo
+   * front (Quiz.tsx, ConvertHairPage) em segundo plano, sem bloquear a
+   * navegação. Uma linha por sessão (quizId + clickId), sempre em
+   * quiz_progress — NUNCA em quiz_submissions (essa é histórico permanente de
+   * quem terminou, intocável, ver quiz-submission.entity.ts). Idempotente:
+   * pode chegar fora de ordem ou duplicado (rede instável) sem corromper o
+   * dado, porque só avança furthestQuestionIndex, nunca recua.
+   */
+  async trackProgress(slug: string, dto: ProgressDto): Promise<{ ok: true }> {
+    const quiz = await this.findBySlug(slug);
+    if (!dto.clickId) return { ok: true }; // sem clickId não dá pra agrupar a sessão — ignora silenciosamente
+
+    let progress = await this.progressRepo.findOne({ where: { quizId: quiz.id, clickId: dto.clickId } });
+    if (!progress) {
+      progress = this.progressRepo.create({
+        quizId: quiz.id,
+        quizSlug: quiz.slug,
+        clickId: dto.clickId,
+        totalQuestions: quiz.questions.length,
+        furthestQuestionIndex: -1,
+        answers: [],
+        completed: false,
+      });
+    }
+
+    if (dto.questionIndex > progress.furthestQuestionIndex) {
+      progress.furthestQuestionIndex = dto.questionIndex;
+    }
+
+    if (dto.questionIndex >= 0 && dto.questionId && dto.optionId) {
+      const question = quiz.questions.find((q) => q.id === dto.questionId);
+      const option = question?.options.find((o) => o.id === dto.optionId);
+      if (question && option) {
+        const already = progress.answers.some((a) => a.questionIndex === dto.questionIndex);
+        if (!already) {
+          progress.answers = [...progress.answers, { questionIndex: dto.questionIndex, question: question.question, answer: option.label }];
+        }
+      }
+    }
+
+    await this.progressRepo.save(progress);
+    return { ok: true };
+  }
+
+  /**
+   * Funil de abandono do quiz — usado pela tela de analytics do CRM. Conta,
+   * por índice de pergunta, quantas sessões chegaram ATÉ ALI (inclusive as
+   * que foram além), mais quantas completaram de verdade.
+   */
+  async getFunnel(quizId: string): Promise<{
+    totalStarted: number;
+    totalCompleted: number;
+    steps: { questionIndex: number; question: string; reached: number }[];
+  }> {
+    const quiz = await this.findById(quizId);
+    const sessions = await this.progressRepo.find({ where: { quizId } });
+
+    const steps = quiz.questions.map((q, idx) => ({
+      questionIndex: idx,
+      question: q.question,
+      reached: sessions.filter((s) => s.furthestQuestionIndex >= idx).length,
+    }));
+
+    return {
+      totalStarted: sessions.length,
+      totalCompleted: sessions.filter((s) => s.completed).length,
+      steps,
+    };
   }
 
   async create(dto: Partial<Quiz>): Promise<Quiz> {
@@ -300,6 +381,26 @@ export class QuizService {
         clientIp: dto.clientIp,
       }),
     );
+
+    // Fecha a sessão de progresso desse quiz (tabela separada de
+    // quiz_submissions acima — nunca mexe no histórico permanente). Se por
+    // algum motivo não existir linha de progresso ainda (ex: front antigo em
+    // cache, sem o tracking novo), cria uma já completa — não é um erro.
+    if (dto.clickId) {
+      let progress = await this.progressRepo.findOne({ where: { quizId: quiz.id, clickId: dto.clickId } });
+      if (!progress) {
+        progress = this.progressRepo.create({
+          quizId: quiz.id,
+          quizSlug: quiz.slug,
+          clickId: dto.clickId,
+          totalQuestions: quiz.questions.length,
+          answers: [],
+        });
+      }
+      progress.completed = true;
+      progress.furthestQuestionIndex = quiz.questions.length - 1;
+      await this.progressRepo.save(progress);
+    }
 
     this.logger.log(`Quiz "${slug}" respondido — ${answeredResponses.length} pergunta(s), MQL events: ${Array.from(mqlEvents).join(', ') || 'nenhum'}`);
 
