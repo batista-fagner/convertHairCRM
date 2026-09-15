@@ -6,7 +6,7 @@ import {
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3002/api'
 const QUIZ_PUBLIC_BASE = import.meta.env.VITE_QUIZ_PUBLIC_URL || 'https://converthair.vercel.app/q'
-const MAX_QUESTIONS = 6
+const MAX_QUESTIONS = 7
 
 function uid() {
   return Math.random().toString(36).slice(2, 8)

@@ -20,7 +20,7 @@ export interface WhatsappGroupCheckResult {
   instanceNumber?: string;
 }
 
-const MAX_QUESTIONS = 6;
+const MAX_QUESTIONS = 7;
 const MAX_IMAGE_SIZE_MB = 10;
 const ALLOWED_IMAGE_MIMETYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
