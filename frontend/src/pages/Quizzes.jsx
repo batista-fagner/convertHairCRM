@@ -937,6 +937,7 @@ export default function Quizzes() {
   const [current, setCurrent] = useState(null)
   const [saving, setSaving] = useState(false)
   const [copiedId, setCopiedId] = useState(null)
+  const [togglingId, setTogglingId] = useState(null)
   const [submissionsQuiz, setSubmissionsQuiz] = useState(null)
   const [submissions, setSubmissions] = useState([])
   const [loadingSubmissions, setLoadingSubmissions] = useState(false)
@@ -993,6 +994,23 @@ export default function Quizzes() {
     if (!confirm('Excluir esse quiz?')) return
     await fetch(`${API}/quiz/${id}`, { method: 'DELETE' })
     loadQuizzes()
+  }
+
+  async function toggleActive(quiz) {
+    setTogglingId(quiz.id)
+    try {
+      const res = await fetch(`${API}/quiz/${quiz.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ active: !quiz.active }),
+      })
+      if (!res.ok) throw new Error('Erro ao atualizar status')
+      await loadQuizzes()
+    } catch (err) {
+      alert(err.message || 'Erro ao ativar/desativar quiz')
+    } finally {
+      setTogglingId(null)
+    }
   }
 
   async function openSubmissions(quiz) {
@@ -1079,9 +1097,22 @@ export default function Quizzes() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1">
                   <p className="font-medium text-slate-800 text-base">{quiz.name}</p>
-                  <span className={`text-sm font-medium px-2 py-0.5 rounded-full ${quiz.active ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}>
+                  <button
+                    type="button"
+                    onClick={() => toggleActive(quiz)}
+                    disabled={togglingId === quiz.id}
+                    title={quiz.active ? 'Clique pra desativar' : 'Clique pra ativar'}
+                    className={`flex items-center gap-1.5 text-sm font-medium px-2 py-0.5 rounded-full transition disabled:opacity-50 ${quiz.active ? 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}
+                  >
+                    {togglingId === quiz.id ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <span className={`w-6 h-3.5 rounded-full relative transition-colors ${quiz.active ? 'bg-emerald-500' : 'bg-slate-300'}`}>
+                        <span className={`absolute top-0.5 w-2.5 h-2.5 bg-white rounded-full transition-transform ${quiz.active ? 'translate-x-3' : 'translate-x-0.5'}`} />
+                      </span>
+                    )}
                     {quiz.active ? 'ativo' : 'inativo'}
-                  </span>
+                  </button>
                 </div>
                 <div className="flex flex-wrap gap-1.5 mb-3">
                   <span className="text-sm bg-slate-100 text-slate-500 px-2 py-0.5 rounded">
