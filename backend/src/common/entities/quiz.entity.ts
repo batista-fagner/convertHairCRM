@@ -57,6 +57,12 @@ export interface SalesPageFornecedor {
   diferencial: string;
   detalhe: string;
   imagem?: string;
+  // Valor percebido individual (ex: "R$ 2.000") — usado na escada de valor
+  // da seção de ancoragem (cada fornecedor riscado, somando até o preço
+  // "de", antes de revelar o preço "por" real). Texto livre, não numérico,
+  // pra permitir qualquer formatação; a soma ignora entradas que não
+  // parseiam como número.
+  valor?: string;
 }
 
 export interface SalesPageFaq {

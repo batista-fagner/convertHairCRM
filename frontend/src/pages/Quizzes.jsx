@@ -1227,7 +1227,7 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
                 <p className="text-sm font-semibold text-slate-500">Fornecedores (cards com foto)</p>
                 <button
                   type="button"
-                  onClick={() => addArrayItem('salesPage.fornecedores', { numero: (quiz.salesPage.fornecedores || []).length + 1, diferencial: '', detalhe: '', imagem: '' })}
+                  onClick={() => addArrayItem('salesPage.fornecedores', { numero: (quiz.salesPage.fornecedores || []).length + 1, diferencial: '', detalhe: '', imagem: '', valor: '' })}
                   className="flex items-center gap-1 text-sm font-medium text-violet-600 hover:text-violet-700"
                 >
                   <Plus className="w-3.5 h-3.5" /> Adicionar
@@ -1250,6 +1250,12 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
                       value={f.detalhe}
                       onChange={e => set(`salesPage.fornecedores.${idx}.detalhe`, e.target.value)}
                       placeholder="Detalhe complementar"
+                      className="w-full text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
+                    />
+                    <input
+                      value={f.valor || ''}
+                      onChange={e => set(`salesPage.fornecedores.${idx}.valor`, e.target.value)}
+                      placeholder="Valor percebido (ex: R$ 2.000) — usado na escada de valor"
                       className="w-full text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
                     />
                     <label className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-violet-600 border border-dashed border-slate-300 hover:border-violet-300 rounded-lg px-3 py-1.5 cursor-pointer transition">
