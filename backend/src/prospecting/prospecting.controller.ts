@@ -71,7 +71,7 @@ export class ProspectingController {
   }
 
   @Patch('message-config')
-  async setMessageConfig(@Body() body: { mode?: 'ai' | 'fixed'; fixedMessage?: string }) {
+  async setMessageConfig(@Body() body: { mode?: 'ai' | 'fixed'; fixedMessage?: string; aiPrompt?: string }) {
     return this.prospecting.setMessageConfig(body);
   }
 }

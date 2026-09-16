@@ -2,6 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
+import { HttpService } from '@nestjs/axios';
+import { firstValueFrom } from 'rxjs';
 import OpenAI from 'openai';
 import { Prospect } from './prospect.entity';
 import { SettingsService } from '../settings/settings.service';
@@ -11,6 +13,7 @@ const CURRENT_SEED_KEY = 'prospecting_current_seed';
 const MODEL_SETTING_KEY = 'prospecting_model';
 const MESSAGE_MODE_KEY = 'prospecting_message_mode'; // 'ai' | 'fixed'
 const FIXED_MESSAGE_KEY = 'prospecting_fixed_message';
+const AI_PROMPT_KEY = 'prospecting_ai_prompt';
 
 export type ProspectMessageMode = 'ai' | 'fixed';
 
@@ -19,6 +22,22 @@ const DEFAULT_FIXED_MESSAGE =
   'Vi seu perfil e achei muito bom o trabalho de vocês 👏\n\n' +
   'Trabalho ajudando clínicas a não perderem paciente por demora no WhatsApp — um agente de IA que responde e agenda na hora, 24h integrado a um CRM, pra vc acompanhar todos os leads. Além de eu trabalhar entregando leads qualificados para clínicas\n\n' +
   'Faz sentido pra vocês eu te mostrar rapidinho como funciona?';
+
+// Prompt base editável em Settings (mesmo espírito do DEFAULT_SDR_PROMPT da
+// Sofia) — placeholders {nome}/{bio}/{categoria} substituídos antes de
+// mandar pra IA. Bio/categoria vêm de busca real no perfil (ScrapeCreators,
+// ver fetchInstagramProfile) — se a busca falhar ou vier vazia, os
+// placeholders caem num aviso explícito ("sem informação disponível") pra IA
+// nunca inventar conteúdo que não existe.
+const DEFAULT_AI_PROMPT = `Você vai escrever uma mensagem curta (1 a 2 frases), em português informal (use "você"), pra responder ao story do Instagram de "{nome}".
+
+Informações reais do perfil dela, pra você usar como contexto (nunca invente nada além disso):
+- Bio: {bio}
+- Categoria/atividade: {categoria}
+
+O objetivo é só quebrar o gelo e conseguir uma resposta amigável — NÃO mencione produto, serviço, venda, negócio ou qualquer proposta comercial nessa mensagem. Se a bio ou categoria derem uma pista real sobre o que ela faz, use isso pra fazer um comentário específico e genuíno (não um elogio genérico e vazio). Se não houver informação suficiente, seja calorosa e casual mesmo assim, sem inventar detalhes que você não tem.
+
+Cite o primeiro nome dela se fizer sentido. Responda só com o texto da mensagem, sem aspas, sem explicações.`;
 
 export interface ProspectListFilters {
   responded?: boolean;
@@ -31,14 +50,17 @@ export class ProspectingService {
   private readonly logger = new Logger(ProspectingService.name);
   private readonly openai: OpenAI;
   private readonly model: string;
+  private readonly scrapeCreatorsApiKey: string;
 
   constructor(
     @InjectRepository(Prospect) private readonly prospectRepo: Repository<Prospect>,
     private readonly settings: SettingsService,
     private readonly config: ConfigService,
+    private readonly http: HttpService,
   ) {
     this.openai = new OpenAI({ apiKey: config.get('OPENAI_API_KEY') });
     this.model = config.get('PROSPECTING_OPENAI_MODEL') || 'gpt-5.4-mini';
+    this.scrapeCreatorsApiKey = config.get('SCRAPECREATORS_API_KEY') || '';
   }
 
   async create(data: { username: string; fullName?: string; message: string; sentAt: string | Date; seedUsername?: string }): Promise<Prospect> {
@@ -89,16 +111,46 @@ export class ProspectingService {
     }
   }
 
-  async getMessageConfig(): Promise<{ mode: ProspectMessageMode; fixedMessage: string }> {
+  async getMessageConfig(): Promise<{ mode: ProspectMessageMode; fixedMessage: string; aiPrompt: string }> {
     const mode = (await this.settings.get(MESSAGE_MODE_KEY)) === 'fixed' ? 'fixed' : 'ai';
     const fixedMessage = (await this.settings.get(FIXED_MESSAGE_KEY)) || DEFAULT_FIXED_MESSAGE;
-    return { mode, fixedMessage };
+    const aiPrompt = (await this.settings.get(AI_PROMPT_KEY)) || DEFAULT_AI_PROMPT;
+    return { mode, fixedMessage, aiPrompt };
   }
 
-  async setMessageConfig(patch: { mode?: ProspectMessageMode; fixedMessage?: string }): Promise<{ mode: ProspectMessageMode; fixedMessage: string }> {
+  async setMessageConfig(patch: { mode?: ProspectMessageMode; fixedMessage?: string; aiPrompt?: string }): Promise<{ mode: ProspectMessageMode; fixedMessage: string; aiPrompt: string }> {
     if (patch.mode) await this.settings.set(MESSAGE_MODE_KEY, patch.mode === 'fixed' ? 'fixed' : 'ai');
     if (typeof patch.fixedMessage === 'string') await this.settings.set(FIXED_MESSAGE_KEY, patch.fixedMessage);
+    if (typeof patch.aiPrompt === 'string') await this.settings.set(AI_PROMPT_KEY, patch.aiPrompt);
     return this.getMessageConfig();
+  }
+
+  /**
+   * Busca dados reais do perfil (bio, categoria) via ScrapeCreators —
+   * best-effort: qualquer falha (sem chave configurada, rede, perfil
+   * privado/inexistente) retorna null e o chamador segue sem personalização
+   * de bio, nunca quebra a geração da mensagem.
+   */
+  private async fetchInstagramProfile(username: string): Promise<{ bio: string; categoria: string } | null> {
+    if (!this.scrapeCreatorsApiKey || !username) return null;
+    try {
+      const res = await firstValueFrom(
+        this.http.get('https://api.scrapecreators.com/v1/instagram/profile', {
+          params: { handle: username },
+          headers: { 'x-api-key': this.scrapeCreatorsApiKey },
+          timeout: 8000,
+        }),
+      );
+      const user = res.data?.data?.user;
+      if (!user) return null;
+      return {
+        bio: (user.biography || '').trim(),
+        categoria: (user.category_name || user.business_category_name || '').trim(),
+      };
+    } catch (err: any) {
+      this.logger.warn(`Não foi possível buscar perfil "${username}" no ScrapeCreators: ${err.message}`);
+      return null;
+    }
   }
 
   /**
@@ -124,11 +176,16 @@ export class ProspectingService {
   async generateSoftOpenMessage(fullName?: string, username?: string): Promise<string> {
     const model = (await this.settings.get(MODEL_SETTING_KEY)) || this.model;
     const displayName = fullName?.trim() || username || '';
+    const { aiPrompt } = await this.getMessageConfig();
 
-    const prompt = `Gere uma única mensagem curta (1 a 2 frases), em português informal (use "você"), pra responder ao story do Instagram de "${displayName}". ` +
-      `O objetivo é só quebrar o gelo e conseguir uma resposta amigável dela — NÃO mencione produto, serviço, venda, negócio ou qualquer proposta comercial. ` +
-      `Seja calorosa e genérica, tipo um elogio/comentário casual sobre o story (sem inventar detalhes específicos do conteúdo, já que você não viu a imagem). ` +
-      `Cite o primeiro nome dela se fizer sentido. Responda só com o texto da mensagem, sem aspas, sem explicações.`;
+    const profile = username ? await this.fetchInstagramProfile(username) : null;
+    const bio = profile?.bio || '(sem informação disponível)';
+    const categoria = profile?.categoria || '(sem informação disponível)';
+
+    const prompt = aiPrompt
+      .replace(/\{nome\}/gi, displayName)
+      .replace(/\{bio\}/gi, bio)
+      .replace(/\{categoria\}/gi, categoria);
 
     try {
       const response = await this.openai.chat.completions.create({

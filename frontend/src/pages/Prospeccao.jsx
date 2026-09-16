@@ -23,6 +23,7 @@ export default function Prospeccao() {
   const [busyId, setBusyId] = useState(null)
   const [msgMode, setMsgMode] = useState('ai') // ai | fixed
   const [fixedMessage, setFixedMessage] = useState('')
+  const [aiPrompt, setAiPrompt] = useState('')
   const [savingConfig, setSavingConfig] = useState(false)
 
   const load = () => {
@@ -49,6 +50,7 @@ export default function Prospeccao() {
       .then((cfg) => {
         setMsgMode(cfg?.mode === 'fixed' ? 'fixed' : 'ai')
         setFixedMessage(cfg?.fixedMessage || '')
+        setAiPrompt(cfg?.aiPrompt || '')
       })
       .catch(() => {})
   }, [])
@@ -63,6 +65,7 @@ export default function Prospeccao() {
       }).then((r) => r.json())
       setMsgMode(res?.mode === 'fixed' ? 'fixed' : 'ai')
       setFixedMessage(res?.fixedMessage || '')
+      setAiPrompt(res?.aiPrompt || '')
     } finally {
       setSavingConfig(false)
     }
@@ -202,7 +205,23 @@ export default function Prospeccao() {
           </>
         )}
         {msgMode === 'ai' && (
-          <p className="text-xs text-slate-400">A IA gera uma mensagem curta e personalizada ("soft open") com base no nome do perfil, sem citar produto/venda.</p>
+          <>
+            <textarea
+              value={aiPrompt}
+              onChange={(e) => setAiPrompt(e.target.value)}
+              onBlur={() => saveMessageConfig({ aiPrompt })}
+              rows={8}
+              className="w-full text-sm px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-200 font-mono"
+            />
+            <p className="text-xs text-slate-400 mt-2">
+              Prompt base que a IA usa pra escrever a mensagem. Antes de gerar, o sistema busca de verdade a bio e a
+              categoria do perfil no Instagram (ScrapeCreators) e substitui{' '}
+              <code className="bg-slate-100 px-1 rounded">{'{nome}'}</code>,{' '}
+              <code className="bg-slate-100 px-1 rounded">{'{bio}'}</code> e{' '}
+              <code className="bg-slate-100 px-1 rounded">{'{categoria}'}</code> pelos dados reais — se a busca
+              falhar, esses campos viram "(sem informação disponível)".
+            </p>
+          </>
         )}
       </div>
 
