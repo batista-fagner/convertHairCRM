@@ -6,6 +6,7 @@ import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { randomUUID } from 'crypto';
+import sharp from 'sharp';
 import { Quiz, QuizQuestion } from '../common/entities/quiz.entity';
 import { QuizSubmission } from '../common/entities/quiz-submission.entity';
 import { QuizProgress } from '../common/entities/quiz-progress.entity';
@@ -101,20 +102,33 @@ export class QuizService {
       throw new BadRequestException(`Imagem muito grande (limite ${MAX_IMAGE_SIZE_MB}MB)`);
     }
 
-    const ext = file.mimetype === 'image/png' ? 'png' : file.mimetype === 'image/webp' ? 'webp' : 'jpg';
-    const storagePath = `quiz/${randomUUID()}.${ext}`;
+    // Recomprime tudo pra WebP na entrada — mesma otimização feita manualmente
+    // em 2026-09-16 (PNG de 2MB virou WebP de 247KB, qualidade visual igual),
+    // agora automática pra qualquer upload novo do builder. Mantém as
+    // dimensões originais, só troca o encoding — não reduz resolução.
+    let optimized: Buffer;
+    try {
+      optimized = await sharp(file.buffer).webp({ quality: 90 }).toBuffer();
+    } catch (err: any) {
+      this.logger.error(`Erro ao comprimir imagem do quiz: ${err.message}`);
+      throw new BadRequestException('Não foi possível processar essa imagem — tente outro arquivo');
+    }
+
+    const storagePath = `quiz/${randomUUID()}.webp`;
 
     try {
       await this.s3.send(new PutObjectCommand({
         Bucket: this.bucket,
         Key: storagePath,
-        Body: file.buffer,
-        ContentType: file.mimetype,
+        Body: optimized,
+        ContentType: 'image/webp',
       }));
     } catch (err: any) {
       this.logger.error(`Erro ao subir imagem do quiz pro R2: ${err.message}`);
       throw new BadRequestException(`Falha no upload: ${err.message}`);
     }
+
+    this.logger.log(`Imagem do quiz comprimida: ${(file.size / 1024).toFixed(0)}KB → ${(optimized.length / 1024).toFixed(0)}KB`);
 
     return { url: `${this.publicUrlBase}/${storagePath}` };
   }
