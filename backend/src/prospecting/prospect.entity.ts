@@ -32,6 +32,13 @@ export class Prospect {
   @Column({ name: 'promoted_to_seed', type: 'boolean', default: false })
   promotedToSeed: boolean;
 
+  // Cacheado na primeira busca bem-sucedida no ScrapeCreators (endpoint
+  // /profile, que aceita username) — usado como fallback pro endpoint
+  // /basic-profile (que só aceita userId, não username) numa próxima
+  // tentativa de gerar mensagem pra esse mesmo perfil, se o /profile falhar.
+  @Column({ name: 'instagram_user_id', nullable: true })
+  instagramUserId?: string | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 }

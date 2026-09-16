@@ -128,10 +128,10 @@ export class ProspectingService {
   /**
    * Busca dados reais do perfil (bio, categoria) via ScrapeCreators —
    * best-effort: qualquer falha (sem chave configurada, rede, perfil
-   * privado/inexistente) retorna null e o chamador segue sem personalização
-   * de bio, nunca quebra a geração da mensagem.
+   * privado/inexistente) retorna null e o chamador tenta o fallback ou segue
+   * sem personalização de bio, nunca quebra a geração da mensagem.
    */
-  private async fetchInstagramProfile(username: string): Promise<{ bio: string; categoria: string } | null> {
+  private async fetchInstagramProfile(username: string): Promise<{ bio: string; categoria: string; userId: string } | null> {
     if (!this.scrapeCreatorsApiKey || !username) return null;
     try {
       const res = await firstValueFrom(
@@ -142,14 +142,54 @@ export class ProspectingService {
         }),
       );
       const user = res.data?.data?.user;
-      if (!user) return null;
+      if (!user?.id) return null;
       return {
         bio: (user.biography || '').trim(),
         categoria: (user.category_name || user.business_category_name || '').trim(),
+        userId: String(user.id),
       };
     } catch (err: any) {
-      this.logger.warn(`Não foi possível buscar perfil "${username}" no ScrapeCreators: ${err.message}`);
+      this.logger.warn(`Não foi possível buscar perfil "${username}" no ScrapeCreators (/profile): ${err.message}`);
       return null;
+    }
+  }
+
+  /**
+   * Fallback do /profile — usado quando ele falha, mas só funciona se já
+   * tivermos o userId em cache de uma busca anterior bem-sucedida (esse
+   * endpoint não aceita username/handle, só userId).
+   */
+  private async fetchInstagramBasicProfile(userId: string): Promise<{ bio: string; categoria: string } | null> {
+    if (!this.scrapeCreatorsApiKey || !userId) return null;
+    try {
+      const res = await firstValueFrom(
+        this.http.get('https://api.scrapecreators.com/v1/instagram/basic-profile', {
+          params: { userId },
+          headers: { 'x-api-key': this.scrapeCreatorsApiKey },
+          timeout: 8000,
+        }),
+      );
+      if (res.data?.success === false) return null;
+      return {
+        bio: (res.data?.biography || '').trim(),
+        categoria: (res.data?.category || '').trim(),
+      };
+    } catch (err: any) {
+      this.logger.warn(`Não foi possível buscar perfil (userId ${userId}) no ScrapeCreators (/basic-profile): ${err.message}`);
+      return null;
+    }
+  }
+
+  /** Best-effort: guarda o userId no prospect já existente (se houver) pra viabilizar o fallback numa próxima busca. */
+  private async cacheInstagramUserId(username: string, userId: string): Promise<void> {
+    try {
+      const existing = await this.prospectRepo.findOne({ where: { username } });
+      if (existing && existing.instagramUserId !== userId) {
+        existing.instagramUserId = userId;
+        await this.prospectRepo.save(existing);
+      }
+    } catch {
+      // Best-effort — nunca deixa isso quebrar a geração da mensagem.
     }
   }
 
@@ -178,7 +218,18 @@ export class ProspectingService {
     const displayName = fullName?.trim() || username || '';
     const { aiPrompt } = await this.getMessageConfig();
 
-    const profile = username ? await this.fetchInstagramProfile(username) : null;
+    let profile = username ? await this.fetchInstagramProfile(username) : null;
+    if (profile) {
+      await this.cacheInstagramUserId(username!, profile.userId);
+    } else if (username) {
+      // /profile falhou — tenta o fallback só se já tivermos o userId em
+      // cache de uma busca anterior bem-sucedida pra esse mesmo username.
+      const cached = await this.prospectRepo.findOne({ where: { username } });
+      if (cached?.instagramUserId) {
+        const fallback = await this.fetchInstagramBasicProfile(cached.instagramUserId);
+        if (fallback) profile = { ...fallback, userId: cached.instagramUserId };
+      }
+    }
     const bio = profile?.bio || '(sem informação disponível)';
     const categoria = profile?.categoria || '(sem informação disponível)';
 
