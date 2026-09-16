@@ -103,6 +103,7 @@ function emptySalesPage() {
     valorAncoragemTexto: 'Só o fornecedor principal da lista já foi avaliado publicamente em R$ 10.000 de valor percebido.',
     precoDe: 'R$ 997',
     precoPor: 'R$ 47',
+    valorRodapeTitulo: 'Cabe fácil no seu orçamento',
     valorRodape: 'Pra quem fatura R$ 10 mil/mês ou mais, isso representa menos de 0,5% do seu faturamento — pra nunca mais depender de sorte na hora de escolher fornecedor.',
     depoimentoTexto: 'Só com essa lista eu economizei mais de R$ 20 mil comprando direto na fonte certa, sem pagar por intermediário.',
     depoimentoAutor: 'Relato real de uma participante do Workshop Como Vender Cabelo Todo Santo Dia',
@@ -1325,11 +1326,20 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
                   />
                 </div>
               </div>
+              <p className="text-sm text-slate-500 mt-1">
+                Card separado, logo abaixo do preço — pra destacar o argumento de "cabe no seu bolso".
+              </p>
+              <input
+                value={quiz.salesPage.valorRodapeTitulo || ''}
+                onChange={e => set('salesPage.valorRodapeTitulo', e.target.value)}
+                placeholder="Título do card (ex: Cabe fácil no seu orçamento)"
+                className="w-full text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
+              />
               <textarea
                 value={quiz.salesPage.valorRodape || ''}
                 onChange={e => set('salesPage.valorRodape', e.target.value)}
                 rows={2}
-                placeholder="Texto de rodapé (ex: menos de 0,5% do seu faturamento)"
+                placeholder="Texto do card (ex: menos de 0,5% do seu faturamento)"
                 className="w-full text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition resize-none"
               />
             </div>

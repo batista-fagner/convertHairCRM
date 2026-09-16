@@ -91,6 +91,7 @@ export interface SalesPage {
   precoDe?: string;
   precoPor?: string;
   valorRodape?: string;
+  valorRodapeTitulo?: string;
   depoimentoTexto?: string;
   depoimentoAutor?: string;
   garantiaTitulo?: string;
