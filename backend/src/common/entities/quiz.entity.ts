@@ -70,6 +70,11 @@ export interface SalesPageFaq {
   resposta: string;
 }
 
+export interface SalesPageJornadaPasso {
+  titulo: string;
+  texto?: string;
+}
+
 // Conteúdo da página de venda pós-quiz (fora deste repo, ver
 // ConvertHairPage/src/pages/Oferta5Fornecedores.tsx) — existe pra quizzes que
 // vendem um produto (checkoutUrl preenchido) em vez de só direcionar pro
@@ -96,6 +101,12 @@ export interface SalesPage {
   depoimentoAutor?: string;
   garantiaTitulo?: string;
   garantiaTexto?: string;
+  // Linha do tempo pós-compra ("você garante sua vaga" -> ... -> promessa
+  // final) — quando preenchida, substitui o card simples de
+  // garantiaTitulo/garantiaTexto na página pública pelo passo a passo visual.
+  // O último item da lista é sempre tratado como o "destino" (destaque
+  // visual diferente dos demais).
+  jornada?: SalesPageJornadaPasso[];
   ctaTitulo?: string;
   ctaBotaoLabel?: string;
   faq?: SalesPageFaq[];

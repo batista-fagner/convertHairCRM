@@ -109,6 +109,13 @@ function emptySalesPage() {
     depoimentoAutor: 'Relato real de uma participante do Workshop Como Vender Cabelo Todo Santo Dia',
     garantiaTitulo: 'Contato direto, sem enrolação',
     garantiaTexto: 'Você recebe o nome e o WhatsApp de cada um dos 5 fornecedores. Se algum não responder ou não bater com o combinado, você fala com a gente e a gente resolve.',
+    jornada: [
+      { titulo: 'Você garante sua vaga', texto: 'Confirma o pagamento e o acesso libera na hora.' },
+      { titulo: 'Recebe os 5 contatos', texto: 'Nome e WhatsApp de cada fornecedor chegam direto pra você.' },
+      { titulo: 'Fala direto com eles', texto: 'Sem intermediário, você negocia preço e condição na hora.' },
+      { titulo: 'Compra com fornecedor validado', texto: 'Cabelo de verdade, sem risco de golpe.' },
+      { titulo: 'Vende com mais confiança e mais lucro', texto: '' },
+    ],
     ctaTitulo: 'Pare de arriscar com fornecedor. Comece hoje com quem já é validado.',
     ctaBotaoLabel: 'Quero os 5 fornecedores agora',
     faq: [
@@ -1362,9 +1369,9 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
               />
             </div>
 
-            {/* Garantia */}
-            <div className="space-y-3">
-              <p className="text-sm font-semibold text-slate-500">Garantia</p>
+            {/* Garantia — não é mais exibida na página (substituída pela Jornada abaixo), mantido só como texto de apoio interno */}
+            <div className="space-y-3 hidden">
+              <p className="text-sm font-semibold text-slate-500">Garantia (não usado mais)</p>
               <input
                 value={quiz.salesPage.garantiaTitulo || ''}
                 onChange={e => set('salesPage.garantiaTitulo', e.target.value)}
@@ -1378,6 +1385,51 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
                 placeholder="Texto"
                 className="w-full text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition resize-none"
               />
+            </div>
+
+            {/* Jornada pós-compra */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-slate-500">Jornada pós-compra (linha do tempo)</p>
+                  <p className="text-sm text-slate-400 mt-0.5">O último passo vira a "promessa final", destacado diferente dos outros.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => addArrayItem('salesPage.jornada', { titulo: '', texto: '' })}
+                  className="flex items-center gap-1 text-sm font-medium text-violet-600 hover:text-violet-700 shrink-0"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Adicionar passo
+                </button>
+              </div>
+              {(quiz.salesPage.jornada || []).map((passo, idx) => {
+                const isLast = idx === (quiz.salesPage.jornada || []).length - 1
+                return (
+                  <div key={idx} className={`flex gap-2 items-start rounded-lg p-3 border ${isLast ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-200'}`}>
+                    <span className={`shrink-0 w-6 h-6 rounded-full text-sm font-semibold flex items-center justify-center mt-1 ${isLast ? 'bg-amber-400 text-white' : 'bg-slate-300 text-white'}`}>
+                      {idx + 1}
+                    </span>
+                    <div className="flex-1 space-y-2">
+                      {isLast && <p className="text-sm text-amber-700 font-medium">Este é o passo "destino" (promessa final)</p>}
+                      <input
+                        value={passo.titulo}
+                        onChange={e => set(`salesPage.jornada.${idx}.titulo`, e.target.value)}
+                        placeholder="Título do passo"
+                        className="w-full text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
+                      />
+                      <input
+                        value={passo.texto || ''}
+                        onChange={e => set(`salesPage.jornada.${idx}.texto`, e.target.value)}
+                        placeholder="Texto complementar (opcional)"
+                        className="w-full text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
+                      />
+                    </div>
+                    <button type="button" onClick={() => removeArrayItem('salesPage.jornada', idx)} className="shrink-0 text-slate-400 hover:text-red-500 transition p-1.5">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                )
+              })}
             </div>
 
             {/* CTA */}
