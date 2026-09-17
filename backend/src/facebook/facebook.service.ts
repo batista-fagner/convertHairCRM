@@ -333,8 +333,24 @@ export class FacebookService {
     eventSourceUrl?: string,
     pixelOverride?: { pixelId?: string; accessToken?: string },
   ): Promise<void> {
+    await this.sendExternalEvent('Purchase', contact, { value, currency: 'BRL' }, eventId, eventSourceUrl, pixelOverride);
+  }
+
+  /**
+   * Evento arbitrário (ex: InitiateCheckout) vindo de um contato externo sem
+   * Lead no banco — mesma ideia do sendExternalPurchaseEvent, generalizada
+   * pra outros nomes de evento (ex: carrinho abandonado na Greenn).
+   */
+  async sendExternalEvent(
+    eventName: string,
+    contact: { email?: string; phone?: string; name?: string },
+    customData: Record<string, any> | undefined,
+    eventId: string,
+    eventSourceUrl?: string,
+    pixelOverride?: { pixelId?: string; accessToken?: string },
+  ): Promise<void> {
     const userData = this.buildUserDataFromContact(contact);
-    await this.sendEvent('Purchase', userData, { value, currency: 'BRL' }, eventSourceUrl, {
+    await this.sendEvent(eventName, userData, customData, eventSourceUrl, {
       eventId,
       pixelId: pixelOverride?.pixelId,
       accessToken: pixelOverride?.accessToken,

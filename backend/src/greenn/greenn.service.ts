@@ -119,6 +119,23 @@ export class GreennService {
       this.recentAbandonedSends.set(normalizedPhone, Date.now());
       this.logger.log(`Mensagem de carrinho abandonado enviada para ${normalizedPhone}`);
     }
+
+    // Sinal de intenção pro Meta otimizar a campanha e permitir remarketing de
+    // quem chegou perto de comprar — independente do WhatsApp ter sido
+    // entregue ou não. eventId por lead.id (se a Greenn mandar) evita duplicar
+    // se o webhook for reprocessado; sem id, cai pro telefone (ainda dedupa
+    // reenvios idênticos, só não distingue 2 abandonos reais do mesmo dia).
+    const pixelOverride =
+      quiz?.fbPixelId && quiz?.fbAccessToken ? { pixelId: quiz.fbPixelId, accessToken: quiz.fbAccessToken } : undefined;
+    const eventId = payload.lead?.id ? `greenn-abandoned-${payload.lead.id}` : `greenn-abandoned-${normalizedPhone}`;
+    await this.facebookService.sendExternalEvent(
+      'InitiateCheckout',
+      { email: payload.lead?.email, phone: normalizedPhone, name: payload.lead?.name },
+      undefined,
+      eventId,
+      undefined,
+      pixelOverride,
+    );
   }
 
   private normalizePhone(phone: string): string {
