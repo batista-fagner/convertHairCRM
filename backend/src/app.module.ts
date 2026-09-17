@@ -39,6 +39,7 @@ import { QuizModule } from './quiz/quiz.module';
 import { CarouselModule } from './carousel/carousel.module';
 import { ProspectingModule } from './prospecting/prospecting.module';
 import { VideoEditModule } from './video-edit/video-edit.module';
+import { GreennModule } from './greenn/greenn.module';
 
 @Module({
   imports: [
@@ -79,6 +80,7 @@ import { VideoEditModule } from './video-edit/video-edit.module';
     CarouselModule,
     ProspectingModule,
     VideoEditModule,
+    GreennModule,
   ],
 })
 export class AppModule {}

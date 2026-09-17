@@ -20,21 +20,43 @@ export class FacebookService {
   }
 
   private buildUserData(lead: Lead): Record<string, string> {
+    return this.buildUserDataFromContact({
+      email: lead.email,
+      phone: lead.phone,
+      name: lead.name,
+      fbclid: lead.fbclid,
+      ctwaClid: lead.ctwaClid,
+      externalId: lead.id,
+    });
+  }
+
+  /** Mesma montagem de user_data do buildUserData, mas a partir de campos soltos
+   * — usada por fluxos que não têm (ou não precisam de) um Lead no banco, como
+   * o webhook de venda da Greenn (comprador não passa necessariamente pelo
+   * WhatsApp/CRM). */
+  private buildUserDataFromContact(contact: {
+    email?: string;
+    phone?: string;
+    name?: string;
+    fbclid?: string;
+    ctwaClid?: string;
+    externalId?: string;
+  }): Record<string, string> {
     const userData: Record<string, string> = {};
-    if (lead.email) userData['em'] = this.sha256(lead.email);
-    if (lead.phone) userData['ph'] = this.sha256(`55${lead.phone.replace(/\D/g, '')}`);
-    if (lead.name) userData['fn'] = this.sha256(lead.name.split(' ')[0]);
-    if (lead.fbclid) userData['fbc'] = this.buildFbc(lead.fbclid);
+    if (contact.email) userData['em'] = this.sha256(contact.email);
+    if (contact.phone) userData['ph'] = this.sha256(`55${contact.phone.replace(/\D/g, '')}`);
+    if (contact.name) userData['fn'] = this.sha256(contact.name.split(' ')[0]);
+    if (contact.fbclid) userData['fbc'] = this.buildFbc(contact.fbclid);
     // ctwa_clid: atribuição de lead vindo de anúncio Click-to-WhatsApp. Vai em
     // texto puro (NÃO hasheado) no user_data, conforme o CAPI espera pra CTWA.
     // O Meta também exige page_id nesse caso (validado via teste direto na API
     // em 2026-07-11 — sem isso o evento de mensagens é rejeitado).
-    if (lead.ctwaClid) {
-      userData['ctwa_clid'] = lead.ctwaClid;
+    if (contact.ctwaClid) {
+      userData['ctwa_clid'] = contact.ctwaClid;
       const pageId = this.config.get('FB_PAGE_ID');
       if (pageId) userData['page_id'] = pageId;
     }
-    if (lead.id) userData['external_id'] = lead.id;
+    if (contact.externalId) userData['external_id'] = contact.externalId;
     return userData;
   }
 
@@ -180,6 +202,39 @@ export class FacebookService {
     }
   }
 
+  /**
+   * Gasto por campanha direto da Marketing API (nível conta), independente de a campanha
+   * ter gerado leads no banco ou não — usado na tela de Analytics pra bater com o Ads Manager.
+   */
+  async getCampaignSpend(range?: { since: string; until: string }): Promise<{ campaignId: string; campaignName: string; spend: number }[]> {
+    const accessToken = this.config.get('FB_ADS_TOKEN');
+    const adAccountId = this.config.get('FB_AD_ACCOUNT_ID');
+    if (!accessToken || !adAccountId) return [];
+
+    try {
+      const params: Record<string, string | number> = {
+        level: 'campaign',
+        fields: 'campaign_id,campaign_name,spend',
+        limit: 500,
+        access_token: accessToken,
+      };
+      if (range) {
+        params.time_range = JSON.stringify(range);
+      } else {
+        params.date_preset = 'maximum';
+      }
+      const response = await axios.get(`https://graph.facebook.com/v21.0/${adAccountId}/insights`, { params });
+      return (response.data?.data || []).map((row: any) => ({
+        campaignId: row.campaign_id,
+        campaignName: row.campaign_name,
+        spend: row.spend ? parseFloat(row.spend) : 0,
+      }));
+    } catch (err: any) {
+      this.logger.warn(`Erro ao buscar gasto por campanha: ${err.message}`);
+      return [];
+    }
+  }
+
   /** Resolve o access token da Página (FB_PAGE_ID) a partir de um token de usuário/sistema. */
   private async getPageAccessToken(userToken: string): Promise<string | null> {
     const pageId = this.config.get('FB_PAGE_ID');
@@ -260,6 +315,27 @@ export class FacebookService {
     await this.sendEvent('Purchase', userData, { value, currency: 'BRL' }, lead.ctwaSourceUrl, {
       ctwa: Boolean(lead.ctwaClid),
       eventId: `purchase-${lead.id}`,
+      pixelId: pixelOverride?.pixelId,
+      accessToken: pixelOverride?.accessToken,
+    });
+  }
+
+  /**
+   * Purchase real vindo de um checkout externo (Greenn/Kiwify/Hotmart), sem
+   * Lead correspondente no banco — o comprador pode nunca ter passado pelo
+   * WhatsApp/CRM. eventId determinístico (ex: id da venda na plataforma) evita
+   * contar a mesma venda 2x se o provedor reenviar o webhook.
+   */
+  async sendExternalPurchaseEvent(
+    contact: { email?: string; phone?: string; name?: string },
+    value: number,
+    eventId: string,
+    eventSourceUrl?: string,
+    pixelOverride?: { pixelId?: string; accessToken?: string },
+  ): Promise<void> {
+    const userData = this.buildUserDataFromContact(contact);
+    await this.sendEvent('Purchase', userData, { value, currency: 'BRL' }, eventSourceUrl, {
+      eventId,
       pixelId: pixelOverride?.pixelId,
       accessToken: pixelOverride?.accessToken,
     });
