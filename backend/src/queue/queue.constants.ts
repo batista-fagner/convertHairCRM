@@ -16,3 +16,22 @@ export const JOB_POLL_CONTAINER = 'poll-container';
 export const SDR_FOLLOWUP_QUEUE_NAME = 'sdr-followup-scan';
 export const JOB_SCAN_FOLLOWUPS = 'scan';
 export const SDR_FOLLOWUP_SCHEDULER_ID = 'sdr-followup-scan-scheduler';
+
+// --- video-edit (editor de vídeo com IA) ---
+// Consumidas por um serviço Railway SEPARADO (render-service/, fora deste
+// projeto Nest — ver Dockerfile lá) que não importa este arquivo. As strings
+// abaixo são copiadas literalmente em render-service/src/worker.js: mudar um
+// nome aqui sem mudar lá faz o job ficar parado no Redis pra sempre, sem erro.
+//
+// video-edit-prepare: backend produz -> render-service consome (ffprobe,
+// normaliza, extrai áudio, sobe pro R2).
+// video-edit-analyze: render-service produz -> backend consome (Whisper, GPT,
+// monta o EditPlan) — entra na Etapa 3.
+// video-edit-render: backend produz (na aprovação do usuário) -> render-service
+// consome (Remotion + loudnorm + upload) — entra na Etapa 5.
+export const VIDEO_EDIT_PREPARE_QUEUE = 'video-edit-prepare';
+export const VIDEO_EDIT_ANALYZE_QUEUE = 'video-edit-analyze';
+export const VIDEO_EDIT_RENDER_QUEUE = 'video-edit-render';
+export const JOB_PREPARE = 'prepare';
+export const JOB_ANALYZE = 'analyze';
+export const JOB_RENDER = 'render';

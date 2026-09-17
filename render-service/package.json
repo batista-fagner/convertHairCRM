@@ -1,0 +1,17 @@
+{
+  "name": "converthair-render",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Serviço de render do editor de vídeo — separado do backend NestJS de propósito (ver comentário no Dockerfile).",
+  "scripts": {
+    "start": "node src/worker.js"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "3.1095.0",
+    "bullmq": "6.2.0",
+    "dotenv": "16.4.5",
+    "ioredis": "5.11.1",
+    "pg": "8.20.0"
+  }
+}
