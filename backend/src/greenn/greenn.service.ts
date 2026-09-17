@@ -127,12 +127,16 @@ export class GreennService {
   }
 
   /** Mesma instância uazapi da Sofia (SDR) — é a que está de fato configurada
-   * e ativa neste projeto (ver manual-message.controller.ts). */
+   * e ativa neste projeto (ver manual-message.controller.ts) — mas dá pra usar
+   * um número dedicado só pra esse disparo via GREENN_UAZAPI_BASE_URL/
+   * GREENN_UAZAPI_TOKEN (instância própria conectada na uazapi), sem tocar
+   * em código. Sem esse par específico, cai pro par da Sofia (SDR). */
   private async sendWhatsappText(phone: string, text: string): Promise<boolean> {
-    const baseUrl = this.config.get('SDR_UAZAPI_BASE_URL') || this.config.get('UAZAPI_BASE_URL');
-    const token = this.config.get('SDR_UAZAPI_TOKEN');
+    const baseUrl =
+      this.config.get('GREENN_UAZAPI_BASE_URL') || this.config.get('SDR_UAZAPI_BASE_URL') || this.config.get('UAZAPI_BASE_URL');
+    const token = this.config.get('GREENN_UAZAPI_TOKEN') || this.config.get('SDR_UAZAPI_TOKEN');
     if (!baseUrl || !token) {
-      this.logger.warn('SDR_UAZAPI_BASE_URL/SDR_UAZAPI_TOKEN não configurados — mensagem de abandono não enviada');
+      this.logger.warn('GREENN_UAZAPI_TOKEN/SDR_UAZAPI_TOKEN não configurados — mensagem de abandono não enviada');
       return false;
     }
 

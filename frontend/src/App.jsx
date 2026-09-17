@@ -14,6 +14,7 @@ import InstagramAutomation from './pages/InstagramAutomation'
 import Content from './pages/Content'
 import Videos from './pages/Videos'
 import AudioLibrary from './pages/AudioLibrary'
+import VideoEditPreviewDev from './pages/VideoEditPreviewDev'
 import InstagramPosts from './pages/InstagramPosts'
 import KanbanLeads from './pages/KanbanLeads'
 import InstantFormLeads from './pages/InstantFormLeads'
@@ -39,6 +40,8 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/f/:id" element={<FormPublic />} />
+        {/* Etapa 1 do editor de vídeo — remover quando VideoEdit.jsx (Etapa 4) assumir o preview */}
+        <Route path="/dev/video-edit-preview" element={<VideoEditPreviewDev />} />
         <Route element={<RequireAuth><Layout /></RequireAuth>}>
           <Route index element={<Dashboard />} />
           <Route path="/campaigns" element={<Campaigns />} />
