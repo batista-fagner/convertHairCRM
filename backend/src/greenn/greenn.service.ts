@@ -26,17 +26,18 @@ interface GreennWebhookPayload {
   };
 }
 
-// Evita reenviar a mesma mensagem de abandono se a Greenn reenviar o mesmo
-// webhook (retry de rede, reprocessamento manual etc) — chave = telefone
-// normalizado, valor = timestamp do último envio. Em memória (não sobrevive a
+// Evita reenviar a mesma mensagem/evento se a Greenn reenviar o mesmo webhook
+// (retry de rede, reprocessamento manual etc) — chave = telefone normalizado,
+// valor = timestamp do último envio. Em memória (não sobrevive a
 // redeploy/restart), suficiente pro volume atual; se crescer, migra pra uma
 // coluna/tabela.
-const ABANDONED_CART_DEDUPE_WINDOW_MS = 6 * 60 * 60 * 1000; // 6h
+const RECOVERY_DEDUPE_WINDOW_MS = 6 * 60 * 60 * 1000; // 6h
 
 @Injectable()
 export class GreennService {
   private readonly logger = new Logger(GreennService.name);
   private readonly recentAbandonedSends = new Map<string, number>();
+  private readonly recentWaitingPaymentSends = new Map<string, number>();
 
   constructor(
     private readonly facebookService: FacebookService,
@@ -46,7 +47,11 @@ export class GreennService {
 
   async processWebhook(payload: GreennWebhookPayload): Promise<void> {
     if (payload?.type === 'sale' && payload?.event === 'saleUpdated') {
-      await this.processSalePaid(payload);
+      if (payload.sale?.status === 'paid') {
+        await this.processSalePaid(payload);
+      } else if (payload.sale?.status === 'waiting_payment') {
+        await this.processSaleWaitingPayment(payload);
+      }
     } else if (payload?.type === 'lead' && payload?.event === 'checkoutAbandoned') {
       await this.processCheckoutAbandoned(payload);
     }
@@ -103,7 +108,7 @@ export class GreennService {
 
     const normalizedPhone = this.normalizePhone(phone);
     const lastSentAt = this.recentAbandonedSends.get(normalizedPhone);
-    if (lastSentAt && Date.now() - lastSentAt < ABANDONED_CART_DEDUPE_WINDOW_MS) {
+    if (lastSentAt && Date.now() - lastSentAt < RECOVERY_DEDUPE_WINDOW_MS) {
       this.logger.log(`Checkout abandonado (${normalizedPhone}) ignorado — mensagem já enviada há pouco`);
       return;
     }
@@ -138,6 +143,45 @@ export class GreennService {
     );
   }
 
+  private async processSaleWaitingPayment(payload: GreennWebhookPayload): Promise<void> {
+    const phone = payload.client?.cellphone;
+    if (!phone) {
+      this.logger.warn('Webhook da Greenn de Pix aguardando pagamento sem telefone — ignorado');
+      return;
+    }
+
+    const normalizedPhone = this.normalizePhone(phone);
+    const lastSentAt = this.recentWaitingPaymentSends.get(normalizedPhone);
+    if (lastSentAt && Date.now() - lastSentAt < RECOVERY_DEDUPE_WINDOW_MS) {
+      this.logger.log(`Pix aguardando pagamento (${normalizedPhone}) ignorado — mensagem já enviada há pouco`);
+      return;
+    }
+
+    const quiz = await this.getQuiz();
+    const firstName = payload.client?.name?.trim().split(' ')[0] || '';
+    const checkoutUrl = quiz?.checkoutUrl || '';
+    const greeting = firstName ? `Oi, ${firstName}! ` : 'Oi! ';
+    const text = `${greeting}vi que você gerou o Pix dos 5 fornecedores validados, mas o pagamento ainda não caiu 👀\n\nSe ainda não pagou, finaliza antes que o Pix expire:\n${checkoutUrl}\n\nJá pagou e caiu aqui por engano? Me chama que eu confirmo pra você.`;
+
+    const sent = await this.sendWhatsappText(normalizedPhone, text);
+    if (sent) {
+      this.recentWaitingPaymentSends.set(normalizedPhone, Date.now());
+      this.logger.log(`Mensagem de Pix aguardando pagamento enviada para ${normalizedPhone}`);
+    }
+
+    const pixelOverride =
+      quiz?.fbPixelId && quiz?.fbAccessToken ? { pixelId: quiz.fbPixelId, accessToken: quiz.fbAccessToken } : undefined;
+    const eventId = payload.sale?.id ? `greenn-waiting-${payload.sale.id}` : `greenn-waiting-${normalizedPhone}`;
+    await this.facebookService.sendExternalEvent(
+      'InitiateCheckout',
+      { email: payload.client?.email, phone: normalizedPhone, name: payload.client?.name },
+      undefined,
+      eventId,
+      undefined,
+      pixelOverride,
+    );
+  }
+
   private normalizePhone(phone: string): string {
     const digits = phone.replace(/\D/g, '');
     return digits.startsWith('55') ? digits : `55${digits}`;
@@ -153,7 +197,7 @@ export class GreennService {
       this.config.get('GREENN_UAZAPI_BASE_URL') || this.config.get('SDR_UAZAPI_BASE_URL') || this.config.get('UAZAPI_BASE_URL');
     const token = this.config.get('GREENN_UAZAPI_TOKEN') || this.config.get('SDR_UAZAPI_TOKEN');
     if (!baseUrl || !token) {
-      this.logger.warn('GREENN_UAZAPI_TOKEN/SDR_UAZAPI_TOKEN não configurados — mensagem de abandono não enviada');
+      this.logger.warn('GREENN_UAZAPI_TOKEN/SDR_UAZAPI_TOKEN não configurados — mensagem de recuperação não enviada');
       return false;
     }
 
@@ -161,7 +205,7 @@ export class GreennService {
       await axios.post(`${baseUrl}/send/text`, { number: phone, text }, { headers: { token } });
       return true;
     } catch (err: any) {
-      this.logger.error(`Erro ao enviar WhatsApp de carrinho abandonado para ${phone}: ${err.message}`);
+      this.logger.error(`Erro ao enviar WhatsApp de recuperação para ${phone}: ${err.message}`);
       return false;
     }
   }
