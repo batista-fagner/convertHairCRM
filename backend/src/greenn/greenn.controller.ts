@@ -3,10 +3,12 @@ import { ConfigService } from '@nestjs/config';
 import { GreennService } from './greenn.service';
 
 /**
- * Webhook de venda da Greenn (checkout do quiz "5fornecedores"). A Greenn não
- * oferece header de assinatura/token na configuração do webhook — só um campo
- * de URL simples — então o segredo mora no próprio path, comparado contra
- * GREENN_WEBHOOK_SECRET. Sem esse env configurado, o endpoint recusa tudo.
+ * Webhook da Greenn (checkout do quiz "5fornecedores") — venda paga dispara
+ * Purchase no CAPI, carrinho abandonado dispara WhatsApp automático de
+ * recuperação. A Greenn não oferece header de assinatura/token na
+ * configuração do webhook — só um campo de URL simples — então o segredo
+ * mora no próprio path, comparado contra GREENN_WEBHOOK_SECRET. Sem esse env
+ * configurado, o endpoint recusa tudo.
  */
 @Controller('webhooks/greenn')
 export class GreennController {
@@ -25,7 +27,7 @@ export class GreennController {
     }
     // Nunca deixa o handler estourar — Greenn pode reagir a 5xx com retry
     // agressivo, e um erro nosso não pode virar spam de webhook.
-    await this.greennService.processSaleWebhook(body).catch((err: any) => {
+    await this.greennService.processWebhook(body).catch((err: any) => {
       this.logger.error(`Erro processando webhook da Greenn: ${err?.message}`);
     });
     return { ok: true };
