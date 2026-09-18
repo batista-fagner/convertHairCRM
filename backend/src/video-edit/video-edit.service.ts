@@ -2,7 +2,7 @@ import { Injectable, Logger, BadRequestException, NotFoundException } from '@nes
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { randomUUID } from 'crypto';
 import { VideoEditJob } from './video-edit-job.entity';
@@ -87,7 +87,18 @@ export class VideoEditService {
   }
 
   async remove(id: string): Promise<void> {
-    await this.findOne(id);
+    const job = await this.findOne(id);
+
+    const keys = [job.sourceStoragePath, job.normStoragePath, job.audioStoragePath, job.outputStoragePath]
+      .filter((k): k is string => Boolean(k));
+    await Promise.all(
+      keys.map((Key) =>
+        this.s3.send(new DeleteObjectCommand({ Bucket: this.bucket, Key })).catch((err) =>
+          this.logger.warn(`Não foi possível apagar ${Key} do R2: ${err.message}`),
+        ),
+      ),
+    );
+
     await this.repo.delete(id);
   }
 
