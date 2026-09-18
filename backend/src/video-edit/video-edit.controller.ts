@@ -1,6 +1,6 @@
 import {
   Controller, Get, Post, Patch, Delete,
-  Param, Body, UploadedFile, UseInterceptors, HttpCode,
+  Param, Body, UploadedFile, UseInterceptors, HttpCode, Redirect, BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { AudioAssetService } from './audio-asset.service';
@@ -82,5 +82,23 @@ export class VideoEditController {
   @HttpCode(204)
   async remove(@Param('id') id: string) {
     await this.videoEdit.remove(id);
+  }
+
+  @Post(':id/render')
+  render(@Param('id') id: string) {
+    return this.videoEdit.render(id);
+  }
+
+  // Redireciona pro objeto no R2 — já sobe com Content-Disposition:attachment
+  // (ver render-service/src/render.js), então o navegador baixa direto do R2
+  // sem o vídeo inteiro passar pelo backend.
+  @Get(':id/download')
+  @Redirect()
+  async download(@Param('id') id: string) {
+    const job = await this.videoEdit.findOne(id);
+    if (!job.outputUrl) {
+      throw new BadRequestException('Essa edição ainda não tem um vídeo renderizado');
+    }
+    return { url: job.outputUrl, statusCode: 302 };
   }
 }

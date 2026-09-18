@@ -1,4 +1,4 @@
-import { FPS, WIDTH, HEIGHT } from './constants';
+import { FPS, WIDTH, HEIGHT } from './constants.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // A LINHA DO TEMPO É DERIVADA, NUNCA ARMAZENADA.

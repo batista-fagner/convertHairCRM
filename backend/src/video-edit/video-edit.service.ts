@@ -86,6 +86,24 @@ export class VideoEditService {
     return job;
   }
 
+  // Dispara o render de verdade. Só a partir de plan_ready (ou refazendo um
+  // que já terminou/falhou) — nunca a partir de um estado transitório do
+  // preparo/análise, que ainda não tem plano pra renderizar.
+  async render(id: string): Promise<VideoEditJob> {
+    const job = await this.findOne(id);
+    const allowed: VideoEditJob['status'][] = ['plan_ready', 'done', 'failed'];
+    if (!allowed.includes(job.status)) {
+      throw new BadRequestException(`Não é possível renderizar no estado atual (${job.status})`);
+    }
+    if (!job.plan) {
+      throw new BadRequestException('Essa edição ainda não tem um plano pronto');
+    }
+
+    await this.repo.update(id, { status: 'queued', stage: 'na fila de render', progress: 0, errorMessage: null });
+    await this.queue.enqueueRender(id);
+    return this.findOne(id);
+  }
+
   async remove(id: string): Promise<void> {
     const job = await this.findOne(id);
 

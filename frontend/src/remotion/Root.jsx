@@ -1,8 +1,8 @@
 import { Composition } from 'remotion';
-import { COMPOSITION_ID, FPS, WIDTH, HEIGHT } from './constants';
-import { VideoEditComposition } from './VideoEditComposition';
-import { calcMeta } from './timeline';
-import { SAMPLE_PLAN } from './sample-plan';
+import { COMPOSITION_ID, FPS, WIDTH, HEIGHT } from './constants.js';
+import { VideoEditComposition } from './VideoEditComposition.jsx';
+import { calcMeta } from './timeline.js';
+import { SAMPLE_PLAN } from './sample-plan.js';
 
 // Registrado só pelo bundler do Remotion (index.js chama registerRoot com
 // isto). O Vite/CRM nunca importa este arquivo — ele usa <Player> direto com

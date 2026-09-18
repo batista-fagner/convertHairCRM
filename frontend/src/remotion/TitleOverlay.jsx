@@ -1,5 +1,5 @@
 import { AbsoluteFill, useCurrentFrame, useVideoConfig, interpolate, Easing } from 'remotion';
-import { DISPLAY_STACK, CONDENSED_STACK } from './fonts';
+import { DISPLAY_STACK, CONDENSED_STACK } from './fonts.js';
 
 const IN_SEC = 0.35;
 const OUT_SEC = 0.3;

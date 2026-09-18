@@ -1,6 +1,6 @@
 import { AbsoluteFill, useCurrentFrame, useVideoConfig, interpolate, Easing } from 'remotion';
-import { toTimelineSec } from './timeline';
-import { DISPLAY_STACK, CONDENSED_STACK } from './fonts';
+import { toTimelineSec } from './timeline.js';
+import { DISPLAY_STACK, CONDENSED_STACK } from './fonts.js';
 
 // Tempo que cada palavra leva pra assentar depois de ser falada. Curto de
 // propósito: se passar disso, a palavra ainda está entrando quando a próxima

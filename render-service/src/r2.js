@@ -20,8 +20,14 @@ const publicUrlBase = (process.env.R2_PUBLIC_URL ?? '').replace(/\/$/, '');
 
 export const publicUrlFor = (key) => `${publicUrlBase}/${key}`;
 
-export const uploadFile = async (key, body, contentType) => {
-  await s3.send(new PutObjectCommand({ Bucket: bucket, Key: key, Body: body, ContentType: contentType }));
+export const uploadFile = async (key, body, contentType, contentDisposition) => {
+  await s3.send(new PutObjectCommand({
+    Bucket: bucket,
+    Key: key,
+    Body: body,
+    ContentType: contentType,
+    ...(contentDisposition ? { ContentDisposition: contentDisposition } : {}),
+  }));
   return { key, url: publicUrlFor(key) };
 };
 

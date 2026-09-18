@@ -1,5 +1,5 @@
 import { useCurrentFrame, useVideoConfig, interpolate, Easing } from 'remotion';
-import { toTimelineSec } from './timeline';
+import { toTimelineSec } from './timeline.js';
 
 // Quanto tempo o enquadramento leva pra entrar e pra sair. O avanço precisa ser
 // lento o bastante pra não parecer solavanco e rápido o bastante pra coincidir

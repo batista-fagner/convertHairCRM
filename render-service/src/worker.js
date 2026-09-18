@@ -3,6 +3,7 @@ import http from 'http';
 import { Worker, Queue } from 'bullmq';
 import { pingDb, query } from './db.js';
 import { runPrepare } from './prepare.js';
+import { renderPlan } from './render.js';
 
 // Mesma conexão Redis do backend — banco 3, prefixo 'converthair-bullmq' (ver
 // backend/src/queue/queue.module.ts). Divergir uma vírgula aqui faz o job
@@ -18,6 +19,7 @@ const connection = {
 };
 const PREFIX = 'converthair-bullmq';
 const VIDEO_EDIT_ANALYZE_QUEUE = 'video-edit-analyze';
+const VIDEO_EDIT_RENDER_QUEUE = 'video-edit-render';
 
 const analyzeQueue = new Queue(VIDEO_EDIT_ANALYZE_QUEUE, { connection, prefix: PREFIX });
 
@@ -81,6 +83,68 @@ worker.on('failed', (job, err) => {
   console.error(`[prepare] job ${job?.id} falhou: ${err.message}`);
 });
 
+// video-edit-render: pega o plano já pronto (Etapa 3/4), compõe a cena com
+// Remotion, normaliza o volume e sobe o MP4 final pro R2. Concurrency 1 no
+// BullMQ (um render de cada vez por instância) — a concorrência DENTRO de
+// cada render (quantas abas de Chrome) é outra coisa, controlada por
+// REMOTION_CONCURRENCY dentro de render.js.
+const renderWorker = new Worker(
+  VIDEO_EDIT_RENDER_QUEUE,
+  async (job) => {
+    const { jobId } = job.data;
+    console.log(`[render] iniciando job ${jobId}`);
+
+    const { rows } = await query('select plan, name from video_edit_jobs where id=$1', [jobId]);
+    const plan = rows[0]?.plan;
+    const name = rows[0]?.name;
+    if (!plan) throw new Error('Job sem plano salvo — não é possível renderizar');
+
+    await query(
+      `update video_edit_jobs set status='rendering', stage='compondo cena', progress=0, render_started_at=now(), updated_at=now() where id=$1`,
+      [jobId],
+    );
+
+    // Throttle — sem isso o onProgress do Remotion (chamado a cada poucos
+    // quadros) hammer o Postgres com um UPDATE por tick.
+    let lastWrite = 0;
+    const onProgress = (progress) => {
+      const now = Date.now();
+      if (now - lastWrite < 3000) return;
+      lastWrite = now;
+      query(`update video_edit_jobs set progress=$2, updated_at=now() where id=$1`, [jobId, progress]).catch(() => {});
+    };
+
+    try {
+      const result = await renderPlan({ jobId, name, plan, onProgress });
+
+      await query(
+        `update video_edit_jobs set
+           output_storage_path=$2, output_url=$3,
+           status='done', stage=null, progress=100, render_finished_at=now(), updated_at=now()
+         where id=$1`,
+        [jobId, result.outputStoragePath, result.outputUrl],
+      );
+
+      console.log(`[render] job ${jobId} concluído — ${result.outputUrl}`);
+      return result;
+    } catch (err) {
+      await query(
+        `update video_edit_jobs set status='failed', error_message=$2, updated_at=now() where id=$1`,
+        [jobId, err.message ?? String(err)],
+      ).catch((dbErr) => console.error(`[render] job ${jobId} falhou E não conseguiu gravar o erro: ${dbErr.message}`));
+      throw err;
+    }
+  },
+  // attempts:1 é setado do lado de quem produz (backend) — um render de
+  // vários minutos não deve reentrar sozinho. Concurrency 1: um render por
+  // vez nesta instância, é isso que o risco #3 do plano pede.
+  { connection, prefix: PREFIX, concurrency: 1 },
+);
+
+renderWorker.on('failed', (job, err) => {
+  console.error(`[render] job ${job?.id} falhou: ${err.message}`);
+});
+
 let dbOk = false;
 pingDb()
   .then((now) => {
@@ -112,6 +176,7 @@ http
 const shutdown = async () => {
   console.log('Encerrando worker...');
   await worker.close();
+  await renderWorker.close();
   await analyzeQueue.close();
   process.exit(0);
 };

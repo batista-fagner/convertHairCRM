@@ -1,11 +1,11 @@
 import { AbsoluteFill, Sequence, OffthreadVideo, Audio, useVideoConfig, interpolate } from 'remotion';
-import { deriveTimeline, secToFrame } from './timeline';
-import { useFontsReady } from './fonts';
-import { HookCaption } from './HookCaption';
-import { BodyCaptions } from './BodyCaptions';
-import { ZoomWrapper } from './ZoomWrapper';
-import { TitleOverlay } from './TitleOverlay';
-import { TransitionFlash } from './TransitionFlash';
+import { deriveTimeline, secToFrame } from './timeline.js';
+import { useFontsReady } from './fonts.js';
+import { HookCaption } from './HookCaption.jsx';
+import { BodyCaptions } from './BodyCaptions.jsx';
+import { ZoomWrapper } from './ZoomWrapper.jsx';
+import { TitleOverlay } from './TitleOverlay.jsx';
+import { TransitionFlash } from './TransitionFlash.jsx';
 
 // Um trecho de vídeo: o mesmo arquivo normalizado, cortado em pontos
 // diferentes. Preview e render carregam exatamente este arquivo — é o segundo

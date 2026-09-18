@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Player } from '@remotion/player'
 import {
   Clapperboard, Upload, Loader2, Trash2, AlertCircle, X,
-  CheckCircle2, Sparkles, RefreshCw,
+  CheckCircle2, Sparkles, RefreshCw, Download, Film,
 } from 'lucide-react'
 import { VideoEditComposition } from '../remotion/VideoEditComposition'
 import { deriveTimeline } from '../remotion/timeline'
@@ -11,9 +11,11 @@ import { FPS, WIDTH, HEIGHT } from '../remotion/constants'
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3001/api'
 
 // Estados intermediários — enquanto algum job estiver aqui, a lista faz
-// polling. plan_ready/failed são estados finais desta etapa (render ainda não
-// existe, Etapa 5).
-const TRANSIENT_STATUSES = new Set(['uploaded', 'preparing', 'audio_ready', 'transcribing', 'planning'])
+// polling. plan_ready é uma pausa (espera o usuário mandar renderizar);
+// done/failed são finais.
+const TRANSIENT_STATUSES = new Set([
+  'uploaded', 'preparing', 'audio_ready', 'transcribing', 'planning', 'queued', 'rendering',
+])
 
 const STATUS_LABEL = {
   uploaded: 'Enviado, na fila',
@@ -146,7 +148,7 @@ export default function VideoEdit() {
             ))}
           </div>
           <div>
-            {selected ? <JobDetail job={selected} /> : (
+            {selected ? <JobDetail job={selected} onChanged={load} /> : (
               <div className="bg-white rounded-xl border border-slate-200 p-12 text-center text-slate-400 text-sm">
                 Selecione uma edição na lista pra ver os detalhes
               </div>
@@ -187,8 +189,11 @@ function JobRow({ job, selected, onSelect, onDelete }) {
   )
 }
 
-function JobDetail({ job }) {
-  if (job.status === 'failed') {
+function JobDetail({ job, onChanged }) {
+  // Falhou sem nunca ter chegado a ter um plano (preparo/transcrição/IA) — não
+  // tem o que mostrar além do erro. Se falhou DEPOIS de ter plano (render),
+  // ainda mostramos o preview normal + o erro só no card de render abaixo.
+  if (job.status === 'failed' && !job.plan) {
     return (
       <div className="bg-white rounded-xl border border-red-200 p-6">
         <div className="flex items-center gap-2 text-red-600 mb-2">
@@ -259,13 +264,102 @@ function JobDetail({ job }) {
           </div>
         )}
 
-        <div className="flex items-center gap-2 text-xs text-slate-400 bg-slate-50 rounded-lg px-3 py-2">
-          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-          Plano pronto — o botão de renderizar e baixar o vídeo final chega na próxima etapa
-        </div>
+        <RenderPanel job={job} onChanged={onChanged} />
       </div>
     </div>
   )
+}
+
+function RenderPanel({ job, onChanged }) {
+  const [starting, setStarting] = useState(false)
+  const [error, setError] = useState('')
+
+  const start = async () => {
+    setError('')
+    setStarting(true)
+    try {
+      const res = await fetch(`${API}/video-edit/${job.id}/render`, { method: 'POST' })
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.message || 'Erro ao iniciar o render') }
+      onChanged()
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setStarting(false)
+    }
+  }
+
+  if (job.status === 'plan_ready') {
+    return (
+      <div className="bg-white rounded-xl border border-slate-200 p-4">
+        {error && <p className="text-xs text-red-600 mb-2">{error}</p>}
+        <button
+          onClick={start}
+          disabled={starting}
+          className="w-full flex items-center justify-center gap-2 text-sm font-medium text-white bg-violet-600 hover:bg-violet-700 disabled:opacity-50 px-4 py-2.5 rounded-lg transition"
+        >
+          {starting ? <><Loader2 className="w-4 h-4 animate-spin" /> Iniciando...</> : <><Film className="w-4 h-4" /> Renderizar vídeo final</>}
+        </button>
+      </div>
+    )
+  }
+
+  if (job.status === 'queued' || job.status === 'rendering') {
+    return (
+      <div className="bg-white rounded-xl border border-slate-200 p-4">
+        <div className="flex items-center gap-2 mb-2">
+          <Loader2 className="w-4 h-4 animate-spin text-violet-500" />
+          <p className="text-sm font-medium text-slate-700">{job.stage || STATUS_LABEL[job.status]}</p>
+        </div>
+        <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+          <div className="h-full bg-violet-500 transition-all" style={{ width: `${job.progress ?? 0}%` }} />
+        </div>
+        <p className="text-xs text-slate-400 mt-2">Isso leva alguns minutos — pode fechar a aba, a edição continua no servidor</p>
+      </div>
+    )
+  }
+
+  if (job.status === 'done' && job.outputUrl) {
+    return (
+      <div className="bg-white rounded-xl border border-emerald-200 p-4 space-y-3">
+        <video src={job.outputUrl} controls className="w-full rounded-lg bg-slate-900 max-h-48" />
+        <div className="flex gap-2">
+          <a
+            href={`${API}/video-edit/${job.id}/download`}
+            className="flex-1 flex items-center justify-center gap-1.5 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 px-4 py-2 rounded-lg transition"
+          >
+            <Download className="w-4 h-4" /> Baixar MP4
+          </a>
+          <button
+            onClick={start}
+            disabled={starting}
+            className="text-sm font-medium text-slate-500 hover:text-slate-700 px-3 py-2"
+            title="Renderizar de novo"
+          >
+            <RefreshCw className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  if (job.status === 'failed') {
+    return (
+      <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+        <p className="text-sm font-medium text-red-700 mb-1">O render falhou</p>
+        <p className="text-xs text-red-600 mb-3">{job.errorMessage || 'Erro desconhecido'}</p>
+        {error && <p className="text-xs text-red-600 mb-2">{error}</p>}
+        <button
+          onClick={start}
+          disabled={starting}
+          className="flex items-center gap-1.5 text-sm font-medium text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 px-4 py-2 rounded-lg transition"
+        >
+          {starting ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Tentar de novo
+        </button>
+      </div>
+    )
+  }
+
+  return null
 }
 
 function UploadForm({ onCancel, onDone, onError }) {

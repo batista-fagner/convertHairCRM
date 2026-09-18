@@ -1,6 +1,6 @@
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from 'remotion';
-import { toTimelineSec } from './timeline';
-import { CONDENSED_STACK } from './fonts';
+import { toTimelineSec } from './timeline.js';
+import { CONDENSED_STACK } from './fonts.js';
 
 // Legenda do corpo do vídeo: discreta, no rodapé, 2-3 palavras por vez. O
 // visual editorial grande fica reservado pro gancho — se rodar o vídeo inteiro
