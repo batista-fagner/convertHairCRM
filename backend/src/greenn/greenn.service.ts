@@ -241,9 +241,17 @@ export class GreennService {
     try {
       const existing = await this.leadsService.findByPhoneSuffix(phone);
       if (existing) {
-        const tags = existing.tags || [];
+        let tags = existing.tags || [];
         const patch: Record<string, any> = {};
-        if (!tags.includes(tag)) patch.tags = [...tags, tag];
+        // Comprou torna as tags anteriores (pix pendente / carrinho abandonado)
+        // obsoletas — sem isso ficavam "penduradas" mesmo depois da compra,
+        // dando a impressão errada de que ela nunca finalizou (caso real:
+        // Renata Pasche e Isaline Araújo em 2026-09-18).
+        if (tag === TAG_COMPROU) {
+          tags = tags.filter((t) => t !== TAG_PIX_PENDENTE && t !== TAG_CARRINHO_ABANDONADO);
+        }
+        if (!tags.includes(tag)) tags = [...tags, tag];
+        if (JSON.stringify(tags) !== JSON.stringify(existing.tags || [])) patch.tags = tags;
         if (tag === TAG_COMPROU && existing.kanbanStage !== kanbanStage) patch.kanbanStage = kanbanStage;
         if (Object.keys(patch).length === 0) return;
         const updated = await this.leadsService.update(existing.id, patch);
