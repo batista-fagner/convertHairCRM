@@ -27,6 +27,7 @@ import {
   ListChecks,
   Radar,
   Music,
+  Clapperboard,
 } from 'lucide-react'
 
 const NAV_GROUPS = [
@@ -75,6 +76,7 @@ const NAV_GROUPS = [
     label: 'Conteúdo',
     items: [
       { icon: Sparkles, label: 'Carrossel IG', path: '/content' },
+      { icon: Clapperboard, label: 'Editor de Vídeo', path: '/video-edit' },
       { icon: Video, label: 'Vídeos', path: '/videos' },
       { icon: Music, label: 'Biblioteca de Áudio', path: '/audios' },
       { icon: Image, label: 'Posts IG', path: '/instagram-posts' },
@@ -103,6 +105,7 @@ const PAGE_TITLES = {
   '/content': 'Carrossel IG',
   '/videos': 'Vídeos de Follow-up',
   '/audios': 'Biblioteca de Áudio',
+  '/video-edit': 'Editor de Vídeo',
   '/instagram-posts': 'Posts no Instagram',
   '/kanban': 'Kanban de Leads',
   '/prospeccao': 'Prospecção',

@@ -15,6 +15,7 @@ import Content from './pages/Content'
 import Videos from './pages/Videos'
 import AudioLibrary from './pages/AudioLibrary'
 import VideoEditPreviewDev from './pages/VideoEditPreviewDev'
+import VideoEdit from './pages/VideoEdit'
 import InstagramPosts from './pages/InstagramPosts'
 import KanbanLeads from './pages/KanbanLeads'
 import InstantFormLeads from './pages/InstantFormLeads'
@@ -62,6 +63,7 @@ export default function App() {
           <Route path="/content" element={<Content />} />
           <Route path="/videos" element={<Videos />} />
           <Route path="/audios" element={<AudioLibrary />} />
+          <Route path="/video-edit" element={<VideoEdit />} />
           <Route path="/instagram-posts" element={<InstagramPosts />} />
           <Route path="/settings" element={<Settings />} />
         </Route>
