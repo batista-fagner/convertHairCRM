@@ -1,6 +1,7 @@
 import { EditPlanDraft } from './edit-plan-draft.types';
 import {
   EditPlan,
+  EditPlanHook,
   EditPlanHookLine,
   EditPlanTranscript,
   EditPlanTranscriptWord,
@@ -174,6 +175,53 @@ const buildZooms = (
   }));
 };
 
+// Extraído pra ser reusado no reajuste manual do gancho (Etapa 6, PATCH
+// /:id/plan) sem precisar chamar a IA de novo — um retrim é puramente
+// mecânico (novo intervalo de palavra → novos segundos + novo layout), então
+// não tem por que gastar um round-trip de IA nisso.
+export const buildHookSegment = (
+  draft: Pick<EditPlanDraft, 'hookStartWordIdx' | 'hookEndWordIdx' | 'hookDisplayWordIdx' | 'hookLineBreaksAfterIdx' | 'hookReason'>,
+  words: EditPlanTranscriptWord[],
+  srcDurationSec: number,
+): EditPlanHook => {
+  const hookStartIdx = clamp(draft.hookStartWordIdx, 0, words.length - 1);
+  const hookEndIdx = clamp(Math.max(draft.hookEndWordIdx, hookStartIdx), hookStartIdx, words.length - 1);
+
+  const prevEnd = hookStartIdx > 0 ? words[hookStartIdx - 1].end : 0;
+  const hookStartSec = clamp(words[hookStartIdx].start - HEAD_PAD_SEC, prevEnd, words[hookStartIdx].start);
+
+  const nextStart = hookEndIdx < words.length - 1 ? words[hookEndIdx + 1].start : srcDurationSec;
+  const hookEndSec = clamp(words[hookEndIdx].end + TAIL_PAD_SEC, words[hookEndIdx].end, nextStart);
+
+  const { lines } = buildHookCaption(words, draft as EditPlanDraft, hookStartIdx, hookEndIdx);
+
+  return {
+    srcStartSec: hookStartSec,
+    srcEndSec: hookEndSec,
+    reason: draft.hookReason,
+    caption: {
+      anchorY: 0.62,
+      colorHex: '#FFFFFF',
+      shadow: { blurPx: 18, dyPx: 2, opacity: 0.45 },
+      lines,
+    },
+  };
+};
+
+// Dado um novo intervalo de palavra escolhido manualmente (sem IA), escolhe
+// a palavra de destaque automaticamente: a mais longa do trecho, ignorando
+// palavras muito curtas (artigos/preposições) quando possível — heurística
+// simples, sem chamada nenhuma ao modelo.
+export const pickDisplayWordIdx = (words: EditPlanTranscriptWord[], startIdx: number, endIdx: number): number => {
+  let best = startIdx;
+  let bestLen = -1;
+  for (let i = startIdx; i <= endIdx; i++) {
+    const len = words[i].word.length;
+    if (len > bestLen) { bestLen = len; best = i; }
+  }
+  return best;
+};
+
 export interface BuildEditPlanInput {
   draft: EditPlanDraft;
   transcript: EditPlanTranscript;
@@ -237,16 +285,7 @@ export const buildEditPlan = ({
     };
   }
 
-  const hookStartIdx = clamp(draft.hookStartWordIdx, 0, words.length - 1);
-  const hookEndIdx = clamp(Math.max(draft.hookEndWordIdx, hookStartIdx), hookStartIdx, words.length - 1);
-
-  const prevEnd = hookStartIdx > 0 ? words[hookStartIdx - 1].end : 0;
-  const hookStartSec = clamp(words[hookStartIdx].start - HEAD_PAD_SEC, prevEnd, words[hookStartIdx].start);
-
-  const nextStart = hookEndIdx < words.length - 1 ? words[hookEndIdx + 1].start : srcDurationSec;
-  const hookEndSec = clamp(words[hookEndIdx].end + TAIL_PAD_SEC, words[hookEndIdx].end, nextStart);
-
-  const { lines } = buildHookCaption(words, draft, hookStartIdx, hookEndIdx);
+  const hook = buildHookSegment(draft, words, srcDurationSec);
 
   const bodyCaptionsEnabled = draft.bodyCaptionsEnabled !== false;
 
@@ -262,17 +301,7 @@ export const buildEditPlan = ({
       height: srcHeight,
       hasAudio: srcHasAudio,
     },
-    hook: {
-      srcStartSec: hookStartSec,
-      srcEndSec: hookEndSec,
-      reason: draft.hookReason,
-      caption: {
-        anchorY: 0.62,
-        colorHex: '#FFFFFF',
-        shadow: { blurPx: 18, dyPx: 2, opacity: 0.45 },
-        lines,
-      },
-    },
+    hook,
     transition: {
       kind: 'hard_cut',
       tDurationSec: 0.3,

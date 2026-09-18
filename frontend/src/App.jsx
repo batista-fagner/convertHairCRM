@@ -1,4 +1,6 @@
+import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { Loader2 } from 'lucide-react'
 import Layout from './components/Layout'
 import Dashboard from './pages/Dashboard'
 import Campaigns from './pages/Campaigns'
@@ -14,8 +16,6 @@ import InstagramAutomation from './pages/InstagramAutomation'
 import Content from './pages/Content'
 import Videos from './pages/Videos'
 import AudioLibrary from './pages/AudioLibrary'
-import VideoEditPreviewDev from './pages/VideoEditPreviewDev'
-import VideoEdit from './pages/VideoEdit'
 import InstagramPosts from './pages/InstagramPosts'
 import KanbanLeads from './pages/KanbanLeads'
 import InstantFormLeads from './pages/InstantFormLeads'
@@ -25,6 +25,17 @@ import IgInbox from './pages/instagram-inbox/IgInbox'
 import Login from './pages/Login'
 import GroupWorkshop from './pages/GroupWorkshop'
 import Quizzes from './pages/Quizzes'
+
+// Carregado sob demanda de propósito — remotion + @remotion/player somam
+// ~300-500KB gzipado, peso que ninguém que nunca abre o editor deveria pagar
+// no carregamento inicial do CRM.
+const VideoEdit = lazy(() => import('./pages/VideoEdit'))
+
+const PageLoading = () => (
+  <div className="flex items-center justify-center gap-2 text-slate-400 text-sm py-24">
+    <Loader2 className="w-4 h-4 animate-spin" /> Carregando...
+  </div>
+)
 
 function RequireAuth({ children }) {
   // Em dev (npm run dev / localhost) pula o login pra agilizar teste local —
@@ -41,8 +52,6 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/f/:id" element={<FormPublic />} />
-        {/* Etapa 1 do editor de vídeo — remover quando VideoEdit.jsx (Etapa 4) assumir o preview */}
-        <Route path="/dev/video-edit-preview" element={<VideoEditPreviewDev />} />
         <Route element={<RequireAuth><Layout /></RequireAuth>}>
           <Route index element={<Dashboard />} />
           <Route path="/campaigns" element={<Campaigns />} />
@@ -63,7 +72,7 @@ export default function App() {
           <Route path="/content" element={<Content />} />
           <Route path="/videos" element={<Videos />} />
           <Route path="/audios" element={<AudioLibrary />} />
-          <Route path="/video-edit" element={<VideoEdit />} />
+          <Route path="/video-edit" element={<Suspense fallback={<PageLoading />}><VideoEdit /></Suspense>} />
           <Route path="/instagram-posts" element={<InstagramPosts />} />
           <Route path="/settings" element={<Settings />} />
         </Route>

@@ -7,6 +7,7 @@ import { AudioAssetService } from './audio-asset.service';
 import type { UploadedAudioFile } from './audio-asset.service';
 import { AudioAssetKind } from './audio-asset.entity';
 import { VideoEditService } from './video-edit.service';
+import type { PlanUpdateDto } from './video-edit.service';
 
 @Controller('video-edit')
 export class VideoEditController {
@@ -87,6 +88,11 @@ export class VideoEditController {
   @Post(':id/render')
   render(@Param('id') id: string) {
     return this.videoEdit.render(id);
+  }
+
+  @Patch(':id/plan')
+  updatePlan(@Param('id') id: string, @Body() body: PlanUpdateDto) {
+    return this.videoEdit.updatePlan(id, body);
   }
 
   // Redireciona pro objeto no R2 — já sobe com Content-Disposition:attachment

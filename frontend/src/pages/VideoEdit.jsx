@@ -3,6 +3,7 @@ import { Player } from '@remotion/player'
 import {
   Clapperboard, Upload, Loader2, Trash2, AlertCircle, X,
   CheckCircle2, Sparkles, RefreshCw, Download, Film,
+  Scissors, ZoomIn, Music, Zap, SlidersHorizontal,
 } from 'lucide-react'
 import { VideoEditComposition } from '../remotion/VideoEditComposition'
 import { deriveTimeline } from '../remotion/timeline'
@@ -264,8 +265,197 @@ function JobDetail({ job, onChanged }) {
           </div>
         )}
 
+        {job.plan && job.status !== 'queued' && job.status !== 'rendering' && (
+          <PlanEditor job={job} onChanged={onChanged} />
+        )}
+
         <RenderPanel job={job} onChanged={onChanged} />
       </div>
+    </div>
+  )
+}
+
+// Acha, na transcrição, o intervalo de palavras que corresponde ao gancho
+// atual — usado só pra destacar visualmente a seleção corrente nos chips.
+const currentHookWordRange = (job) => {
+  const words = job.transcript?.words
+  const hook = job.plan?.hook
+  if (!words?.length || !hook) return [null, null]
+  let start = null
+  let end = null
+  words.forEach((w, i) => {
+    if (w.end > hook.srcStartSec && w.start < hook.srcEndSec) {
+      if (start === null) start = i
+      end = i
+    }
+  })
+  return [start, end]
+}
+
+function PlanEditor({ job, onChanged }) {
+  const [open, setOpen] = useState(false)
+  const [audios, setAudios] = useState([])
+  const [pendingWordIdx, setPendingWordIdx] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    if (!open) return
+    fetch(`${API}/video-edit/audio`)
+      .then((r) => r.json())
+      .then((d) => setAudios(Array.isArray(d) ? d : []))
+      .catch(() => {})
+  }, [open])
+
+  const patchPlan = async (body) => {
+    setError('')
+    setSaving(true)
+    try {
+      const res = await fetch(`${API}/video-edit/${job.id}/plan`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.message || 'Erro ao salvar ajuste') }
+      onChanged()
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="w-full flex items-center justify-center gap-2 text-sm font-medium text-slate-500 hover:text-violet-600 border border-dashed border-slate-300 hover:border-violet-300 rounded-xl px-4 py-2.5 transition"
+      >
+        <SlidersHorizontal className="w-4 h-4" /> Ajustar plano
+      </button>
+    )
+  }
+
+  const words = job.transcript?.words ?? []
+  const [hookStart, hookEnd] = currentHookWordRange(job)
+  const musicAssets = audios.filter((a) => a.kind !== 'sfx')
+  const sfxAssets = audios.filter((a) => a.kind === 'sfx')
+
+  const onWordClick = (idx) => {
+    if (pendingWordIdx === null) {
+      setPendingWordIdx(idx)
+      return
+    }
+    const start = Math.min(pendingWordIdx, idx)
+    const end = Math.max(pendingWordIdx, idx)
+    setPendingWordIdx(null)
+    patchPlan({ hookStartWordIdx: start, hookEndWordIdx: end })
+  }
+
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-5">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
+          <SlidersHorizontal className="w-4 h-4 text-violet-500" /> Ajustar plano
+        </p>
+        <button onClick={() => setOpen(false)} className="text-slate-400 hover:text-slate-600"><X className="w-4 h-4" /></button>
+      </div>
+
+      {error && <p className="text-xs text-red-600">{error}</p>}
+
+      {words.length > 0 && (
+        <div>
+          <p className="text-xs font-medium text-slate-500 mb-1.5 flex items-center gap-1.5">
+            <Scissors className="w-3.5 h-3.5" /> Corte do gancho — clique na primeira e na última palavra
+          </p>
+          <div className="max-h-40 overflow-y-auto bg-slate-50 rounded-lg p-2.5 leading-relaxed">
+            {words.map((w, i) => {
+              const inRange = hookStart !== null && i >= hookStart && i <= hookEnd
+              const isPending = pendingWordIdx === i
+              return (
+                <span
+                  key={i}
+                  onClick={() => onWordClick(i)}
+                  className={`inline-block cursor-pointer px-0.5 rounded text-sm mr-0.5 ${
+                    isPending ? 'bg-violet-600 text-white' : inRange ? 'bg-violet-100 text-violet-800' : 'text-slate-500 hover:bg-slate-200'
+                  }`}
+                >
+                  {w.word}
+                </span>
+              )
+            })}
+          </div>
+          {pendingWordIdx !== null && (
+            <p className="text-xs text-violet-600 mt-1">Agora clique na palavra final do gancho</p>
+          )}
+        </div>
+      )}
+
+      {job.plan.zooms?.length > 0 && (
+        <div>
+          <p className="text-xs font-medium text-slate-500 mb-1.5 flex items-center gap-1.5">
+            <ZoomIn className="w-3.5 h-3.5" /> Zooms automáticos
+          </p>
+          <div className="space-y-1.5">
+            {job.plan.zooms.map((z, i) => (
+              <div key={i} className="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-1.5 text-xs text-slate-600">
+                <span>{z.srcStartSec.toFixed(1)}s – {z.srcEndSec.toFixed(1)}s ({z.to}x)</span>
+                <button onClick={() => patchPlan({ removeZoomIndex: i })} disabled={saving} className="text-slate-400 hover:text-red-600">
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div>
+        <p className="text-xs font-medium text-slate-500 mb-1.5">Sincronia da legenda</p>
+        <input
+          type="range"
+          min={-0.3}
+          max={0.3}
+          step={0.05}
+          defaultValue={job.plan.audio?.captionOffsetSec ?? 0}
+          onMouseUp={(e) => patchPlan({ captionOffsetSec: Number(e.target.value) })}
+          onTouchEnd={(e) => patchPlan({ captionOffsetSec: Number(e.target.value) })}
+          className="w-full"
+        />
+        <div className="flex justify-between text-[10px] text-slate-400"><span>-0.3s</span><span>0</span><span>+0.3s</span></div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <p className="text-xs font-medium text-slate-500 mb-1.5 flex items-center gap-1.5">
+            <Music className="w-3.5 h-3.5" /> Música de fundo
+          </p>
+          <select
+            value={job.plan.music?.assetId ?? ''}
+            onChange={(e) => patchPlan({ musicAssetId: e.target.value || null })}
+            disabled={saving}
+            className="w-full text-xs border border-slate-200 rounded-lg px-2 py-1.5"
+          >
+            <option value="">Nenhuma</option>
+            {musicAssets.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+          </select>
+        </div>
+        <div>
+          <p className="text-xs font-medium text-slate-500 mb-1.5 flex items-center gap-1.5">
+            <Zap className="w-3.5 h-3.5" /> Efeito no corte
+          </p>
+          <select
+            value={job.plan.transition?.sfxAssetId ?? ''}
+            onChange={(e) => patchPlan({ sfxAssetId: e.target.value || null })}
+            disabled={saving}
+            className="w-full text-xs border border-slate-200 rounded-lg px-2 py-1.5"
+          >
+            <option value="">Nenhum</option>
+            {sfxAssets.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+          </select>
+        </div>
+      </div>
+
+      {saving && <p className="text-xs text-slate-400 flex items-center gap-1.5"><Loader2 className="w-3 h-3 animate-spin" /> Salvando e atualizando o preview...</p>}
     </div>
   )
 }

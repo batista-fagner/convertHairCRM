@@ -65,6 +65,10 @@ export class AudioAssetService {
     return this.repo.find({ order: { createdAt: 'DESC' } });
   }
 
+  findOne(id: string): Promise<AudioAsset | null> {
+    return this.repo.findOne({ where: { id } });
+  }
+
   async upload(
     file: UploadedAudioFile,
     name: string,
