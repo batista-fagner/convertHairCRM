@@ -4,6 +4,15 @@ import axios from 'axios';
 import { FacebookService } from '../facebook/facebook.service';
 import { QuizService } from '../quiz/quiz.service';
 import { Quiz } from '../common/entities/quiz.entity';
+import { LeadsService } from '../leads/leads.service';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { KanbanStage } from '../common/entities/lead.entity';
+
+// Tags que identificam de qual dos 3 eventos da Greenn o Lead/cliente veio —
+// renderizadas como badge no Kanban (ver KanbanLeads.jsx).
+const TAG_COMPROU = 'greenn_comprou';
+const TAG_CARRINHO_ABANDONADO = 'greenn_carrinho_abandonado';
+const TAG_PIX_PENDENTE = 'greenn_pix_pendente';
 
 interface GreennWebhookPayload {
   type?: string;
@@ -43,6 +52,8 @@ export class GreennService {
     private readonly facebookService: FacebookService,
     private readonly quizService: QuizService,
     private readonly config: ConfigService,
+    private readonly leadsService: LeadsService,
+    private readonly realtime: RealtimeGateway,
   ) {}
 
   async processWebhook(payload: GreennWebhookPayload): Promise<void> {
@@ -97,6 +108,16 @@ export class GreennService {
     );
 
     this.logger.log(`Purchase enviado ao Facebook — venda Greenn #${saleId}`);
+
+    if (payload.client?.cellphone) {
+      await this.upsertLead({
+        phone: this.normalizePhone(payload.client.cellphone),
+        name: payload.client?.name,
+        email: payload.client?.email,
+        tag: TAG_COMPROU,
+        kanbanStage: 'vendeu',
+      });
+    }
   }
 
   private async processCheckoutAbandoned(payload: GreennWebhookPayload): Promise<void> {
@@ -141,6 +162,14 @@ export class GreennService {
       undefined,
       pixelOverride,
     );
+
+    await this.upsertLead({
+      phone: normalizedPhone,
+      name: payload.lead?.name,
+      email: payload.lead?.email,
+      tag: TAG_CARRINHO_ABANDONADO,
+      kanbanStage: 'novo',
+    });
   }
 
   private async processSaleWaitingPayment(payload: GreennWebhookPayload): Promise<void> {
@@ -180,6 +209,70 @@ export class GreennService {
       undefined,
       pixelOverride,
     );
+
+    await this.upsertLead({
+      phone: normalizedPhone,
+      name: payload.client?.name,
+      email: payload.client?.email,
+      tag: TAG_PIX_PENDENTE,
+      kanbanStage: 'novo',
+    });
+  }
+
+  /**
+   * Cria (ou marca, se já existir — ex: lead antigo do workshop) o cliente/lead
+   * no CRM pra cada um dos 3 momentos da Greenn (comprou, abandonou carrinho,
+   * Pix pendente), com tag própria pra distinguir no Kanban. Mudança de stage
+   * só é forçada no caso de compra (avança pra "vendeu" mesmo que a pessoa já
+   * estivesse em outra raia); nos outros 2 casos, se o lead já existe, só
+   * adiciona a tag — não mexe na posição dele no Kanban.
+   */
+  private async upsertLead(params: {
+    phone: string;
+    name?: string;
+    email?: string;
+    tag: string;
+    kanbanStage: KanbanStage;
+  }): Promise<void> {
+    const { phone, tag, kanbanStage } = params;
+    const name = params.name?.trim() || 'Cliente Greenn';
+    const email = params.email?.trim() || undefined;
+
+    try {
+      const existing = await this.leadsService.findByPhoneSuffix(phone);
+      if (existing) {
+        const tags = existing.tags || [];
+        const patch: Record<string, any> = {};
+        if (!tags.includes(tag)) patch.tags = [...tags, tag];
+        if (tag === TAG_COMPROU && existing.kanbanStage !== kanbanStage) patch.kanbanStage = kanbanStage;
+        if (Object.keys(patch).length === 0) return;
+        const updated = await this.leadsService.update(existing.id, patch);
+        this.realtime.emitLeadUpdated(updated);
+        this.logger.log(`Lead ${existing.id} (${phone}) marcado com tag "${tag}"`);
+        return;
+      }
+
+      const created = await this.leadsService.create({
+        name,
+        phone,
+        email,
+        status: 'novo',
+        kanbanStage,
+        kanbanStageManual: false,
+        // Contato transacional (comprou/checkout na Greenn), não da esteira de
+        // qualificação da Sofia — evita ela puxar assunto de qualificação com
+        // quem só está no meio de uma compra.
+        aiPaused: true,
+        tags: [tag],
+      });
+      this.realtime.emitLeadCreated(created);
+      this.logger.log(`Lead ${created.id} (${phone}) criado com tag "${tag}"`);
+    } catch (err: any) {
+      // Nunca deixa um conflito de email/telefone duplicado derrubar o envio
+      // do evento pro Meta ou a mensagem de WhatsApp — o Lead no CRM é um
+      // "extra", não o core do webhook.
+      this.logger.error(`Erro ao criar/atualizar Lead da Greenn (${phone}): ${err.message}`);
+    }
   }
 
   private normalizePhone(phone: string): string {

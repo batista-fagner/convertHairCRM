@@ -170,6 +170,9 @@ function CardContent({ lead, overlay = false }) {
         {lead.isMql && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-medium">🎯 MQL</span>}
         {lead.tags?.includes('mql_premium') && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">⭐ Premium</span>}
         {lead.tags?.includes('entrou_no_grupo') && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700 font-medium">🎟️ No grupo</span>}
+        {lead.tags?.includes('greenn_comprou') && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">🛒 Comprou</span>}
+        {lead.tags?.includes('greenn_pix_pendente') && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-700 font-medium">⏳ Pix pendente</span>}
+        {lead.tags?.includes('greenn_carrinho_abandonado') && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-700 font-medium">🛑 Abandonou carrinho</span>}
         {temp && <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${temp.className}`}>{temp.label}</span>}
         {(lead.ctwaAdTitle || lead.ctwaClid) && (
           <span
@@ -273,6 +276,9 @@ function LeadCard({ lead, onOpen, onEdit, onDelete }) {
         {lead.isMql && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-medium">🎯 MQL</span>}
         {lead.tags?.includes('mql_premium') && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">⭐ Premium</span>}
         {lead.tags?.includes('entrou_no_grupo') && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700 font-medium">🎟️ No grupo</span>}
+        {lead.tags?.includes('greenn_comprou') && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">🛒 Comprou</span>}
+        {lead.tags?.includes('greenn_pix_pendente') && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-700 font-medium">⏳ Pix pendente</span>}
+        {lead.tags?.includes('greenn_carrinho_abandonado') && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-700 font-medium">🛑 Abandonou carrinho</span>}
         {temp && <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${temp.className}`}>{temp.label}</span>}
         {(lead.ctwaAdTitle || lead.ctwaClid) && (
           <span
