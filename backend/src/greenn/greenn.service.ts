@@ -257,6 +257,12 @@ export class GreennService {
         phone,
         email,
         status: 'novo',
+        // Sem isso o lead não aparece em nenhuma raia do Kanban — findKanban
+        // (leads.service.ts) filtra TODAS as raias por agentMode:'sdr', sem
+        // fallback pra NULL (só kanbanStage tem fallback, na raia "novo").
+        // Bug real: 2 vendas da Greenn em 2026-09-18 criaram lead (visível na
+        // tela de Leads) mas invisível no Kanban por faltar isso.
+        agentMode: 'sdr',
         kanbanStage,
         kanbanStageManual: false,
         // Contato transacional (comprou/checkout na Greenn), não da esteira de
