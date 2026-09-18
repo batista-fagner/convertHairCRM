@@ -37,7 +37,10 @@ export interface UploadedImageFile {
 
 interface SubmitAnswer {
   questionId: string;
-  optionId: string;
+  optionId?: string;
+  // Usado só quando a pergunta é do tipo 'phone' — texto livre digitado pelo
+  // lead, em vez de optionId (não há opções nesse tipo de pergunta).
+  value?: string;
 }
 
 interface ProgressDto {
@@ -294,10 +297,20 @@ export class QuizService {
 
     const answeredResponses: { question: string; answer: string }[] = [];
     const mqlEvents = new Set<string>();
+    let capturedPhone: string | undefined;
 
     for (const submitted of dto.answers || []) {
       const question = quiz.questions.find((q) => q.id === submitted.questionId);
       if (!question) continue;
+
+      if (question.type === 'phone') {
+        const phone = (submitted.value || '').trim();
+        if (!phone) continue;
+        capturedPhone = phone;
+        answeredResponses.push({ question: question.question, answer: phone });
+        continue;
+      }
+
       const option = question.options.find((o) => o.id === submitted.optionId);
       if (!option) continue;
 
@@ -381,6 +394,7 @@ export class QuizService {
         quizSlug: quiz.slug,
         quizName: quiz.name,
         answers: answeredResponses,
+        phone: capturedPhone,
         mqlEvents: Array.from(mqlEvents),
         utmSource: dto.utmSource,
         utmMedium: dto.utmMedium,

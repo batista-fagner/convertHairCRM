@@ -66,12 +66,24 @@ function emptyQuestion() {
   return {
     id: uid(),
     question: '',
+    type: 'choice',
     isMqlQuestion: false,
     mqlEventName: '',
     options: [
       { id: uid(), label: '', isMqlAnswer: false },
       { id: uid(), label: '', isMqlAnswer: false },
     ],
+  }
+}
+
+function emptyPhoneQuestion() {
+  return {
+    id: uid(),
+    question: 'Qual seu WhatsApp?',
+    type: 'phone',
+    isMqlQuestion: false,
+    mqlEventName: '',
+    options: [],
   }
 }
 
@@ -410,6 +422,11 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
   function addQuestion() {
     if (quiz.questions.length >= MAX_QUESTIONS) return
     onChange(prev => ({ ...prev, questions: [...prev.questions, emptyQuestion()] }))
+  }
+
+  function addPhoneQuestion() {
+    if (quiz.questions.length >= MAX_QUESTIONS) return
+    onChange(prev => ({ ...prev, questions: [...prev.questions, emptyPhoneQuestion()] }))
   }
 
   function removeQuestion(id) {
@@ -917,13 +934,22 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
               Perguntas do quiz ({quiz.questions.length}/{MAX_QUESTIONS})
             </p>
           </div>
-          <button
-            onClick={addQuestion}
-            disabled={quiz.questions.length >= MAX_QUESTIONS}
-            className="flex items-center gap-1.5 text-sm font-medium text-violet-600 hover:text-violet-700 disabled:opacity-30 disabled:cursor-not-allowed transition"
-          >
-            <Plus className="w-3.5 h-3.5" /> Adicionar pergunta
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={addPhoneQuestion}
+              disabled={quiz.questions.length >= MAX_QUESTIONS}
+              className="flex items-center gap-1.5 text-sm font-medium text-emerald-600 hover:text-emerald-700 disabled:opacity-30 disabled:cursor-not-allowed transition"
+            >
+              <Plus className="w-3.5 h-3.5" /> Adicionar campo de telefone
+            </button>
+            <button
+              onClick={addQuestion}
+              disabled={quiz.questions.length >= MAX_QUESTIONS}
+              className="flex items-center gap-1.5 text-sm font-medium text-violet-600 hover:text-violet-700 disabled:opacity-30 disabled:cursor-not-allowed transition"
+            >
+              <Plus className="w-3.5 h-3.5" /> Adicionar pergunta
+            </button>
+          </div>
         </div>
 
         {quiz.questions.length === 0 && (
@@ -934,7 +960,7 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
 
         <div className="pl-7 space-y-3">
           {quiz.questions.map((q, qi) => (
-            <div key={q.id} className={`rounded-xl border p-3 space-y-2 ${q.isMqlQuestion ? 'border-amber-300 bg-amber-50/40' : 'border-slate-200 bg-white'}`}>
+            <div key={q.id} className={`rounded-xl border p-3 space-y-2 ${q.type === 'phone' ? 'border-emerald-300 bg-emerald-50/40' : q.isMqlQuestion ? 'border-amber-300 bg-amber-50/40' : 'border-slate-200 bg-white'}`}>
               <div className="flex items-center gap-2">
                 <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-500 text-sm font-semibold flex items-center justify-center shrink-0">{qi + 1}</span>
                 <input
@@ -943,6 +969,9 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
                   placeholder="Digite a pergunta..."
                   className="flex-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
                 />
+                {q.type === 'phone' && (
+                  <span className="text-sm font-medium text-emerald-700 bg-emerald-100 rounded-lg px-2 py-1 shrink-0">Campo de telefone</span>
+                )}
                 <button onClick={() => moveQuestion(q.id, -1)} disabled={qi === 0} className="p-1 text-slate-400 hover:text-slate-600 disabled:opacity-30 transition">
                   <ChevronUp className="w-4 h-4" />
                 </button>
@@ -954,6 +983,14 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
                 </button>
               </div>
 
+              {q.type === 'phone' && (
+                <p className="pl-7 text-sm text-slate-400">
+                  A pessoa digita o número livremente nessa etapa — sem opções de múltipla escolha.
+                </p>
+              )}
+
+              {q.type !== 'phone' && (
+              <>
               <div className="flex items-center gap-3 pl-7">
                 <label className="flex items-center gap-1.5 cursor-pointer select-none">
                   <input
@@ -1007,6 +1044,8 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
                   <Plus className="w-3.5 h-3.5" /> Adicionar opção
                 </button>
               </div>
+              </>
+              )}
             </div>
           ))}
         </div>

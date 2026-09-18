@@ -24,6 +24,12 @@ export class QuizSubmission {
   @Column({ name: 'answers', type: 'jsonb' })
   answers: { question: string; answer: string }[];
 
+  // Telefone capturado por uma pergunta do tipo 'phone' (ver QuizQuestion.type
+  // em quiz.entity.ts) — extraído de `answers` pra coluna própria só pra
+  // facilitar consulta/remarketing sem precisar parsear o jsonb.
+  @Column({ name: 'phone', type: 'varchar', nullable: true })
+  phone?: string | null;
+
   @Column({ name: 'mql_events', type: 'jsonb', nullable: true })
   mqlEvents?: string[] | null;
 

@@ -18,6 +18,10 @@ export interface QuizQuestion {
   isMqlQuestion?: boolean;
   mqlEventName?: string;
   options: QuizOption[];
+  // 'phone' = campo de texto livre pra capturar WhatsApp/telefone do lead, em
+  // vez de opções de múltipla escolha. Ausente/'choice' = comportamento atual.
+  // `options` continua presente (vazio) nesse caso só pra não quebrar o tipo.
+  type?: 'choice' | 'phone';
 }
 
 export interface QuizPresentation {
