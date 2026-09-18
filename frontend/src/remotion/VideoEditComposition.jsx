@@ -10,6 +10,9 @@ import { TransitionFlash } from './TransitionFlash.jsx';
 // Um trecho de vídeo: o mesmo arquivo normalizado, cortado em pontos
 // diferentes. Preview e render carregam exatamente este arquivo — é o segundo
 // pilar da fidelidade, junto do código compartilhado.
+//
+// Usado pelo GANCHO, que é sempre um clipe único. O corpo usa BodyTrack logo
+// abaixo, porque com corte de pausa ele pode ser vários clipes.
 const Segment = ({ plan, timeline, segmentId, spec, children }) => {
   const { fps } = useVideoConfig();
 
@@ -27,6 +30,40 @@ const Segment = ({ plan, timeline, segmentId, spec, children }) => {
         />
       </ZoomWrapper>
       {children}
+    </AbsoluteFill>
+  );
+};
+
+// O corpo pode ser vários clipes do MESMO vídeo normalizado, colados sem
+// espaço entre si (corte de pausa/respiro — ver buildBodySegments no
+// backend). Cada trecho mantido vira uma <Sequence> aninhada, e o zoom/
+// legenda ficam UMA vez só, na sequência externa que envolve todas — se
+// eles ficassem dentro de cada sub-sequence, o frame local resetaria a cada
+// troca de clipe e a sincronia quebraria (mesma classe de bug da Etapa 1).
+const BodyTrack = ({ plan, timeline }) => {
+  const { fps } = useVideoConfig();
+
+  return (
+    <AbsoluteFill>
+      <ZoomWrapper zooms={plan.zooms} plan={plan} timeline={timeline} segmentId="body">
+        {timeline.bodySegments.map((seg, i) => (
+          <Sequence
+            key={i}
+            from={secToFrame(seg.localStartSec, fps)}
+            durationInFrames={Math.max(1, secToFrame(seg.dur, fps))}
+            name={`Corpo ${i + 1}/${timeline.bodySegments.length}`}
+          >
+            <OffthreadVideo
+              src={plan.source?.normUrl}
+              trimBefore={secToFrame(seg.srcStartSec, fps)}
+              trimAfter={secToFrame(seg.srcEndSec, fps)}
+              volume={plan.audio?.sourceVolume ?? 1}
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            />
+          </Sequence>
+        ))}
+      </ZoomWrapper>
+      <BodyCaptions captions={plan.body?.captions} plan={plan} timeline={timeline} segmentId="body" />
     </AbsoluteFill>
   );
 };
@@ -70,14 +107,7 @@ export const VideoEditComposition = (plan) => {
           </Sequence>
 
           <Sequence from={hookFrames} durationInFrames={bodyFrames} name="Vídeo completo">
-            <Segment plan={plan} timeline={timeline} segmentId="body" spec={plan.body ?? {}}>
-              <BodyCaptions
-                captions={plan.body?.captions}
-                plan={plan}
-                timeline={timeline}
-                segmentId="body"
-              />
-            </Segment>
+            <BodyTrack plan={plan} timeline={timeline} />
           </Sequence>
 
           <TransitionFlash transition={plan.transition} timeline={timeline} />

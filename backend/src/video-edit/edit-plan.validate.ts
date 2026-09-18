@@ -20,6 +20,16 @@ export const validateEditPlan = (plan: EditPlan): EditPlanValidation => {
   if (plan.body.srcStartSec !== 0) errors.push('Corpo deveria sempre começar em 0 (o vídeo completo)');
   if (plan.body.srcEndSec <= plan.body.srcStartSec) errors.push('Corpo com duração zero ou negativa');
 
+  if (plan.body.segments && plan.body.segments.length > 0) {
+    let prevSegEnd = -Infinity;
+    for (const seg of plan.body.segments) {
+      if (seg.srcEndSec <= seg.srcStartSec) errors.push('Segmento de corte de pausa com duração zero ou negativa');
+      if (seg.srcStartSec < prevSegEnd - 0.001) errors.push('Segmentos de corte de pausa fora de ordem ou sobrepostos');
+      if (seg.srcStartSec < 0 || seg.srcEndSec > plan.source.srcDurationSec + 0.5) errors.push('Segmento de corte de pausa fora dos limites do vídeo');
+      prevSegEnd = seg.srcEndSec;
+    }
+  }
+
   let prevEnd = -Infinity;
   for (const line of plan.hook.caption.lines) {
     for (const word of line.words) {

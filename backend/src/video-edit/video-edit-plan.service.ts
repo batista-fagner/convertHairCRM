@@ -33,6 +33,7 @@ const DRAFT_SCHEMA = {
         },
       },
       bodyCaptionsEnabled: { type: 'boolean' },
+      removePauses: { type: 'boolean' },
       musicMood: { type: 'string' },
       warnings: { type: 'array', items: { type: 'string' } },
     },
@@ -45,6 +46,7 @@ const DRAFT_SCHEMA = {
       'titleOverlayText',
       'impactRanges',
       'bodyCaptionsEnabled',
+      'removePauses',
       'musicMood',
       'warnings',
     ],
@@ -66,6 +68,7 @@ Sua tarefa: ler a transcrição (palavras numeradas) e a instrução do usuário
 - titleOverlayText: um gancho textual curto (até 6 palavras) pros primeiros segundos do vídeo, minúsculo, sem pontuação forte.
 - impactRanges: 0 a 4 trechos (início/fim em índice de palavra) de frases de impacto no vídeo INTEIRO, pra dar um leve avanço de zoom. strength "strong" só para o ápice absoluto, "medium" pro resto.
 - bodyCaptionsEnabled: normalmente true.
+- removePauses: true SOMENTE se a instrução do usuário pedir explicitamente pra cortar pausa, silêncio, respiro ou "vídeo mais dinâmico"/"sem enrolação" no sentido de tirar espaço morto entre as falas. Caso contrário, false — não corte nada por conta própria.
 - musicMood: uma ou duas palavras descrevendo o clima ideal de trilha (ex: "tenso minimal", "motivacional leve").
 - warnings: avisos curtos se a transcrição parecer cortada, incompleta ou com trecho inaudível — [] se não houver nada a avisar.
 

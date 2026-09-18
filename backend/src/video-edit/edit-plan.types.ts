@@ -58,9 +58,21 @@ export interface EditPlanBodyCaptions {
   groups: EditPlanCaptionGroup[];
 }
 
+export interface EditPlanBodySegment {
+  srcStartSec: number;
+  srcEndSec: number;
+}
+
 export interface EditPlanBody {
   srcStartSec: number;
   srcEndSec: number;
+  // Corte de pausa/respiro (opcional) — quando presente e não-vazio, o corpo
+  // toca esses trechos em sequência, PULANDO os intervalos entre eles (as
+  // pausas removidas). srcStartSec/srcEndSec acima continuam representando o
+  // vídeo inteiro (fim = duração da fonte); ausente/vazio = comportamento
+  // antigo, um trecho contínuo só, sem corte nenhum — retrocompatível com
+  // qualquer plano salvo antes desta feature existir.
+  segments?: EditPlanBodySegment[];
   captions: EditPlanBodyCaptions;
 }
 

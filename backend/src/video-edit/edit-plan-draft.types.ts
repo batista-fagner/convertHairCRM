@@ -21,6 +21,11 @@ export interface EditPlanDraft {
   titleOverlayText: string;
   impactRanges: { startWordIdx: number; endWordIdx: number; strength: 'medium' | 'strong' }[];
   bodyCaptionsEnabled: boolean;
+  // true só quando a instrução do usuário pede explicitamente pra cortar
+  // pausa/silêncio/respiro — decide se edit-plan-builder.ts vai gerar
+  // body.segments (corte de pausa) em vez do corpo contínuo de sempre. Falso
+  // por padrão: não muda o comportamento de quem não pediu.
+  removePauses: boolean;
   musicMood: string;
   warnings: string[];
 }

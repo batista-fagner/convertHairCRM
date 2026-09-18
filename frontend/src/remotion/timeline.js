@@ -16,6 +16,15 @@ export const secToFrame = (sec, fps = FPS) => Math.round(sec * fps);
 
 const num = (value, fallback) => (Number.isFinite(value) ? value : fallback);
 
+// Trechos do corpo que sobram depois de cortar pausa/respiro (ver
+// buildBodySegments no backend). Sem isso (plano antigo, ou feature não
+// pedida) o corpo é UM trecho contínuo só — mesma conta de sempre.
+const resolveBodySegments = (plan) => {
+  const raw = plan?.body?.segments;
+  if (Array.isArray(raw) && raw.length > 0) return raw;
+  return [{ srcStartSec: num(plan?.body?.srcStartSec, 0), srcEndSec: num(plan?.body?.srcEndSec, 0) }];
+};
+
 export const deriveTimeline = (plan) => {
   const fps = num(plan?.fps, FPS);
 
@@ -23,16 +32,24 @@ export const deriveTimeline = (plan) => {
   const hookEnd = num(plan?.hook?.srcEndSec, 0);
   const hookDur = Math.max(0, hookEnd - hookStart);
 
-  const bodyStart = num(plan?.body?.srcStartSec, 0);
-  const bodyEnd = num(plan?.body?.srcEndSec, 0);
-  const bodyDur = Math.max(0, bodyEnd - bodyStart);
+  // Cada trecho mantido vira um pedacinho da linha do tempo LOCAL do corpo,
+  // colado no anterior sem espaço — é aqui que a pausa "desaparece": ela
+  // nunca ganha um lugar na linha do tempo de saída.
+  let cursor = 0;
+  const bodySegments = resolveBodySegments(plan).map((seg) => {
+    const dur = Math.max(0, seg.srcEndSec - seg.srcStartSec);
+    const withOffset = { srcStartSec: seg.srcStartSec, srcEndSec: seg.srcEndSec, localStartSec: cursor, dur };
+    cursor += dur;
+    return withOffset;
+  });
+  const bodyDur = cursor;
 
   // Os dois trechos são adjacentes: o gancho abre, o corpo entra logo depois.
   // A transição é um lampejo SOBRE a emenda, não tempo somado — por isso ela
   // não entra nesta conta.
   const segments = {
     hook: { id: 'hook', tStartSec: 0, tEndSec: hookDur, srcOffsetSec: hookStart },
-    body: { id: 'body', tStartSec: hookDur, tEndSec: hookDur + bodyDur, srcOffsetSec: bodyStart },
+    body: { id: 'body', tStartSec: hookDur, tEndSec: hookDur + bodyDur, srcOffsetSec: bodySegments[0]?.srcStartSec ?? 0 },
   };
 
   const totalSec = hookDur + bodyDur;
@@ -40,6 +57,7 @@ export const deriveTimeline = (plan) => {
   return {
     fps,
     segments,
+    bodySegments,
     hookDurSec: hookDur,
     bodyDurSec: bodyDur,
     seamSec: hookDur,
@@ -61,11 +79,31 @@ export const deriveTimeline = (plan) => {
 // timestamp por palavra do Whisper oscila ±100-200ms em português, e esse
 // deslize aparece justamente na palavra grande do gancho.
 export const toTimelineSec = (srcSec, segmentId, plan, timeline) => {
+  const offset = num(plan?.audio?.captionOffsetSec, 0);
+
+  // Corpo com corte de pausa: mais de um trecho mantido, então o mapeamento
+  // não é um deslocamento fixo — precisa achar EM QUAL trecho esse instante
+  // cai e somar o quanto já foi "engolido" pelas pausas removidas antes dele.
+  // Palavra de legenda/zoom sempre cai DENTRO de algum trecho (nunca numa
+  // pausa cortada — é assim que buildBodySegments constrói), então o `find`
+  // abaixo sempre acha um lar; o clamp é só rede de segurança pra ponta solta
+  // por arredondamento de ponto flutuante.
+  if (segmentId === 'body' && timeline?.bodySegments?.length > 1) {
+    const segs = timeline.bodySegments;
+    const hit = segs.find((s) => srcSec >= s.srcStartSec - 0.01 && srcSec <= s.srcEndSec + 0.01);
+    if (hit) return hit.localStartSec + clampToSeg(srcSec, hit) + offset;
+    // Caiu antes do primeiro ou depois do último por folga de arredondamento.
+    if (srcSec < segs[0].srcStartSec) return offset;
+    const last = segs[segs.length - 1];
+    return last.localStartSec + last.dur + offset;
+  }
+
   const seg = timeline?.segments?.[segmentId];
   if (!seg) return srcSec;
-  const offset = num(plan?.audio?.captionOffsetSec, 0);
   return srcSec - seg.srcOffsetSec + offset;
 };
+
+const clampToSeg = (srcSec, seg) => Math.max(0, Math.min(srcSec - seg.srcStartSec, seg.dur));
 
 // calculateMetadata da <Composition>: a duração sai do plano, então o
 // renderizador não precisa repetir a conta — selectComposition() já devolve o

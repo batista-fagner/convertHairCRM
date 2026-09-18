@@ -1,6 +1,7 @@
 import { EditPlanDraft } from './edit-plan-draft.types';
 import {
   EditPlan,
+  EditPlanBodySegment,
   EditPlanHook,
   EditPlanHookLine,
   EditPlanTranscript,
@@ -20,6 +21,14 @@ const MAX_ZOOM_DUR_SEC = 2.5;
 const ZOOM_SCALE: Record<'medium' | 'strong', number> = { medium: 1.22, strong: 1.3 };
 const MAX_CAPTION_GROUP_WORDS = 3;
 const MAX_CAPTION_GROUP_SEC = 1.6;
+
+// Só corta pausa/respiro ACIMA desse tamanho — abaixo disso é ritmo natural
+// de fala, cortar vira "gagueira" no vídeo em vez de corte limpo. E mantém
+// uma pontinha de silêncio (PAUSE_PAD_SEC) nas duas bordas do corte pra não
+// engolir o fim/começo do som da palavra, que o timestamp do Whisper às
+// vezes corta rente demais.
+const PAUSE_GAP_THRESHOLD_SEC = 0.5;
+const PAUSE_PAD_SEC = 0.06;
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 
@@ -175,6 +184,36 @@ const buildZooms = (
   }));
 };
 
+// Corte de pausa/respiro: acha os intervalos SEM fala entre uma palavra e a
+// próxima maiores que o limiar, e devolve os trechos que SOBRAM (mantidos),
+// em ordem — o corpo toca só esses trechos, pulando as pausas removidas.
+//
+// Cada palavra sempre cai dentro de algum trecho mantido (por construção — o
+// corte nunca é DENTRO de uma janela de palavra, só no espaço entre elas),
+// então legenda, zoom e qualquer coisa derivada de índice de palavra
+// continua caindo num ponto válido depois do corte.
+export const buildBodySegments = (
+  words: EditPlanTranscriptWord[],
+  srcDurationSec: number,
+): EditPlanBodySegment[] => {
+  if (words.length === 0) return [{ srcStartSec: 0, srcEndSec: srcDurationSec }];
+
+  const segments: EditPlanBodySegment[] = [];
+  let segStart = 0;
+
+  for (let i = 0; i < words.length - 1; i++) {
+    const gap = words[i + 1].start - words[i].end;
+    if (gap <= PAUSE_GAP_THRESHOLD_SEC) continue;
+
+    const segEnd = clamp(words[i].end + PAUSE_PAD_SEC, segStart, words[i + 1].start);
+    if (segEnd > segStart) segments.push({ srcStartSec: segStart, srcEndSec: segEnd });
+    segStart = clamp(words[i + 1].start - PAUSE_PAD_SEC, segEnd, words[i + 1].start);
+  }
+
+  segments.push({ srcStartSec: segStart, srcEndSec: srcDurationSec });
+  return segments;
+};
+
 // Extraído pra ser reusado no reajuste manual do gancho (Etapa 6, PATCH
 // /:id/plan) sem precisar chamar a IA de novo — um retrim é puramente
 // mecânico (novo intervalo de palavra → novos segundos + novo layout), então
@@ -312,6 +351,7 @@ export const buildEditPlan = ({
     body: {
       srcStartSec: 0,
       srcEndSec: srcDurationSec,
+      segments: draft.removePauses ? buildBodySegments(words, srcDurationSec) : undefined,
       captions: {
         enabled: bodyCaptionsEnabled,
         style: 'discreet_bottom',
@@ -357,6 +397,7 @@ export const buildFallbackDraft = (
       titleOverlayText: '',
       impactRanges: [],
       bodyCaptionsEnabled: false,
+      removePauses: false,
       musicMood: '',
       warnings: ['Plano automático — a IA falhou, revise o corte'],
     };
@@ -389,6 +430,7 @@ export const buildFallbackDraft = (
     titleOverlayText: '',
     impactRanges: [],
     bodyCaptionsEnabled: true,
+    removePauses: false,
     musicMood: '',
     warnings: ['Plano automático — a IA falhou, revise o corte'],
   };
