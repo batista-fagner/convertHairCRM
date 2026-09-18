@@ -43,7 +43,9 @@ export const runPrepare = async ({ jobId, sourceUrl }) => {
     ]);
 
     return {
+      normStoragePath: norm.key,
       normUrl: norm.url,
+      audioStoragePath: audio?.key ?? null,
       audioUrl: audio?.url ?? null,
       srcDurationSec: info.durationSec,
       srcWidth: info.width,

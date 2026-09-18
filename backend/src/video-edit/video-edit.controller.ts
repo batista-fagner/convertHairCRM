@@ -6,13 +6,40 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { AudioAssetService } from './audio-asset.service';
 import type { UploadedAudioFile } from './audio-asset.service';
 import { AudioAssetKind } from './audio-asset.entity';
+import { VideoEditService } from './video-edit.service';
 
 @Controller('video-edit')
 export class VideoEditController {
-  constructor(private readonly audio: AudioAssetService) {}
+  constructor(
+    private readonly audio: AudioAssetService,
+    private readonly videoEdit: VideoEditService,
+  ) {}
+
+  // ─────────────────────────────────────────────────────────────────────
+  // Jobs de edição
+  // ─────────────────────────────────────────────────────────────────────
+
+  @Post('upload-url')
+  createUploadUrl(@Body() body: { filename?: string; contentType?: string }) {
+    return this.videoEdit.createUploadUrl(body.filename ?? '', body.contentType);
+  }
+
+  @Post()
+  create(@Body() body: { name?: string; instruction?: string; storagePath?: string }) {
+    return this.videoEdit.create(body);
+  }
+
+  @Get()
+  findAll() {
+    return this.videoEdit.findAll();
+  }
 
   // ─────────────────────────────────────────────────────────────────────
   // Biblioteca de áudio (trilhas e efeitos usados nas edições)
+  //
+  // Precisa vir ANTES de ':id' abaixo — o Nest casa rotas na ordem de
+  // declaração, e ':id' (1 segmento) bateria com GET /video-edit/audio antes
+  // de chegar na rota certa.
   // ─────────────────────────────────────────────────────────────────────
 
   @Get('audio')
@@ -40,5 +67,20 @@ export class VideoEditController {
   @HttpCode(204)
   async removeAudio(@Param('id') id: string) {
     await this.audio.remove(id);
+  }
+
+  // ─────────────────────────────────────────────────────────────────────
+  // Jobs de edição — rotas de :id, depois de 'audio' de propósito (ver acima)
+  // ─────────────────────────────────────────────────────────────────────
+
+  @Get(':id')
+  findOne(@Param('id') id: string) {
+    return this.videoEdit.findOne(id);
+  }
+
+  @Delete(':id')
+  @HttpCode(204)
+  async remove(@Param('id') id: string) {
+    await this.videoEdit.remove(id);
   }
 }
