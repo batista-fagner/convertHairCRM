@@ -107,11 +107,16 @@ export class QuizService {
 
     // Recomprime tudo pra WebP na entrada — mesma otimização feita manualmente
     // em 2026-09-16 (PNG de 2MB virou WebP de 247KB, qualidade visual igual),
-    // agora automática pra qualquer upload novo do builder. Mantém as
-    // dimensões originais, só troca o encoding — não reduz resolução.
+    // agora automática pra qualquer upload novo do builder. Redimensiona pra
+    // no máximo 1200px de largura (2026-09-19, PageSpeed acusou uma foto de
+    // 233KB puxando o LCP da página de venda pra 5,7s) — nenhuma foto do quiz
+    // é exibida maior que isso, então resolução acima só pesa sem ganho visual.
     let optimized: Buffer;
     try {
-      optimized = await sharp(file.buffer).webp({ quality: 90 }).toBuffer();
+      optimized = await sharp(file.buffer)
+        .resize({ width: 1200, withoutEnlargement: true })
+        .webp({ quality: 90 })
+        .toBuffer();
     } catch (err: any) {
       this.logger.error(`Erro ao comprimir imagem do quiz: ${err.message}`);
       throw new BadRequestException('Não foi possível processar essa imagem — tente outro arquivo');
@@ -125,6 +130,10 @@ export class QuizService {
         Key: storagePath,
         Body: optimized,
         ContentType: 'image/webp',
+        // Sem isso o R2 serve sem header de cache (PageSpeed: "Cache TTL: None")
+        // — o nome do arquivo já é um UUID novo a cada upload, então cache
+        // "immutable" nunca fica desatualizado.
+        CacheControl: 'public, max-age=31536000, immutable',
       }));
     } catch (err: any) {
       this.logger.error(`Erro ao subir imagem do quiz pro R2: ${err.message}`);
