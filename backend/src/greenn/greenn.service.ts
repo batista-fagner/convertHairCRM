@@ -53,6 +53,7 @@ const RECOVERY_DEDUPE_WINDOW_MS = 6 * 60 * 60 * 1000; // 6h
 export class GreennService {
   private readonly logger = new Logger(GreennService.name);
   private readonly recentAbandonedSends = new Map<string, number>();
+  private readonly recentWelcomeSends = new Map<string, number>();
 
   constructor(
     private readonly facebookService: FacebookService,
@@ -117,13 +118,42 @@ export class GreennService {
     this.logger.log(`Purchase enviado ao Facebook — venda Greenn #${saleId}`);
 
     if (payload.client?.cellphone) {
+      const normalizedPhone = this.normalizePhone(payload.client.cellphone);
       await this.upsertLead({
-        phone: this.normalizePhone(payload.client.cellphone),
+        phone: normalizedPhone,
         name: payload.client?.name,
         email: payload.client?.email,
         tag: TAG_COMPROU,
         kanbanStage: 'vendeu',
       });
+      await this.sendWelcomeMessage(normalizedPhone, payload.client?.name);
+    }
+  }
+
+  /**
+   * Boas-vindas de quem comprou — gancho é o bônus de +2 fornecedores, que só
+   * é liberado numa ligação. O objetivo real não é o bônus em si: é abrir uma
+   * conversa por telefone que serve pra oferecer o upgrade da IA depois (já
+   * validado manualmente — a 1ª ligação feita assim converteu uma venda).
+   * Pergunta o horário porque quem responde com uma hora concreta é o lead
+   * que vale a pena o sócio ligar primeiro.
+   */
+  private async sendWelcomeMessage(phone: string, name?: string): Promise<void> {
+    const lastSentAt = this.recentWelcomeSends.get(phone);
+    if (lastSentAt && Date.now() - lastSentAt < RECOVERY_DEDUPE_WINDOW_MS) {
+      this.logger.log(`Boas-vindas (${phone}) ignorada — mensagem já enviada há pouco`);
+      return;
+    }
+
+    const firstName = name?.trim().split(' ')[0] || '';
+    const greeting = firstName ? `Oi, ${firstName}! ` : 'Oi! ';
+    const text = `${greeting}Parabéns pela decisão 🙌 Seus 5 fornecedores validados já estão liberados.\n\nTenho uma novidade: como você comprou, você ganhou acesso a um bônus exclusivo — mais 2 fornecedores validados, além dos 5. Pra te passar os detalhes, vamos te ligar rapidinho.\n\nQual o melhor horário pra você hoje ou amanhã?`;
+
+    const sent = await this.sendWhatsappText(phone, text);
+    if (sent) {
+      this.recentWelcomeSends.set(phone, Date.now());
+      this.logger.log(`Mensagem de boas-vindas enviada para ${phone}`);
+      await this.recordAssistantMessage(phone, text);
     }
   }
 
