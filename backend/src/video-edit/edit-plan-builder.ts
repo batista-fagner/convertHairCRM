@@ -27,7 +27,15 @@ const MAX_CAPTION_GROUP_SEC = 1.6;
 // uma pontinha de silêncio (PAUSE_PAD_SEC) nas duas bordas do corte pra não
 // engolir o fim/começo do som da palavra, que o timestamp do Whisper às
 // vezes corta rente demais.
-const PAUSE_GAP_THRESHOLD_SEC = 0.5;
+//
+// 0.3s (não 0.5s) depois de testar com vídeo real (IMG_4993, Fagner,
+// 2026-09-19): a 0.5s, pausas de 0.3-0.46s no corpo (respiração normal entre
+// frases de quem fala num ritmo mais pausado) nunca eram cortadas, e o
+// usuário via isso como "não cortou nada". A 0.3s, o mesmo vídeo passou de 2
+// pra 9 trechos, todos com duração saudável (o menor com 0.40s — nada de
+// corte quase invisível) — testado e comparado contra 0.5/0.35/0.3/0.25/0.2/
+// 0.15 antes de fixar este valor.
+const PAUSE_GAP_THRESHOLD_SEC = 0.3;
 const PAUSE_PAD_SEC = 0.06;
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
