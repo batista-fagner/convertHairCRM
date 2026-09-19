@@ -7,6 +7,8 @@ import { Quiz } from '../common/entities/quiz.entity';
 import { LeadsService } from '../leads/leads.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { KanbanStage } from '../common/entities/lead.entity';
+import { GreennPixQueueService, PixPendingJobData } from './greenn-pix-queue.service';
+import { GREENN_PIX_PENDING_DELAY_MS } from '../queue/queue.constants';
 
 // Tags que identificam de qual dos 3 eventos da Greenn o Lead/cliente veio —
 // renderizadas como badge no Kanban (ver KanbanLeads.jsx).
@@ -51,7 +53,6 @@ const RECOVERY_DEDUPE_WINDOW_MS = 6 * 60 * 60 * 1000; // 6h
 export class GreennService {
   private readonly logger = new Logger(GreennService.name);
   private readonly recentAbandonedSends = new Map<string, number>();
-  private readonly recentWaitingPaymentSends = new Map<string, number>();
 
   constructor(
     private readonly facebookService: FacebookService,
@@ -59,6 +60,7 @@ export class GreennService {
     private readonly config: ConfigService,
     private readonly leadsService: LeadsService,
     private readonly realtime: RealtimeGateway,
+    private readonly pixQueue: GreennPixQueueService,
   ) {}
 
   async processWebhook(payload: GreennWebhookPayload): Promise<void> {
@@ -185,33 +187,10 @@ export class GreennService {
     }
 
     const normalizedPhone = this.normalizePhone(phone);
-    const lastSentAt = this.recentWaitingPaymentSends.get(normalizedPhone);
-    if (lastSentAt && Date.now() - lastSentAt < RECOVERY_DEDUPE_WINDOW_MS) {
-      this.logger.log(`Pix aguardando pagamento (${normalizedPhone}) ignorado — mensagem já enviada há pouco`);
-      return;
-    }
 
+    // Sinal de intenção pro Meta e o registro no Kanban acontecem na hora —
+    // só a MENSAGEM de recuperação espera. Ver sendPixPendingRecoveryIfStillPending.
     const quiz = await this.getQuiz();
-    const firstName = payload.client?.name?.trim().split(' ')[0] || '';
-    const pixCode = payload.sale?.qrcode?.trim();
-    const greeting = firstName ? `Oi, ${firstName}! ` : 'Oi! ';
-    // Código Pix vai numa mensagem separada, sozinho — colado junto do texto
-    // o WhatsApp não deixa selecionar só o código pra copiar (segura-e-copia
-    // pega a bolha inteira). Sem o código no payload (não deveria acontecer,
-    // mas por segurança), cai pro link de checkout como antes, numa mensagem só.
-    const text = pixCode
-      ? `${greeting}vi que você gerou o Pix dos 5 fornecedores validados, mas o pagamento ainda não caiu 👀\n\nPra pagar, é só copiar o código Pix que mando na mensagem seguinte e colar no app do seu banco (Pix Copia e Cola).\n\nJá pagou e caiu aqui por engano? Me chama que eu confirmo pra você.`
-      : `${greeting}vi que você gerou o Pix dos 5 fornecedores validados, mas o pagamento ainda não caiu 👀\n\nSe ainda não pagou, finaliza antes que o Pix expire:\n${quiz?.checkoutUrl || ''}\n\nJá pagou e caiu aqui por engano? Me chama que eu confirmo pra você.`;
-
-    let sent = await this.sendWhatsappText(normalizedPhone, text);
-    if (sent && pixCode) {
-      sent = await this.sendWhatsappText(normalizedPhone, pixCode);
-    }
-    if (sent) {
-      this.recentWaitingPaymentSends.set(normalizedPhone, Date.now());
-      this.logger.log(`Mensagem de Pix aguardando pagamento enviada para ${normalizedPhone}`);
-    }
-
     const pixelOverride =
       quiz?.fbPixelId && quiz?.fbAccessToken ? { pixelId: quiz.fbPixelId, accessToken: quiz.fbAccessToken } : undefined;
     const eventId = payload.sale?.id ? `greenn-waiting-${payload.sale.id}` : `greenn-waiting-${normalizedPhone}`;
@@ -231,6 +210,58 @@ export class GreennService {
       tag: TAG_PIX_PENDENTE,
       kanbanStage: 'novo',
     });
+
+    const jobData: PixPendingJobData = {
+      saleId: payload.sale?.id,
+      phone: normalizedPhone,
+      name: payload.client?.name,
+      qrcode: payload.sale?.qrcode,
+    };
+    const scheduled = await this.pixQueue.scheduleCheck(jobData);
+    if (scheduled) {
+      this.logger.log(
+        `Pix aguardando pagamento (${normalizedPhone}) — recuperação agendada pra daqui ${GREENN_PIX_PENDING_DELAY_MS / 60_000}min`,
+      );
+    } else {
+      // Fila indisponível (QUEUE_ENGINE != bullmq) — mantém o comportamento
+      // antigo de mandar na hora, em vez de perder a mensagem.
+      this.logger.warn('Fila greenn-pix-pending indisponível — enviando recuperação de Pix na hora (sem espera)');
+      await this.sendPixPendingRecoveryIfStillPending(jobData);
+    }
+  }
+
+  /**
+   * Roda 8min depois do Pix ser gerado (job da fila greenn-pix-pending, ou
+   * na hora se a fila estiver desabilitada). Antes de mandar, checa no banco
+   * se o lead já foi marcado como "comprou" nesse meio-tempo — se sim, o
+   * pagamento já caiu e a recuperação não faz sentido mais.
+   */
+  async sendPixPendingRecoveryIfStillPending(data: PixPendingJobData): Promise<void> {
+    const existing = await this.leadsService.findByPhoneSuffix(data.phone);
+    if (existing?.tags?.includes(TAG_COMPROU)) {
+      this.logger.log(`Pix (${data.phone}) já foi pago antes dos 8min — recuperação cancelada`);
+      return;
+    }
+
+    const quiz = await this.getQuiz();
+    const firstName = data.name?.trim().split(' ')[0] || '';
+    const pixCode = data.qrcode?.trim();
+    const greeting = firstName ? `Oi, ${firstName}! ` : 'Oi! ';
+    // Código Pix vai numa mensagem separada, sozinho — colado junto do texto
+    // o WhatsApp não deixa selecionar só o código pra copiar (segura-e-copia
+    // pega a bolha inteira). Sem o código no payload (não deveria acontecer,
+    // mas por segurança), cai pro link de checkout como antes, numa mensagem só.
+    const text = pixCode
+      ? `${greeting}vi que você gerou o Pix dos 5 fornecedores validados, mas o pagamento ainda não caiu 👀\n\nPra pagar, é só copiar o código Pix que mando na mensagem seguinte e colar no app do seu banco (Pix Copia e Cola).\n\nJá pagou e caiu aqui por engano? Me chama que eu confirmo pra você.`
+      : `${greeting}vi que você gerou o Pix dos 5 fornecedores validados, mas o pagamento ainda não caiu 👀\n\nSe ainda não pagou, finaliza antes que o Pix expire:\n${quiz?.checkoutUrl || ''}\n\nJá pagou e caiu aqui por engano? Me chama que eu confirmo pra você.`;
+
+    let sent = await this.sendWhatsappText(data.phone, text);
+    if (sent && pixCode) {
+      sent = await this.sendWhatsappText(data.phone, pixCode);
+    }
+    if (sent) {
+      this.logger.log(`Mensagem de Pix aguardando pagamento enviada para ${data.phone}`);
+    }
   }
 
   /**

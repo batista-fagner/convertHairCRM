@@ -35,3 +35,11 @@ export const VIDEO_EDIT_RENDER_QUEUE = 'video-edit-render';
 export const JOB_PREPARE = 'prepare';
 export const JOB_ANALYZE = 'analyze';
 export const JOB_RENDER = 'render';
+
+// --- greenn pix-pendente (espera antes de mandar a recuperação) ---
+// Dá 8min pro lead pagar o Pix já gerado antes de mandar a mensagem de
+// recuperação — se o webhook de "paid" chegar antes disso (tag greenn_comprou
+// no Lead), o job cancela o envio em vez de incomodar quem já pagou.
+export const GREENN_PIX_PENDING_QUEUE = 'greenn-pix-pending';
+export const JOB_CHECK_PIX_PENDING = 'check-pix-pending';
+export const GREENN_PIX_PENDING_DELAY_MS = 8 * 60 * 1000;
