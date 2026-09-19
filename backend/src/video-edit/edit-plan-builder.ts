@@ -226,7 +226,17 @@ export const buildBodySegments = (
     segStart = clamp(words[i + 1].start - PAUSE_PAD_SEC, segEnd, words[i + 1].start);
   }
 
-  segments.push({ srcStartSec: segStart, srcEndSec: srcDurationSec });
+  // Silêncio de FECHAMENTO (depois da última palavra) — mesmo corte, espelhado.
+  // Achado testando com vídeo real: um vídeo onde a pessoa para de falar mas a
+  // câmera continua gravando tinha 4.5s de silêncio puro no final, mantidos
+  // inteiros — quase tanto quanto todas as pausas do meio somadas.
+  const lastWord = words[words.length - 1];
+  const trailGap = srcDurationSec - lastWord.end;
+  const finalEnd = trailGap > PAUSE_GAP_THRESHOLD_SEC
+    ? clamp(lastWord.end + PAUSE_PAD_SEC, segStart, srcDurationSec)
+    : srcDurationSec;
+
+  segments.push({ srcStartSec: segStart, srcEndSec: finalEnd });
   return segments;
 };
 
