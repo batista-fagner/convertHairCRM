@@ -156,9 +156,30 @@ const buildBodyCaptionGroups = (words: EditPlanTranscriptWord[]) => {
   return groups.map((g) => ({ words: g.map(toWord) }));
 };
 
+// Se o corte de pausa está ativo, um zoom marcado pela IA por índice de
+// palavra pode atravessar um trecho que acabou de ser cortado (a IA escolhe
+// por CONTEÚDO, sem saber onde as pausas foram removidas). Sem isto, o
+// enquadramento "reseta" no meio do zoom quando o corte acontece — e pior,
+// o zoom pode encolher tanto no mapeamento pro tempo local que quebra o
+// cálculo de easing no preview/render (ver ZoomWrapper.jsx). Aparando o
+// zoom pra caber no MESMO trecho mantido do seu início, os dois problemas
+// somem — ele só existe dentro de um clipe contínuo de vídeo.
+const clipZoomToSegments = <T extends { srcStartSec: number; srcEndSec: number }>(
+  z: T,
+  segments: EditPlanBodySegment[] | undefined,
+): T | null => {
+  if (!segments || segments.length <= 1) return z;
+  const host = segments.find((s) => z.srcStartSec >= s.srcStartSec && z.srcStartSec < s.srcEndSec);
+  if (!host) return null; // início caiu numa pausa removida — não deveria acontecer, mas não quebra o render
+  const clippedEnd = Math.min(z.srcEndSec, host.srcEndSec);
+  if (clippedEnd <= z.srcStartSec) return null;
+  return { ...z, srcEndSec: clippedEnd };
+};
+
 const buildZooms = (
   words: EditPlanTranscriptWord[],
   draft: EditPlanDraft,
+  bodySegments?: EditPlanBodySegment[],
 ): EditPlanZoom[] => {
   const raw = draft.impactRanges
     .filter((r) => r.startWordIdx >= 0 && r.endWordIdx < words.length && r.startWordIdx <= r.endWordIdx)
@@ -182,7 +203,11 @@ const buildZooms = (
     }
   }
 
-  return merged.map((z) => ({
+  const clipped = merged
+    .map((z) => clipZoomToSegments(z, bodySegments))
+    .filter((z): z is (typeof merged)[number] => z !== null);
+
+  return clipped.map((z) => ({
     segment: 'body' as const,
     srcStartSec: z.srcStartSec,
     srcEndSec: z.srcEndSec,
@@ -353,6 +378,7 @@ export const buildEditPlan = ({
   const hook = buildHookSegment(draft, words, srcDurationSec);
 
   const bodyCaptionsEnabled = draft.bodyCaptionsEnabled !== false;
+  const bodySegments = draft.removePauses ? buildBodySegments(words, srcDurationSec) : undefined;
 
   return {
     version: 1,
@@ -377,7 +403,7 @@ export const buildEditPlan = ({
     body: {
       srcStartSec: 0,
       srcEndSec: srcDurationSec,
-      segments: draft.removePauses ? buildBodySegments(words, srcDurationSec) : undefined,
+      segments: bodySegments,
       captions: {
         enabled: bodyCaptionsEnabled,
         style: 'discreet_bottom',
@@ -386,7 +412,7 @@ export const buildEditPlan = ({
         groups: bodyCaptionsEnabled ? buildBodyCaptionGroups(words) : [],
       },
     },
-    zooms: buildZooms(words, draft),
+    zooms: buildZooms(words, draft, bodySegments),
     titleOverlay: {
       text: draft.titleOverlayText ?? '',
       tStartSec: 0.25,

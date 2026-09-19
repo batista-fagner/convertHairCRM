@@ -32,17 +32,29 @@ export const ZoomWrapper = ({ zooms, plan, timeline, segmentId, children }) => {
 
     // Entra, segura, volta. Uma rampa linear que corta seco no fim chama
     // atenção pro efeito em vez da fala.
-    const easeIn = Math.min(EASE_SEC, (end - start) / 2);
-    scale = interpolate(
-      nowSec,
-      [start, start + easeIn, end - easeIn, end],
-      [from, to, to, from],
-      {
-        extrapolateLeft: 'clamp',
-        extrapolateRight: 'clamp',
-        easing: Easing.inOut(Easing.cubic),
-      },
-    );
+    //
+    // Zoom curto (< 2×EASE_SEC) não cabe o platô do meio — os dois pontos de
+    // "sobe até aqui" e "desce a partir daqui" colidiriam no mesmo instante,
+    // e o interpolate() do Remotion EXIGE valores estritamente crescentes
+    // (rejeita duplicata e derruba o render inteiro). Isso ficou mais comum
+    // com o corte de pausa: um zoom que atravessa um trecho cortado encolhe
+    // no mapeamento pro tempo local. Zoom curto vira triângulo (sobe até o
+    // meio, desce) em vez de trapézio (sobe, segura, desce).
+    const dur = end - start;
+    const easeIn = Math.min(EASE_SEC, dur / 2);
+    const risePoint = start + easeIn;
+    const fallPoint = end - easeIn;
+
+    const inputRange = fallPoint > risePoint
+      ? [start, risePoint, fallPoint, end]
+      : [start, (start + end) / 2, end];
+    const outputRange = fallPoint > risePoint ? [from, to, to, from] : [from, to, from];
+
+    scale = interpolate(nowSec, inputRange, outputRange, {
+      extrapolateLeft: 'clamp',
+      extrapolateRight: 'clamp',
+      easing: Easing.inOut(Easing.cubic),
+    });
 
     if (z.focal) {
       originX = Number.isFinite(z.focal.x) ? z.focal.x : 0.5;
