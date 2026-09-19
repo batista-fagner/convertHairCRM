@@ -252,8 +252,8 @@ export class GreennService {
     // pega a bolha inteira). Sem o código no payload (não deveria acontecer,
     // mas por segurança), cai pro link de checkout como antes, numa mensagem só.
     const text = pixCode
-      ? `${greeting}vi que você gerou o Pix dos 5 fornecedores validados, mas o pagamento ainda não caiu 👀\n\nPra pagar, é só copiar o código Pix que mando na mensagem seguinte e colar no app do seu banco (Pix Copia e Cola).\n\nJá pagou e caiu aqui por engano? Me chama que eu confirmo pra você.`
-      : `${greeting}vi que você gerou o Pix dos 5 fornecedores validados, mas o pagamento ainda não caiu 👀\n\nSe ainda não pagou, finaliza antes que o Pix expire:\n${quiz?.checkoutUrl || ''}\n\nJá pagou e caiu aqui por engano? Me chama que eu confirmo pra você.`;
+      ? `${greeting}Os 5 fornecedores validados que vão aumentar seu faturamento (e te livrar de golpe) já estão garantidos — só falta confirmar o Pix pra liberar 👀\n\nO código vem na próxima mensagem, é só copiar e colar no seu banco.\n\nJá pagou? Me chama que eu confirmo.`
+      : `${greeting}Os 5 fornecedores validados que vão aumentar seu faturamento (e te livrar de golpe) já estão garantidos — só falta confirmar o Pix pra liberar 👀\n\nSe ainda não pagou, finaliza antes que o Pix expire:\n${quiz?.checkoutUrl || ''}\n\nJá pagou? Me chama que eu confirmo.`;
 
     let sent = await this.sendWhatsappText(data.phone, text);
     if (sent && pixCode) {
