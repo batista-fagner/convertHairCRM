@@ -261,7 +261,23 @@ export class GreennService {
     }
     if (sent) {
       this.logger.log(`Mensagem de Pix aguardando pagamento enviada para ${data.phone}`);
+      // Registra no histórico do CRM (a mensagem em si já saiu por fora do
+      // módulo SDR) — sem isso o cron de follow-up/cadência nunca considera
+      // este lead elegível: ele exige wa_last_message_at preenchido e a
+      // última entrada do aiContext com role 'assistant' pra contar o prazo
+      // até o próximo toque. Ver memória "greenn recovery msg not in CRM".
+      await this.recordAssistantMessage(data.phone, text);
     }
+  }
+
+  private async recordAssistantMessage(phone: string, text: string): Promise<void> {
+    const lead = await this.leadsService.findByPhoneSuffix(phone);
+    if (!lead) return;
+    const ctx = Array.isArray(lead.aiContext) ? lead.aiContext : [];
+    await this.leadsService.update(lead.id, {
+      aiContext: [...ctx, { role: 'assistant', content: text, timestamp: new Date().toISOString() }],
+      waLastMessageAt: new Date(),
+    });
   }
 
   /**
