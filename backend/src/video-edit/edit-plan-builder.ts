@@ -199,7 +199,15 @@ export const buildBodySegments = (
   if (words.length === 0) return [{ srcStartSec: 0, srcEndSec: srcDurationSec }];
 
   const segments: EditPlanBodySegment[] = [];
-  let segStart = 0;
+
+  // Silêncio de ABERTURA (antes da primeira palavra) — mesmo corte que
+  // qualquer pausa entre palavras. Faltava isto: um vídeo que começa com a
+  // pessoa se ajeitando/respirando antes de falar tinha esse trecho, o mais
+  // óbvio de todos, nunca cortado (achado testando com vídeo real).
+  const leadGap = words[0].start;
+  let segStart = leadGap > PAUSE_GAP_THRESHOLD_SEC
+    ? clamp(words[0].start - PAUSE_PAD_SEC, 0, words[0].start)
+    : 0;
 
   for (let i = 0; i < words.length - 1; i++) {
     const gap = words[i + 1].start - words[i].end;
