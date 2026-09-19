@@ -25,11 +25,6 @@ export class GreennController {
     if (!expected || secret !== expected) {
       throw new ForbiddenException();
     }
-    // TEMP DEBUG (2026-09-19): descobrir o campo do link de pagamento PIX no
-    // payload real — remover depois de achar o campo certo.
-    if (body?.sale?.status === 'waiting_payment') {
-      this.logger.warn(`[DEBUG payload waiting_payment] ${JSON.stringify(body)}`);
-    }
     // Nunca deixa o handler estourar — Greenn pode reagir a 5xx com retry
     // agressivo, e um erro nosso não pode virar spam de webhook.
     await this.greennService.processWebhook(body).catch((err: any) => {

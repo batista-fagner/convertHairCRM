@@ -21,6 +21,11 @@ interface GreennWebhookPayload {
     id?: number;
     status?: string;
     amount?: number;
+    // Código Pix copia-e-cola já gerado pra essa venda — a Greenn não manda
+    // no webhook a URL da página de pagamento (token/s_id são do checkout
+    // front-end), só esse código, então é o que dá pra reaproveitar sem
+    // fazer o lead preencher o checkout de novo.
+    qrcode?: string;
   };
   client?: {
     name?: string;
@@ -188,9 +193,15 @@ export class GreennService {
 
     const quiz = await this.getQuiz();
     const firstName = payload.client?.name?.trim().split(' ')[0] || '';
-    const checkoutUrl = quiz?.checkoutUrl || '';
+    const pixCode = payload.sale?.qrcode?.trim();
     const greeting = firstName ? `Oi, ${firstName}! ` : 'Oi! ';
-    const text = `${greeting}vi que você gerou o Pix dos 5 fornecedores validados, mas o pagamento ainda não caiu 👀\n\nSe ainda não pagou, finaliza antes que o Pix expire:\n${checkoutUrl}\n\nJá pagou e caiu aqui por engano? Me chama que eu confirmo pra você.`;
+    // Manda o código Pix copia-e-cola direto (em vez do link de checkout, que
+    // obrigaria preencher tudo de novo em vez de só pagar o Pix já gerado).
+    // Sem o código no payload (não deveria acontecer, mas por segurança),
+    // cai pro link de checkout como antes.
+    const text = pixCode
+      ? `${greeting}vi que você gerou o Pix dos 5 fornecedores validados, mas o pagamento ainda não caiu 👀\n\nPra pagar, é só copiar o código Pix abaixo e colar no app do seu banco (Pix Copia e Cola):\n\n${pixCode}\n\nJá pagou e caiu aqui por engano? Me chama que eu confirmo pra você.`
+      : `${greeting}vi que você gerou o Pix dos 5 fornecedores validados, mas o pagamento ainda não caiu 👀\n\nSe ainda não pagou, finaliza antes que o Pix expire:\n${quiz?.checkoutUrl || ''}\n\nJá pagou e caiu aqui por engano? Me chama que eu confirmo pra você.`;
 
     const sent = await this.sendWhatsappText(normalizedPhone, text);
     if (sent) {
