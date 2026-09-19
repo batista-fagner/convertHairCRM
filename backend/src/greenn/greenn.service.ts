@@ -145,7 +145,7 @@ export class GreennService {
     const firstName = payload.lead?.name?.trim().split(' ')[0] || '';
     const checkoutUrl = quiz?.checkoutUrl || '';
     const greeting = firstName ? `Oi, ${firstName}! ` : 'Oi! ';
-    const text = `${greeting}vi que você chegou a começar a garantir os 5 fornecedores validados, mas não finalizou 👀\n\nAinda dá tempo de concluir e já receber o acesso:\n${checkoutUrl}\n\nQualquer dúvida antes de fechar, me chama por aqui mesmo.`;
+    const text = `${greeting}Os 5 fornecedores validados que vão aumentar seu faturamento (e te livrar de golpe) estão te esperando — você chegou a começar, mas não finalizou 👀\n\nAinda dá tempo de concluir e já receber o acesso:\n${checkoutUrl}\n\nQualquer dúvida antes de fechar, me chama por aqui mesmo.`;
 
     const sent = await this.sendWhatsappText(normalizedPhone, text);
     if (sent) {
