@@ -195,15 +195,18 @@ export class GreennService {
     const firstName = payload.client?.name?.trim().split(' ')[0] || '';
     const pixCode = payload.sale?.qrcode?.trim();
     const greeting = firstName ? `Oi, ${firstName}! ` : 'Oi! ';
-    // Manda o código Pix copia-e-cola direto (em vez do link de checkout, que
-    // obrigaria preencher tudo de novo em vez de só pagar o Pix já gerado).
-    // Sem o código no payload (não deveria acontecer, mas por segurança),
-    // cai pro link de checkout como antes.
+    // Código Pix vai numa mensagem separada, sozinho — colado junto do texto
+    // o WhatsApp não deixa selecionar só o código pra copiar (segura-e-copia
+    // pega a bolha inteira). Sem o código no payload (não deveria acontecer,
+    // mas por segurança), cai pro link de checkout como antes, numa mensagem só.
     const text = pixCode
-      ? `${greeting}vi que você gerou o Pix dos 5 fornecedores validados, mas o pagamento ainda não caiu 👀\n\nPra pagar, é só copiar o código Pix abaixo e colar no app do seu banco (Pix Copia e Cola):\n\n${pixCode}\n\nJá pagou e caiu aqui por engano? Me chama que eu confirmo pra você.`
+      ? `${greeting}vi que você gerou o Pix dos 5 fornecedores validados, mas o pagamento ainda não caiu 👀\n\nPra pagar, é só copiar o código Pix que mando na mensagem seguinte e colar no app do seu banco (Pix Copia e Cola).\n\nJá pagou e caiu aqui por engano? Me chama que eu confirmo pra você.`
       : `${greeting}vi que você gerou o Pix dos 5 fornecedores validados, mas o pagamento ainda não caiu 👀\n\nSe ainda não pagou, finaliza antes que o Pix expire:\n${quiz?.checkoutUrl || ''}\n\nJá pagou e caiu aqui por engano? Me chama que eu confirmo pra você.`;
 
-    const sent = await this.sendWhatsappText(normalizedPhone, text);
+    let sent = await this.sendWhatsappText(normalizedPhone, text);
+    if (sent && pixCode) {
+      sent = await this.sendWhatsappText(normalizedPhone, pixCode);
+    }
     if (sent) {
       this.recentWaitingPaymentSends.set(normalizedPhone, Date.now());
       this.logger.log(`Mensagem de Pix aguardando pagamento enviada para ${normalizedPhone}`);
