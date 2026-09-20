@@ -100,22 +100,30 @@ export class GreennService {
     }
 
     const quiz = await this.getQuiz();
-    const pixelOverride =
-      quiz?.fbPixelId && quiz?.fbAccessToken ? { pixelId: quiz.fbPixelId, accessToken: quiz.fbAccessToken } : undefined;
 
-    await this.facebookService.sendExternalPurchaseEvent(
-      {
-        email: payload.client?.email,
-        phone: payload.client?.cellphone,
-        name: payload.client?.name,
-      },
-      payload.sale?.amount ?? 0,
-      `greenn-sale-${saleId}`,
-      undefined,
-      pixelOverride,
-    );
-
-    this.logger.log(`Purchase enviado ao Facebook — venda Greenn #${saleId}`);
+    // DESATIVADO em 2026-09-20: a Greenn passou a mandar o Purchase ela mesma
+    // (pixel nativo dela no checkout, configurado no dashboard dela pro
+    // mesmo pixel 4085030201797853) — mandar os dois duplicava a venda pro
+    // Meta (Ads Manager contando 2x). O pixel nativo da Greenn tem vantagem
+    // real sobre esse envio daqui: dispara no navegador de quem paga, então
+    // carrega fbc/fbp de verdade, o que a gente nunca tinha aqui (só
+    // email/telefone/nome, sem clique). Se precisar reativar (ex: a Greenn
+    // tirar o pixel dela do ar), é só descomentar o bloco abaixo.
+    //
+    // const pixelOverride =
+    //   quiz?.fbPixelId && quiz?.fbAccessToken ? { pixelId: quiz.fbPixelId, accessToken: quiz.fbAccessToken } : undefined;
+    // await this.facebookService.sendExternalPurchaseEvent(
+    //   {
+    //     email: payload.client?.email,
+    //     phone: payload.client?.cellphone,
+    //     name: payload.client?.name,
+    //   },
+    //   payload.sale?.amount ?? 0,
+    //   `greenn-sale-${saleId}`,
+    //   undefined,
+    //   pixelOverride,
+    // );
+    // this.logger.log(`Purchase enviado ao Facebook — venda Greenn #${saleId}`);
 
     if (payload.client?.cellphone) {
       const normalizedPhone = this.normalizePhone(payload.client.cellphone);
