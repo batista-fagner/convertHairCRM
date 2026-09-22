@@ -25,6 +25,13 @@ export class GreennController {
     if (!expected || secret !== expected) {
       throw new ForbiddenException();
     }
+    // TEMP DEBUG (2026-09-22): investigar por que utm_campaign do saleMetas
+    // não virou tag no Lead — precisa ver o payload bruto de sale/waiting_payment
+    // e sale/paid pra confirmar se saleMetas vem preenchido nesses eventos.
+    // Remover depois de achar a causa.
+    if (body?.type === 'sale') {
+      this.logger.warn(`[DEBUG payload sale/${body?.sale?.status}] ${JSON.stringify(body)}`);
+    }
     // Nunca deixa o handler estourar — Greenn pode reagir a 5xx com retry
     // agressivo, e um erro nosso não pode virar spam de webhook.
     await this.greennService.processWebhook(body).catch((err: any) => {
