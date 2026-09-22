@@ -28,6 +28,12 @@ interface GreennWebhookPayload {
     // front-end), só esse código, então é o que dá pra reaproveitar sem
     // fazer o lead preencher o checkout de novo.
     qrcode?: string;
+    // Parâmetros customizados capturados da URL do checkout (configurados em
+    // "Metas" no dashboard da Greenn) — é como a gente recebe utm_source/
+    // utm_medium/utm_campaign de volta, já que o webhook não repassa a query
+    // string original. Vem sempre nesse formato (visto em payload real,
+    // 2026-09-19): [{ meta_key: 'ch_id', meta_value: '143516' }, ...].
+    saleMetas?: { meta_key?: string; meta_value?: string }[];
   };
   client?: {
     name?: string;
@@ -48,6 +54,17 @@ interface GreennWebhookPayload {
 // redeploy/restart), suficiente pro volume atual; se crescer, migra pra uma
 // coluna/tabela.
 const RECOVERY_DEDUPE_WINDOW_MS = 6 * 60 * 60 * 1000; // 6h
+
+/** Lê utm_source/utm_medium/utm_campaign de saleMetas — devolve undefined pra
+ * cada chave ausente (upsertLead só grava o que vier preenchido). */
+function extractUtmFromSaleMetas(saleMetas?: { meta_key?: string; meta_value?: string }[]) {
+  const map = new Map((saleMetas || []).map((m) => [m.meta_key, m.meta_value]));
+  return {
+    utmSource: map.get('utm_source') || undefined,
+    utmMedium: map.get('utm_medium') || undefined,
+    utmCampaign: map.get('utm_campaign') || undefined,
+  };
+}
 
 @Injectable()
 export class GreennService {
@@ -133,6 +150,7 @@ export class GreennService {
         email: payload.client?.email,
         tag: TAG_COMPROU,
         kanbanStage: 'vendeu',
+        ...extractUtmFromSaleMetas(payload.sale?.saleMetas),
       });
       await this.sendWelcomeMessage(normalizedPhone, payload.client?.name);
     }
@@ -247,6 +265,7 @@ export class GreennService {
       email: payload.client?.email,
       tag: TAG_PIX_PENDENTE,
       kanbanStage: 'novo',
+      ...extractUtmFromSaleMetas(payload.sale?.saleMetas),
     });
 
     const jobData: PixPendingJobData = {
@@ -332,10 +351,20 @@ export class GreennService {
     email?: string;
     tag: string;
     kanbanStage: KanbanStage;
+    utmSource?: string;
+    utmMedium?: string;
+    utmCampaign?: string;
   }): Promise<void> {
     const { phone, tag, kanbanStage } = params;
     const name = params.name?.trim() || 'Cliente Greenn';
     const email = params.email?.trim() || undefined;
+    // Tag da campanha (ex: utm_campaign="disparo-grupo-22-09") — aplicada
+    // mesmo em lead JÁ existente, sem mexer na origem original dele (utmSource/
+    // utmMedium/utmCampaign do lead só são gravados na criação). É como um
+    // lead antigo do workshop que comprou por um disparo no grupo fica
+    // marcado como "veio desse disparo" sem perder o histórico de onde ele
+    // entrou de fato no CRM.
+    const campaignTag = params.utmCampaign?.trim() || undefined;
 
     try {
       const existing = await this.leadsService.findByPhoneSuffix(phone);
@@ -350,6 +379,7 @@ export class GreennService {
           tags = tags.filter((t) => t !== TAG_PIX_PENDENTE && t !== TAG_CARRINHO_ABANDONADO);
         }
         if (!tags.includes(tag)) tags = [...tags, tag];
+        if (campaignTag && !tags.includes(campaignTag)) tags = [...tags, campaignTag];
         if (JSON.stringify(tags) !== JSON.stringify(existing.tags || [])) patch.tags = tags;
         if (tag === TAG_COMPROU && existing.kanbanStage !== kanbanStage) patch.kanbanStage = kanbanStage;
         if (Object.keys(patch).length === 0) return;
@@ -364,6 +394,11 @@ export class GreennService {
         phone,
         email,
         status: 'novo',
+        // Só na criação — um lead que já existia (ex: veio antes do workshop)
+        // mantém a origem original, a Greenn não "rouba" a atribuição dele.
+        utmSource: params.utmSource,
+        utmMedium: params.utmMedium,
+        utmCampaign: params.utmCampaign,
         // Sem isso o lead não aparece em nenhuma raia do Kanban — findKanban
         // (leads.service.ts) filtra TODAS as raias por agentMode:'sdr', sem
         // fallback pra NULL (só kanbanStage tem fallback, na raia "novo").
@@ -376,7 +411,7 @@ export class GreennService {
         // qualificação da Sofia — evita ela puxar assunto de qualificação com
         // quem só está no meio de uma compra.
         aiPaused: true,
-        tags: [tag],
+        tags: campaignTag ? [tag, campaignTag] : [tag],
       });
       this.realtime.emitLeadCreated(created);
       this.logger.log(`Lead ${created.id} (${phone}) criado com tag "${tag}"`);
