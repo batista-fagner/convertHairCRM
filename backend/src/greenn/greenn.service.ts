@@ -28,13 +28,18 @@ interface GreennWebhookPayload {
     // front-end), só esse código, então é o que dá pra reaproveitar sem
     // fazer o lead preencher o checkout de novo.
     qrcode?: string;
-    // Parâmetros customizados capturados da URL do checkout (configurados em
-    // "Metas" no dashboard da Greenn) — é como a gente recebe utm_source/
-    // utm_medium/utm_campaign de volta, já que o webhook não repassa a query
-    // string original. Vem sempre nesse formato (visto em payload real,
-    // 2026-09-19): [{ meta_key: 'ch_id', meta_value: '143516' }, ...].
+    // Campos automáticos da Greenn (ch_id, fbclid, fbc, fbp, reuse_credit_card
+    // etc) — sempre nesse formato array. NÃO é onde utm_source/medium/campaign
+    // aparecem (ver productMetas abaixo) — bug real encontrado em 2026-09-22:
+    // a extração antiga procurava utm aqui e nunca achava nada.
     saleMetas?: { meta_key?: string; meta_value?: string }[];
   };
+  // As "Metas" cadastradas manualmente no dashboard da Greenn (Trackeamento →
+  // Metas) voltam AQUI, no nível raiz do payload — objeto simples chave/valor,
+  // não array, e não dentro de `sale`. Confirmado com payload real (venda
+  // Andressa oliveira, 2026-09-22): {"utm_source":"whatsapp_grupo",
+  // "utm_medium":"organic","utm_campaign":"disparo-base-22-09"}.
+  productMetas?: Record<string, string>;
   client?: {
     name?: string;
     email?: string;
@@ -55,14 +60,14 @@ interface GreennWebhookPayload {
 // coluna/tabela.
 const RECOVERY_DEDUPE_WINDOW_MS = 6 * 60 * 60 * 1000; // 6h
 
-/** Lê utm_source/utm_medium/utm_campaign de saleMetas — devolve undefined pra
- * cada chave ausente (upsertLead só grava o que vier preenchido). */
-function extractUtmFromSaleMetas(saleMetas?: { meta_key?: string; meta_value?: string }[]) {
-  const map = new Map((saleMetas || []).map((m) => [m.meta_key, m.meta_value]));
+/** Lê utm_source/utm_medium/utm_campaign de productMetas (nível raiz do
+ * payload, não dentro de `sale`) — devolve undefined pra cada chave ausente
+ * (upsertLead só grava o que vier preenchido). */
+function extractUtmFromProductMetas(productMetas?: Record<string, string>) {
   return {
-    utmSource: map.get('utm_source') || undefined,
-    utmMedium: map.get('utm_medium') || undefined,
-    utmCampaign: map.get('utm_campaign') || undefined,
+    utmSource: productMetas?.utm_source || undefined,
+    utmMedium: productMetas?.utm_medium || undefined,
+    utmCampaign: productMetas?.utm_campaign || undefined,
   };
 }
 
@@ -150,7 +155,7 @@ export class GreennService {
         email: payload.client?.email,
         tag: TAG_COMPROU,
         kanbanStage: 'vendeu',
-        ...extractUtmFromSaleMetas(payload.sale?.saleMetas),
+        ...extractUtmFromProductMetas(payload.productMetas),
       });
       await this.sendWelcomeMessage(normalizedPhone, payload.client?.name);
     }
@@ -265,7 +270,7 @@ export class GreennService {
       email: payload.client?.email,
       tag: TAG_PIX_PENDENTE,
       kanbanStage: 'novo',
-      ...extractUtmFromSaleMetas(payload.sale?.saleMetas),
+      ...extractUtmFromProductMetas(payload.productMetas),
     });
 
     const jobData: PixPendingJobData = {
