@@ -90,6 +90,17 @@ const NAV_GROUPS = [
   },
 ]
 
+// Menu da SDR (role='sdr', ver Login.jsx) — só o Kanban, onde ela move os
+// cards pras raias "Atendimento pelo SDR" / "Agendamentos" e pausa a IA.
+const SDR_NAV_GROUPS = [
+  {
+    label: 'Funil',
+    items: [
+      { icon: KanbanSquare, label: 'Kanban', path: '/kanban' },
+    ],
+  },
+]
+
 const PAGE_TITLES = {
   '/': 'Dashboard',
   '/campaigns': 'Campanhas',
@@ -179,9 +190,13 @@ export default function Layout() {
   const navigate = useNavigate()
   const { leadsHoje, smsUnread, igUnread } = useHeaderStats()
   const navBadges = { smsUnread, igUnread }
+  const role = sessionStorage.getItem('crm_role')
+  const isSdr = role === 'sdr'
+  const navGroups = isSdr ? SDR_NAV_GROUPS : NAV_GROUPS
 
   function handleLogout() {
     sessionStorage.removeItem('crm_auth')
+    sessionStorage.removeItem('crm_role')
     navigate('/login', { replace: true })
   }
 
@@ -222,7 +237,7 @@ export default function Layout() {
 
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto py-4 px-2 space-y-6">
-          {NAV_GROUPS.map((group) => (
+          {navGroups.map((group) => (
             <div key={group.label}>
               {!collapsed && (
                 <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest px-2 mb-1.5">
@@ -287,11 +302,11 @@ export default function Layout() {
           <div className="p-3 border-t border-slate-700/50">
             <div className="flex items-center gap-2.5 px-2 py-1.5">
               <div className="w-7 h-7 rounded-full bg-violet-500 flex items-center justify-center text-white text-xs font-bold shrink-0">
-                F
+                {isSdr ? 'S' : 'F'}
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-xs font-semibold text-white truncate">Fagner Batista</p>
-                <p className="text-[10px] text-slate-400 truncate">Admin</p>
+                <p className="text-xs font-semibold text-white truncate">{isSdr ? 'SDR' : 'Fagner Batista'}</p>
+                <p className="text-[10px] text-slate-400 truncate">{isSdr ? 'Atendimento' : 'Admin'}</p>
               </div>
               <button
                 onClick={handleLogout}

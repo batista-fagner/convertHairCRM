@@ -1,7 +1,8 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
 import { Lead, LeadClassification, KanbanStage, KANBAN_STAGES } from '../common/entities/lead.entity';
+import { KanbanCustomStage } from '../common/entities/kanban-custom-stage.entity';
 
 /** Valor de filtro usado pelo frontend pra pedir só os leads sem campanha atribuída (orgânicos). */
 export const ORPHAN_CAMPAIGN_FILTER = 'orfao';
@@ -16,6 +17,8 @@ export class LeadsService {
   constructor(
     @InjectRepository(Lead)
     private leadsRepo: Repository<Lead>,
+    @InjectRepository(KanbanCustomStage)
+    private kanbanCustomStageRepo: Repository<KanbanCustomStage>,
   ) {}
 
   async create(dto: Partial<Lead>): Promise<Lead> {
@@ -160,7 +163,7 @@ export class LeadsService {
    * Por raia, cada coluna carrega os seus mais recentes de forma independente e
    * uma raia movimentada (novo/qualificado) nunca "come" a cota das outras.
    */
-  async findKanban(campaign?: string): Promise<Record<KanbanStage, Lead[]>> {
+  async findKanban(campaign?: string): Promise<Record<string, Lead[]>> {
     const where: { agentMode: 'sdr'; utmCampaign?: any; kanbanStage?: any } = { agentMode: 'sdr' };
     if (campaign === ORPHAN_CAMPAIGN_FILTER) {
       where.utmCampaign = IsNull();
@@ -168,8 +171,14 @@ export class LeadsService {
       where.utmCampaign = campaign;
     }
 
+    // Raias fixas (deriveKanbanStage + operador) + raias que o usuário criou
+    // no próprio Kanban (ver getCustomStages) — as duas listas são unidas pra
+    // que o board volte com uma coluna vazia (não ausente) pra cada uma.
+    const customStages = await this.getCustomStages();
+    const allStages: string[] = [...KANBAN_STAGES, ...customStages.map((s) => s.stageKey)];
+
     const perStage = await Promise.all(
-      KANBAN_STAGES.map(async (stage) => {
+      allStages.map(async (stage) => {
         // 'novo' também recolhe quem está com kanban_stage nulo/vazio (base
         // antiga) — mesma regra do agrupamento anterior, que caía no board.novo.
         const stageWhere =
@@ -185,7 +194,53 @@ export class LeadsService {
       }),
     );
 
-    return Object.fromEntries(perStage) as Record<KanbanStage, Lead[]>;
+    return Object.fromEntries(perStage);
+  }
+
+  /** Raias criadas pelo usuário no Kanban, mais antigas primeiro (ordem de criação = ordem de exibição). */
+  async getCustomStages(): Promise<KanbanCustomStage[]> {
+    return this.kanbanCustomStageRepo.find({ order: { createdAt: 'ASC' } });
+  }
+
+  async createCustomStage(title: string): Promise<KanbanCustomStage> {
+    const trimmed = title.trim();
+    if (!trimmed) throw new ConflictException('Nome da raia não pode ser vazio');
+
+    const existingKeys = new Set<string>([...KANBAN_STAGES, ...(await this.getCustomStages()).map((s) => s.stageKey)]);
+    const base = trimmed
+      .normalize('NFD').replace(/[̀-ͯ]/g, '') // remove acentos
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)/g, '') || 'raia';
+    let stageKey = base;
+    let suffix = 2;
+    while (existingKeys.has(stageKey)) {
+      stageKey = `${base}-${suffix++}`;
+    }
+
+    const stage = this.kanbanCustomStageRepo.create({ stageKey, title: trimmed });
+    return this.kanbanCustomStageRepo.save(stage);
+  }
+
+  async renameCustomStage(id: string, title: string): Promise<KanbanCustomStage> {
+    const trimmed = title.trim();
+    if (!trimmed) throw new ConflictException('Nome da raia não pode ser vazio');
+    // stageKey nunca muda no rename — é o valor gravado em cada lead.kanbanStage,
+    // trocar o slug junto deixaria todo lead já nessa raia "órfão".
+    await this.kanbanCustomStageRepo.update(id, { title: trimmed });
+    const stage = await this.kanbanCustomStageRepo.findOne({ where: { id } });
+    if (!stage) throw new NotFoundException(`Raia ${id} não encontrada`);
+    return stage;
+  }
+
+  async deleteCustomStage(id: string): Promise<void> {
+    const stage = await this.kanbanCustomStageRepo.findOne({ where: { id } });
+    if (!stage) throw new NotFoundException(`Raia ${id} não encontrada`);
+    const leadsInStage = await this.leadsRepo.count({ where: { kanbanStage: stage.stageKey as KanbanStage } });
+    if (leadsInStage > 0) {
+      throw new ConflictException(`Mova os ${leadsInStage} lead(s) dessa raia antes de excluí-la.`);
+    }
+    await this.kanbanCustomStageRepo.delete(id);
   }
 
   /**
@@ -208,8 +263,10 @@ export class LeadsService {
     `);
   }
 
-  async moveKanban(id: string, kanbanStage: KanbanStage): Promise<Lead> {
-    return this.update(id, { kanbanStage, kanbanStageManual: true });
+  // string (não KanbanStage) porque o alvo pode ser uma raia customizada
+  // (ver createCustomStage) — o valor não faz parte do union fixo.
+  async moveKanban(id: string, kanbanStage: string): Promise<Lead> {
+    return this.update(id, { kanbanStage: kanbanStage as KanbanStage, kanbanStageManual: true });
   }
 
   async markAsConverted(id: string): Promise<Lead> {

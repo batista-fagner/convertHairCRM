@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 import Layout from './components/Layout'
 import Dashboard from './pages/Dashboard'
@@ -46,13 +46,25 @@ function RequireAuth({ children }) {
   return children
 }
 
+// Login da SDR só enxerga /kanban — qualquer outra rota (mesmo digitada direto
+// na URL) redireciona pra lá. Mesmo bypass de DEV do RequireAuth acima.
+function RequireRole({ children }) {
+  if (import.meta.env.DEV) return children
+  const location = useLocation()
+  const role = sessionStorage.getItem('crm_role')
+  if (role === 'sdr' && location.pathname !== '/kanban') {
+    return <Navigate to="/kanban" replace />
+  }
+  return children
+}
+
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/f/:id" element={<FormPublic />} />
-        <Route element={<RequireAuth><Layout /></RequireAuth>}>
+        <Route element={<RequireAuth><RequireRole><Layout /></RequireRole></RequireAuth>}>
           <Route index element={<Dashboard />} />
           <Route path="/campaigns" element={<Campaigns />} />
           <Route path="/leads" element={<Leads />} />

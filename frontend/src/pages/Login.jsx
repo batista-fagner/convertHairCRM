@@ -5,6 +5,13 @@ import { Eye, EyeOff } from 'lucide-react'
 const EXPECTED_USER = import.meta.env.VITE_APP_USER || 'admin'
 const EXPECTED_HASH = import.meta.env.VITE_APP_PASSWORD_HASH || ''
 
+// Login separado da SDR — só enxerga o Kanban (ver RoleGate em App.jsx e o
+// filtro de NAV_GROUPS em Layout.jsx). Mesma limitação do login do sócio: é
+// checado só no front, então não é uma trava real de API — só evita que ela
+// veja/mexa nas outras telas por engano.
+const SDR_USER = import.meta.env.VITE_SDR_USER || ''
+const SDR_HASH = import.meta.env.VITE_SDR_PASSWORD_HASH || ''
+
 async function sha256(text) {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('')
@@ -26,7 +33,12 @@ export default function Login() {
     const hash = await sha256(pass)
     if (user === EXPECTED_USER && hash === EXPECTED_HASH) {
       sessionStorage.setItem('crm_auth', hash)
+      sessionStorage.setItem('crm_role', 'socio')
       navigate('/', { replace: true })
+    } else if (SDR_USER && user === SDR_USER && hash === SDR_HASH) {
+      sessionStorage.setItem('crm_auth', hash)
+      sessionStorage.setItem('crm_role', 'sdr')
+      navigate('/kanban', { replace: true })
     } else {
       setError('Usuário ou senha incorretos.')
     }

@@ -4,7 +4,6 @@ import { LeadsService } from './leads.service';
 import { FacebookService } from '../facebook/facebook.service';
 import { QuizService } from '../quiz/quiz.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
-import { KanbanStage } from '../common/entities/lead.entity';
 
 @Controller('leads')
 export class LeadsController {
@@ -96,6 +95,13 @@ export class LeadsController {
     return withSpend;
   }
 
+  @Get('analytics/campaigns')
+  async getCampaignSpend(@Query('from') from?: string, @Query('to') to?: string) {
+    const range = from && to ? { since: from, until: to } : undefined;
+    const rows = await this.facebookService.getCampaignSpend(range);
+    return rows.sort((a, b) => b.spend - a.spend);
+  }
+
   @Get('analytics/hourly')
   async getHourlyDistribution(@Query('from') from?: string, @Query('to') to?: string) {
     return this.leadsService.getLeadsByHour(from, to);
@@ -117,10 +123,34 @@ export class LeadsController {
   }
 
   @Patch(':id/kanban')
-  async moveKanban(@Param('id') id: string, @Body() body: { kanbanStage: KanbanStage }) {
+  async moveKanban(@Param('id') id: string, @Body() body: { kanbanStage: string }) {
     const lead = await this.leadsService.moveKanban(id, body.kanbanStage);
     this.realtime.emitLeadUpdated(lead);
     return lead;
+  }
+
+  // Raias do Kanban criadas pelo usuário (ex.: "Atendimento pelo SDR",
+  // "Agendamentos") — complementam as fixas de KANBAN_STAGES. A IA nunca
+  // move um lead pra elas sozinha, só drag-and-drop manual no Kanban.
+  @Get('kanban-stages')
+  async getKanbanStages() {
+    return this.leadsService.getCustomStages();
+  }
+
+  @Post('kanban-stages')
+  async createKanbanStage(@Body() body: { title: string }) {
+    return this.leadsService.createCustomStage(body.title || '');
+  }
+
+  @Patch('kanban-stages/:id')
+  async renameKanbanStage(@Param('id') id: string, @Body() body: { title: string }) {
+    return this.leadsService.renameCustomStage(id, body.title || '');
+  }
+
+  @Delete('kanban-stages/:id')
+  async deleteKanbanStage(@Param('id') id: string) {
+    await this.leadsService.deleteCustomStage(id);
+    return { success: true };
   }
 
   @Patch(':id/ai-pause')

@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ScheduleModule } from '@nestjs/schedule';
 import { Lead } from './common/entities/lead.entity';
+import { KanbanCustomStage } from './common/entities/kanban-custom-stage.entity';
 import { Campaign } from './common/entities/campaign.entity';
 import { Form } from './common/entities/form.entity';
 import { InstagramAutomation } from './instagram-automation/instagram-automation.entity';
@@ -58,7 +59,7 @@ import { GreennModule } from './greenn/greenn.module';
         // Supabase exige SSL; `DATABASE_SSL=false` permite apontar para um
         // Postgres local descartável ao testar sem tocar em produção.
         ssl: config.get('DATABASE_SSL') === 'false' ? false : { rejectUnauthorized: false },
-        entities: [Lead, Campaign, Form, InstagramAutomation, IgConversation, IgMessage, IgCommentEvent, Setting, FollowupRule, FollowupVideo, SmsContact, SmsMessage, IgPost, Quiz, QuizSubmission, QuizProgress, Carousel, Prospect, AudioAsset, VideoEditJob],
+        entities: [Lead, KanbanCustomStage, Campaign, Form, InstagramAutomation, IgConversation, IgMessage, IgCommentEvent, Setting, FollowupRule, FollowupVideo, SmsContact, SmsMessage, IgPost, Quiz, QuizSubmission, QuizProgress, Carousel, Prospect, AudioAsset, VideoEditJob],
         synchronize: true,
         logging: false,
         timezone: 'Z',

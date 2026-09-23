@@ -1,7 +1,7 @@
-import { useState, useEffect, useRef, useCallback, useSyncExternalStore } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo, useSyncExternalStore } from 'react'
 import { DndContext, DragOverlay, useDraggable, useDroppable, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { io } from 'socket.io-client'
-import { Flame, Snowflake, UserPlus, XCircle, Phone, Mail, UserCheck, Loader2, X, MessageCircle, PauseCircle, Bot, MoreVertical, Pencil, Trash2, Play, Eye, EyeOff, Handshake, Trophy, HeadphonesIcon, Paperclip, Send, FileText, Video, StickyNote, ChevronDown, ChevronUp, Plus, CheckCircle2, Megaphone, Search, Layers, Mic, Square } from 'lucide-react'
+import { Flame, Snowflake, UserPlus, XCircle, Phone, Mail, UserCheck, Loader2, X, MessageCircle, PauseCircle, Bot, MoreVertical, Pencil, Trash2, Play, Eye, EyeOff, Handshake, Trophy, HeadphonesIcon, Paperclip, Send, FileText, Video, StickyNote, ChevronDown, ChevronUp, Plus, CheckCircle2, Megaphone, Search, Layers, Mic, Square, Check } from 'lucide-react'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3002/api'
 const SOCKET_URL = API.replace(/\/api\/?$/, '') || 'http://localhost:3002'
@@ -34,6 +34,32 @@ const COLUMN_STYLES = {
   teal:    'bg-teal-50/60 border-teal-200',
   emerald: 'bg-emerald-50/60 border-emerald-200',
   red:     'bg-red-50/60 border-red-200',
+  fuchsia: 'bg-fuchsia-50/60 border-fuchsia-200',
+  lime:    'bg-lime-50/60 border-lime-200',
+}
+
+// Estilo genérico pras raias que o usuário cria pelo botão "Nova raia" — cicla
+// por essa paleta na ordem de criação. Sem ícone por raia (não faz sentido pra
+// um título arbitrário), usa Layers pra todas.
+const CUSTOM_COLUMN_STYLES = [
+  { accent: 'fuchsia', dot: 'bg-fuchsia-400' },
+  { accent: 'lime',    dot: 'bg-lime-500' },
+  { accent: 'teal',    dot: 'bg-teal-400' },
+  { accent: 'indigo',  dot: 'bg-indigo-400' },
+  { accent: 'amber',   dot: 'bg-amber-400' },
+  { accent: 'cyan',    dot: 'bg-cyan-400' },
+]
+
+// Raias criadas pelo usuário (backend/src/common/entities/kanban-custom-stage.entity.ts)
+// — complementam COLUMNS. A IA nunca move um lead pra elas sozinha.
+function useCustomKanbanStages() {
+  const [stages, setStages] = useState([])
+  const [loading, setLoading] = useState(true)
+  const load = useCallback(() => {
+    return fetch(`${API}/leads/kanban-stages`).then((r) => r.json()).then(setStages).catch(() => {})
+  }, [])
+  useEffect(() => { load().finally(() => setLoading(false)) }, [load])
+  return { stages, loading, reload: load, setStages }
 }
 
 const AVATAR_COLORS = [
@@ -311,19 +337,53 @@ function LeadCard({ lead, onOpen, onEdit, onDelete }) {
   )
 }
 
-function Column({ column, leads, onOpen, onEdit, onDelete }) {
+function Column({ column, leads, onOpen, onEdit, onDelete, custom, onRenameStage, onDeleteStage }) {
   const { setNodeRef, isOver } = useDroppable({ id: column.id })
   const Icon = column.icon
+  const [renaming, setRenaming] = useState(false)
+  const [titleDraft, setTitleDraft] = useState(column.title)
+
+  const startRename = () => { setTitleDraft(column.title); setRenaming(true) }
+  const submitRename = () => {
+    const trimmed = titleDraft.trim()
+    setRenaming(false)
+    if (trimmed && trimmed !== column.title) onRenameStage(column, trimmed)
+  }
+
   return (
     <div className="flex flex-col w-72 shrink-0">
-      <div className="flex items-center justify-between px-2 mb-2">
-        <div className="flex items-center gap-2">
-          <span className={`w-2 h-2 rounded-full ${column.dot}`} />
-          <h3 className="font-semibold text-slate-700 text-sm flex items-center gap-1.5">
-            <Icon className="w-4 h-4 text-slate-400" /> {column.title}
-          </h3>
+      <div className="flex items-center justify-between px-2 mb-2 gap-1">
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          <span className={`w-2 h-2 rounded-full shrink-0 ${column.dot}`} />
+          {renaming ? (
+            <input
+              autoFocus
+              value={titleDraft}
+              onChange={(e) => setTitleDraft(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') submitRename(); if (e.key === 'Escape') setRenaming(false) }}
+              onBlur={submitRename}
+              maxLength={40}
+              className="min-w-0 flex-1 text-sm font-semibold text-slate-700 border border-violet-300 rounded px-1.5 py-0.5 focus:outline-none focus:ring-2 focus:ring-violet-300"
+            />
+          ) : (
+            <h3 className="font-semibold text-slate-700 text-sm flex items-center gap-1.5 min-w-0">
+              <Icon className="w-4 h-4 text-slate-400 shrink-0" /> <span className="truncate">{column.title}</span>
+            </h3>
+          )}
         </div>
-        <span className="text-xs font-medium text-slate-400 bg-slate-100 rounded-full px-2 py-0.5">{leads.length}</span>
+        <div className="flex items-center gap-1 shrink-0">
+          {custom && !renaming && (
+            <>
+              <button onClick={startRename} title="Renomear raia" className="p-1 text-slate-300 hover:text-violet-500 transition">
+                <Pencil className="w-3.5 h-3.5" />
+              </button>
+              <button onClick={() => onDeleteStage(column)} title="Excluir raia" className="p-1 text-slate-300 hover:text-red-500 transition">
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </>
+          )}
+          <span className="text-xs font-medium text-slate-400 bg-slate-100 rounded-full px-2 py-0.5">{leads.length}</span>
+        </div>
       </div>
       <div
         ref={setNodeRef}
@@ -335,6 +395,67 @@ function Column({ column, leads, onOpen, onEdit, onDelete }) {
         {leads.length === 0 && (
           <p className="text-[11px] text-slate-400 text-center py-6">Sem leads</p>
         )}
+      </div>
+    </div>
+  )
+}
+
+// Botão "+ Nova raia" no fim do board — cria uma raia manual (backend
+// KanbanCustomStage), que passa a existir pra todo mundo que abrir o Kanban.
+function NewStageColumn({ onCreate }) {
+  const [open, setOpen] = useState(false)
+  const [title, setTitle] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  const submit = async () => {
+    const trimmed = title.trim()
+    if (!trimmed) { setOpen(false); return }
+    setSaving(true)
+    setError('')
+    try {
+      await onCreate(trimmed)
+      setTitle('')
+      setOpen(false)
+    } catch (e) {
+      setError(e.message || 'Erro ao criar raia')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="flex items-center gap-2 w-72 shrink-0 h-11 self-start px-3 rounded-xl border border-dashed border-slate-300 text-slate-400 hover:border-violet-300 hover:text-violet-500 transition text-sm font-medium"
+      >
+        <Plus className="w-4 h-4" /> Nova raia
+      </button>
+    )
+  }
+
+  return (
+    <div className="flex flex-col w-72 shrink-0 gap-2 bg-white rounded-xl border border-slate-200 p-3 h-fit">
+      <input
+        autoFocus
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter') submit(); if (e.key === 'Escape') setOpen(false) }}
+        placeholder="Nome da raia"
+        maxLength={40}
+        className="text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-300"
+      />
+      {error && <p className="text-[11px] text-red-500">{error}</p>}
+      <div className="flex items-center gap-2">
+        <button
+          onClick={submit}
+          disabled={saving}
+          className="flex items-center gap-1.5 text-xs font-medium text-white bg-violet-600 hover:bg-violet-700 disabled:opacity-50 px-3 py-1.5 rounded-lg"
+        >
+          {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />} Criar
+        </button>
+        <button onClick={() => setOpen(false)} className="text-xs font-medium text-slate-500 hover:text-slate-700 px-2 py-1.5">Cancelar</button>
       </div>
     </div>
   )
@@ -1024,6 +1145,20 @@ function CreateLeadModal({ open, onClose, onCreate }) {
 
 export default function KanbanLeads() {
   const [board, setBoard] = useState({ novo: [], atendimento: [], 'nao-qualificado': [], qualificado: [], contactado: [], 'ja-fez-prompt': [], 'ja-apresentado': [], 'em-negociacao': [], vendeu: [], perdido: [] })
+  const { stages: customStages, reload: reloadCustomStages, setStages: setCustomStages } = useCustomKanbanStages()
+  const columns = useMemo(() => [
+    ...COLUMNS,
+    ...customStages.map((cs, i) => ({
+      id: cs.stageKey,
+      dbId: cs.id,
+      title: cs.title,
+      icon: Layers,
+      custom: true,
+      ...CUSTOM_COLUMN_STYLES[i % CUSTOM_COLUMN_STYLES.length],
+    })),
+  ], [customStages])
+  const columnsRef = useRef(columns)
+  columnsRef.current = columns
   const [loading, setLoading] = useState(true)
   const [connected, setConnected] = useState(false)
   const [activeId, setActiveId] = useState(null)
@@ -1055,8 +1190,8 @@ export default function KanbanLeads() {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }))
 
   const findLead = useCallback((id) => {
-    for (const col of COLUMNS) {
-      const f = boardRef.current[col.id].find((l) => l.id === id)
+    for (const col of columnsRef.current) {
+      const f = (boardRef.current[col.id] || []).find((l) => l.id === id)
       if (f) return f
     }
     return null
@@ -1066,7 +1201,7 @@ export default function KanbanLeads() {
   const placeLead = useCallback((lead, handoff = false) => {
     setBoard((prev) => {
       const next = {}
-      for (const col of COLUMNS) next[col.id] = prev[col.id].filter((l) => l.id !== lead.id)
+      for (const col of columnsRef.current) next[col.id] = (prev[col.id] || []).filter((l) => l.id !== lead.id)
       const target = lead.kanbanStage && next[lead.kanbanStage] ? lead.kanbanStage : 'novo'
       next[target] = [{ ...lead, _handoff: handoff }, ...next[target]]
       return next
@@ -1079,7 +1214,7 @@ export default function KanbanLeads() {
   const updateLeadInPlace = useCallback((updated) => {
     setBoard((prev) => {
       const next = {}
-      for (const col of COLUMNS) next[col.id] = prev[col.id].map((l) => (l.id === updated.id ? { ...l, ...updated } : l))
+      for (const col of columnsRef.current) next[col.id] = (prev[col.id] || []).map((l) => (l.id === updated.id ? { ...l, ...updated } : l))
       return next
     })
     if (selectedRef.current?.id === updated.id) setSelected((s) => ({ ...s, ...updated }))
@@ -1088,7 +1223,7 @@ export default function KanbanLeads() {
   const removeLead = useCallback((id) => {
     setBoard((prev) => {
       const next = {}
-      for (const col of COLUMNS) next[col.id] = prev[col.id].filter((l) => l.id !== id)
+      for (const col of columnsRef.current) next[col.id] = (prev[col.id] || []).filter((l) => l.id !== id)
       return next
     })
     if (selectedRef.current?.id === id) setSelected(null)
@@ -1150,6 +1285,57 @@ export default function KanbanLeads() {
       console.error('Erro ao salvar vendedor', e)
     }
   }, [updateLeadInPlace])
+
+  const createStage = useCallback(async (title) => {
+    const res = await fetch(`${API}/leads/kanban-stages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title }),
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => null)
+      throw new Error(err?.message || 'Erro ao criar raia')
+    }
+    const stage = await res.json()
+    setCustomStages((prev) => [...prev, stage])
+    setBoard((prev) => ({ ...prev, [stage.stageKey]: [] }))
+  }, [setCustomStages])
+
+  const renameStage = useCallback(async (column, title) => {
+    setCustomStages((prev) => prev.map((s) => (s.id === column.dbId ? { ...s, title } : s))) // otimista
+    try {
+      const res = await fetch(`${API}/leads/kanban-stages/${column.dbId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title }),
+      })
+      const fresh = await res.json()
+      setCustomStages((prev) => prev.map((s) => (s.id === column.dbId ? fresh : s)))
+    } catch (e) {
+      console.error('Erro ao renomear raia', e)
+      reloadCustomStages()
+    }
+  }, [setCustomStages, reloadCustomStages])
+
+  const deleteStage = useCallback(async (column) => {
+    if (!window.confirm(`Excluir a raia "${column.title}"? Ela precisa estar vazia.`)) return
+    try {
+      const res = await fetch(`${API}/leads/kanban-stages/${column.dbId}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const err = await res.json().catch(() => null)
+        alert(err?.message || 'Não foi possível excluir a raia.')
+        return
+      }
+      setCustomStages((prev) => prev.filter((s) => s.id !== column.dbId))
+      setBoard((prev) => {
+        const next = { ...prev }
+        delete next[column.id]
+        return next
+      })
+    } catch (e) {
+      console.error('Erro ao excluir raia', e)
+    }
+  }, [setCustomStages])
 
   const saveNotes = useCallback(async (leadId, notes) => {
     updateLeadInPlace({ id: leadId, notes })
@@ -1213,18 +1399,10 @@ export default function KanbanLeads() {
       .then((r) => r.json())
       .then((data) => {
         if (!active) return
-        setBoard({
-          novo: data.novo || [],
-          atendimento: data.atendimento || [],
-          'nao-qualificado': data['nao-qualificado'] || [],
-          qualificado: data.qualificado || [],
-          contactado: data.contactado || [],
-          'ja-fez-prompt': data['ja-fez-prompt'] || [],
-          'ja-apresentado': data['ja-apresentado'] || [],
-          'em-negociacao': data['em-negociacao'] || [],
-          vendeu: data.vendeu || [],
-          perdido: data.perdido || [],
-        })
+        // O backend já devolve uma entrada por raia (fixa + customizada, ver
+        // findKanban em leads.service.ts) — não precisa enumerar aqui, e assim
+        // uma raia criada depois funciona sem mudar este código.
+        setBoard(data || {})
       })
       .catch((e) => console.error('Erro ao carregar Kanban', e))
       .finally(() => active && setLoading(false))
@@ -1256,16 +1434,16 @@ export default function KanbanLeads() {
     const target = over.id
     let current = null
     let lead = null
-    for (const col of COLUMNS) {
-      const found = boardRef.current[col.id].find((l) => l.id === leadId)
+    for (const col of columnsRef.current) {
+      const found = (boardRef.current[col.id] || []).find((l) => l.id === leadId)
       if (found) { current = col.id; lead = found; break }
     }
     if (!lead || current === target) return
 
     setBoard((prev) => {
       const next = { ...prev }
-      next[current] = prev[current].filter((l) => l.id !== leadId)
-      next[target] = [{ ...lead, kanbanStage: target, _handoff: false }, ...prev[target]]
+      next[current] = (prev[current] || []).filter((l) => l.id !== leadId)
+      next[target] = [{ ...lead, kanbanStage: target, _handoff: false }, ...(prev[target] || [])]
       return next
     })
 
@@ -1295,7 +1473,7 @@ export default function KanbanLeads() {
     return false
   }
   const filteredBoard = searchNorm
-    ? Object.fromEntries(COLUMNS.map((col) => [col.id, board[col.id].filter(matchesSearch)]))
+    ? Object.fromEntries(columns.map((col) => [col.id, (board[col.id] || []).filter(matchesSearch)]))
     : board
 
   return (
@@ -1373,9 +1551,20 @@ export default function KanbanLeads() {
       ) : (
         <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
           <div className="flex gap-4 flex-1 overflow-x-auto pb-2">
-            {COLUMNS.map((col) => (
-              <Column key={col.id} column={col} leads={filteredBoard[col.id]} onOpen={openLead} onEdit={setEditing} onDelete={setDeleting} />
+            {columns.map((col) => (
+              <Column
+                key={col.id}
+                column={col}
+                leads={filteredBoard[col.id] || []}
+                onOpen={openLead}
+                onEdit={setEditing}
+                onDelete={setDeleting}
+                custom={col.custom}
+                onRenameStage={renameStage}
+                onDeleteStage={deleteStage}
+              />
             ))}
+            <NewStageColumn onCreate={createStage} />
           </div>
           <DragOverlay dropAnimation={null}>
             {activeLead ? <CardContent lead={activeLead} overlay /> : null}

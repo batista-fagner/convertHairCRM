@@ -125,6 +125,7 @@ VITE_WA_URL=https://chat.whatsapp.com/<link-do-grupo>
 3. `nao-qualificado` — IA determinou fora do perfil (stage=frio)
 4. `qualificado` — lead passou nos critérios (stage=quente), pronto para especialista (MQL marcado)
 5. `ja-fez-prompt`, `ja-apresentado`, `em-negociacao`, `vendeu`, `perdido` — raias do operador
+6. Raias **criadas pelo usuário** direto no Kanban (botão "Nova raia") — ver seção "Raias customizadas do Kanban" abaixo. A IA nunca move um lead pra nenhuma delas.
 
 **Fluxo de qualificação (5 perguntas):**
 1. O que a empresa vende (tipo de cabelo)
@@ -148,6 +149,35 @@ Quando qualificado → `stage=quente` + `handoff=true` → notificação ao oper
 **Desqualificação automática:** stage=frio → `aiPaused=true` (IA para de responder)
 
 **Extração de dados:** IA retorna `instagram` no JSON → salvo no lead, exibido na notificação ao operador
+
+---
+
+## 👩‍💼 Login da SDR (agendamentos por telefone)
+
+**O que é:** um segundo login (`sessionStorage.crm_role = 'sdr'`) pra uma SDR humana ligar pros leads e agendar call — sem envolver a Sofia (IA). Adicionado em 2026-09-23.
+
+**Como funciona:**
+- `frontend/src/pages/Login.jsx` — segundo par de credenciais via env (`VITE_SDR_USER` / `VITE_SDR_PASSWORD_HASH`, mesmo esquema SHA-256 client-side do login do sócio — **não é autenticação real de backend**, é o mesmo nível de proteção que já existia). Login como SDR grava `crm_role='sdr'` no `sessionStorage` e manda direto pro `/kanban`.
+- `frontend/src/App.jsx` (`RequireRole`) — com `crm_role='sdr'`, qualquer rota fora de `/kanban` redireciona de volta pra lá (mesmo digitando a URL direto).
+- `frontend/src/components/Layout.jsx` — menu lateral da SDR só mostra "Kanban" (array `SDR_NAV_GROUPS`); o sócio continua vendo o menu completo.
+- A SDR enxerga o **mesmo board** de leads que o sócio (não é uma view filtrada) — só o menu é mais curto.
+- Fluxo de trabalho sugerido: SDR liga pro lead → se agendar, arrasta o card pra uma raia tipo "Agendamentos"; enquanto está no meio da ligação/tentativa, usa uma raia tipo "Atendimento pelo SDR" (essas raias não existem prontas — o sócio cria pelo Kanban, ver seção abaixo). Se a Sofia (IA) ainda estiver ativa nesse lead, ela continua respondendo normalmente — a SDR precisa pausar manualmente (switch que já existe no card/modal do Kanban) antes de assumir a conversa.
+
+⚠️ **Limitação conhecida (mesma do login do sócio):** é só uma trava de UI. Nenhum endpoint do backend valida token/role — quem tiver a URL da API pode chamar qualquer rota direto. Não é um problema novo introduzido aqui, é a mesma superfície que o CRM já tinha.
+
+---
+
+## 🧩 Raias customizadas do Kanban
+
+**O que é:** qualquer raia além das fixas listadas acima pode ser criada, renomeada e excluída **pelo próprio usuário**, direto no Kanban — sem precisar de deploy. Adicionado em 2026-09-23 (ex.: as raias de trabalho da SDR).
+
+**Como funciona:**
+- `backend/src/common/entities/kanban-custom-stage.entity.ts` — tabela `kanban_custom_stages` (`id`, `stage_key`, `title`, `created_at`). `stage_key` é gerado (slug do título) na criação e **nunca muda** depois — mesmo que o título seja renomeado, senão todo lead que já está na raia ficaria com `kanban_stage` apontando pra uma chave inexistente.
+- `LeadsService.getCustomStages/createCustomStage/renameCustomStage/deleteCustomStage` (`leads.service.ts`) + rotas em `leads.controller.ts`: `GET/POST /leads/kanban-stages`, `PATCH/DELETE /leads/kanban-stages/:id`.
+- `LeadsService.findKanban()` une `KANBAN_STAGES` (fixas) com as raias customizadas antes de montar o board — uma raia nova aparece automaticamente pra quem abrir o Kanban, sem mexer em nenhum código.
+- Excluir uma raia é bloqueado (409) enquanto ela tiver leads dentro — precisa mover os leads pra outra raia antes.
+- Frontend: `frontend/src/pages/KanbanLeads.jsx` — botão "Nova raia" no fim do board; raias customizadas ganham ícone/cor genéricos (ciclam por `CUSTOM_COLUMN_STYLES`) e mostram lápis (renomear) e lixeira (excluir) no cabeçalho — as raias fixas não têm esses controles.
+- A IA (Sofia) nunca move um lead pra uma raia customizada — `deriveKanbanStage` (`sdr.service.ts`) só conhece as fixas. São raias 100% manuais (drag-and-drop).
 
 ---
 
@@ -308,6 +338,7 @@ acompanhar ao vivo.
 
 ## ⚠️ Pendências
 
+- [ ] **Configurar `VITE_SDR_USER`/`VITE_SDR_PASSWORD_HASH` no Vercel do frontend do CRM** — código já pronto (ver seção "Login da SDR" acima), mas sem essas env vars a SDR não consegue logar em produção. Credenciais geradas nesta sessão: usuário `sdr`, hash em posse do sócio (repassar a senha à SDR por fora, não fica em texto no repositório).
 - [ ] Configurar instância uazapi separada do SDR (`SDR_UAZAPI_TOKEN`, `SDR_UAZAPI_BASE_URL`)
 - [ ] Preencher `SDR_OPERATOR_PHONE` (número do sócio para notificações)
 - [ ] Definir prompt final da Sofia em Settings (baseado no padrão fornecido)
@@ -321,4 +352,4 @@ acompanhar ao vivo.
 
 ---
 
-**Última atualização:** 2026-08-23
+**Última atualização:** 2026-09-23
