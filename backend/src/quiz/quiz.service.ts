@@ -101,6 +101,9 @@ interface ProgressDto {
   questionIndex: number;
   questionId?: string;
   optionId?: string;
+  // Preenchidos pelo controller a partir do request — nunca vêm do body.
+  clientIp?: string;
+  userAgent?: string;
 }
 
 interface SubmitDto {
@@ -242,6 +245,11 @@ export class QuizService {
     if (dto.questionIndex > progress.furthestQuestionIndex) {
       progress.furthestQuestionIndex = dto.questionIndex;
     }
+
+    // Sobrescreve a cada ping (não só na criação) — mais barato que checar se
+    // já tinha valor, e serve pra detectar se IP/UA mudou no meio da sessão.
+    if (dto.clientIp) progress.ipAddress = dto.clientIp;
+    if (dto.userAgent) progress.userAgent = dto.userAgent;
 
     // Clicou em "Continuar" na apresentação (dispara sendProgress(0) sem
     // questionId, ver Quiz.tsx) OU já respondeu P1+ (que implica ter clicado)

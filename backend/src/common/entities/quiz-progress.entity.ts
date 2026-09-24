@@ -46,6 +46,16 @@ export class QuizProgress {
   @Column({ name: 'completed', type: 'boolean', default: false })
   completed: boolean;
 
+  // Capturados a cada ping (não só na criação) — permitem, depois, filtrar
+  // tráfego automatizado do funil (crawler de revisão de anúncio da Meta,
+  // scanners etc.) por padrão de IP/UA. Nullable: sessões antigas (antes
+  // desse campo existir) e chamadas sem req (nenhuma hoje) ficam sem valor.
+  @Column({ name: 'ip_address', type: 'varchar', nullable: true })
+  ipAddress?: string | null;
+
+  @Column({ name: 'user_agent', type: 'varchar', nullable: true })
+  userAgent?: string | null;
+
   @CreateDateColumn({ name: 'started_at', type: 'timestamptz' })
   startedAt: Date;
 

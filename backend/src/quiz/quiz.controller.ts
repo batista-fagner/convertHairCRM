@@ -81,7 +81,9 @@ export class QuizController {
   }
 
   @Post(':slug/progress')
-  trackProgress(@Param('slug') slug: string, @Body() dto: any) {
-    return this.quizService.trackProgress(slug, dto);
+  trackProgress(@Param('slug') slug: string, @Body() dto: any, @Req() req: Request) {
+    const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || '';
+    const userAgent = req.headers['user-agent'] as string | undefined;
+    return this.quizService.trackProgress(slug, { ...dto, clientIp, userAgent });
   }
 }
