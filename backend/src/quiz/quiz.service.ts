@@ -26,6 +26,58 @@ const MAX_QUESTIONS = 7;
 const MAX_IMAGE_SIZE_MB = 10;
 const ALLOWED_IMAGE_MIMETYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
+// As datas do filtro do funil ('YYYY-MM-DD') são dias no fuso de Brasília — é
+// onde o operador do CRM está, e é o que ele espera ver ao escolher "hoje".
+// Agrupar/cortar em UTC jogaria toda sessão da noite pro dia seguinte. O Brasil
+// não tem mais horário de verão desde 2019, então o offset fixo é seguro.
+const BR_UTC_OFFSET = '-03:00';
+const BR_TIMEZONE = 'America/Sao_Paulo';
+const MAX_DAILY_POINTS = 90;
+
+/** 'YYYY-MM-DD' do dia em Brasília (en-CA formata justamente nessa ordem). */
+function brDayKey(date: Date): string {
+  return date.toLocaleDateString('en-CA', { timeZone: BR_TIMEZONE });
+}
+
+/**
+ * Série diária do gráfico de evolução. Preenche os dias sem nenhuma sessão com
+ * zero — sem isso o gráfico "pula" o dia vazio e a linha mente sobre o ritmo.
+ * Sem janela definida ("Todo o período"), usa o intervalo real dos dados,
+ * limitado aos últimos MAX_DAILY_POINTS dias pra não devolver série infinita.
+ */
+function buildDailySeries(
+  sessions: QuizProgress[],
+  windowStart: Date | null,
+  windowEnd: Date | null,
+): { date: string; started: number; completed: number }[] {
+  if (!sessions.length) return [];
+
+  const counts = new Map<string, { started: number; completed: number }>();
+  for (const s of sessions) {
+    const key = brDayKey(s.startedAt);
+    const entry = counts.get(key) || { started: 0, completed: 0 };
+    entry.started += 1;
+    if (s.completed) entry.completed += 1;
+    counts.set(key, entry);
+  }
+
+  const times = sessions.map((s) => s.startedAt.getTime());
+  const firstKey = brDayKey(new Date(windowStart ? windowStart.getTime() : Math.min(...times)));
+  const lastKey = brDayKey(new Date(windowEnd ? windowEnd.getTime() : Math.max(...times)));
+
+  // Itera por dia-calendário de Brasília (meio-dia como âncora, longe de
+  // qualquer borda de fuso) em vez de somar 24h ao horário da 1ª sessão —
+  // assim o passo nunca "pula" nem corta o último dia por causa da hora.
+  const series: { date: string; started: number; completed: number }[] = [];
+  const cursor = new Date(`${firstKey}T12:00:00${BR_UTC_OFFSET}`);
+  for (let key = firstKey; key <= lastKey && series.length <= MAX_DAILY_POINTS; ) {
+    series.push({ date: key, ...(counts.get(key) || { started: 0, completed: 0 }) });
+    cursor.setDate(cursor.getDate() + 1);
+    key = brDayKey(cursor);
+  }
+  return series.slice(-MAX_DAILY_POINTS);
+}
+
 // Tipo mínimo do arquivo que o FileInterceptor entrega (buffer em memória) —
 // @types/multer não está instalado no projeto, mesmo padrão do ig-posts.service.ts.
 export interface UploadedImageFile {
@@ -191,6 +243,15 @@ export class QuizService {
       progress.furthestQuestionIndex = dto.questionIndex;
     }
 
+    // Clicou em "Continuar" na apresentação (dispara sendProgress(0) sem
+    // questionId, ver Quiz.tsx) OU já respondeu P1+ (que implica ter clicado)
+    // — de qualquer forma, questionIndex >= 0 só chega depois desse clique.
+    // Campo à parte de furthestQuestionIndex de propósito: esse continua
+    // significando só "respondeu até aqui", nunca "só clicou".
+    if (dto.questionIndex >= 0) {
+      progress.clickedContinue = true;
+    }
+
     if (dto.questionIndex >= 0 && dto.questionId && dto.optionId) {
       const question = quiz.questions.find((q) => q.id === dto.questionId);
       const option = question?.options.find((o) => o.id === dto.optionId);
@@ -210,24 +271,70 @@ export class QuizService {
    * Funil de abandono do quiz — usado pela tela de analytics do CRM. Conta,
    * por índice de pergunta, quantas sessões chegaram ATÉ ALI (inclusive as
    * que foram além), mais quantas completaram de verdade.
+   *
+   * O primeiro degrau (questionIndex -1, "Abriu o quiz") é sempre igual a
+   * totalStarted — trivialmente 100% — de propósito: ele existe só pra dar
+   * uma base visual de 100% ao funil. O segundo (questionIndex -0.5, "Clicou
+   * pra avançar") é o clique de verdade no botão "Continuar" da apresentação
+   * — índice fracionário de propósito, só pra ficar entre -1 e 0 sem colidir
+   * com nenhum índice real de pergunta. É a queda entre esses dois que
+   * revela quem abandonou na tela de apresentação/intro sem nem clicar.
    */
-  async getFunnel(quizId: string): Promise<{
+  async getFunnel(
+    quizId: string,
+    from?: string,
+    to?: string,
+  ): Promise<{
     totalStarted: number;
     totalCompleted: number;
+    previous: { totalStarted: number; totalCompleted: number } | null;
     steps: { questionIndex: number; question: string; reached: number }[];
+    daily: { date: string; started: number; completed: number }[];
   }> {
     const quiz = await this.findById(quizId);
-    const sessions = await this.progressRepo.find({ where: { quizId } });
+    // Só as colunas que o funil usa — `answers` é jsonb e não entra em nada
+    // aqui, não faz sentido trazer a conversa inteira de cada sessão.
+    const sessions = await this.progressRepo.find({
+      where: { quizId },
+      select: ['furthestQuestionIndex', 'clickedContinue', 'completed', 'startedAt'],
+    });
 
-    const steps = quiz.questions.map((q, idx) => ({
-      questionIndex: idx,
-      question: q.question,
-      reached: sessions.filter((s) => s.furthestQuestionIndex >= idx).length,
-    }));
+    const windowStart = from ? new Date(`${from}T00:00:00${BR_UTC_OFFSET}`) : null;
+    const windowEnd = to ? new Date(`${to}T23:59:59.999${BR_UTC_OFFSET}`) : null;
+    const inWindow = (s: QuizProgress) =>
+      (!windowStart || s.startedAt >= windowStart) && (!windowEnd || s.startedAt <= windowEnd);
+    const current = sessions.filter(inWindow);
+    const totalStarted = current.length;
+
+    // Janela anterior, do mesmo tamanho e imediatamente antes — usada só pros
+    // comparativos "vs. período anterior" na tela. "Todo o período" (sem
+    // janela) não tem anterior nenhum, daí o null.
+    let previous: { totalStarted: number; totalCompleted: number } | null = null;
+    if (windowStart && windowEnd) {
+      const prevEnd = new Date(windowStart.getTime() - 1);
+      const prevStart = new Date(prevEnd.getTime() - (windowEnd.getTime() - windowStart.getTime()));
+      const prevSessions = sessions.filter((s) => s.startedAt >= prevStart && s.startedAt <= prevEnd);
+      previous = {
+        totalStarted: prevSessions.length,
+        totalCompleted: prevSessions.filter((s) => s.completed).length,
+      };
+    }
+
+    const steps = [
+      { questionIndex: -1, question: 'Abriu o quiz', reached: totalStarted },
+      { questionIndex: -0.5, question: 'Clicou pra avançar', reached: current.filter((s) => s.clickedContinue).length },
+      ...quiz.questions.map((q, idx) => ({
+        questionIndex: idx,
+        question: q.question,
+        reached: current.filter((s) => s.furthestQuestionIndex >= idx).length,
+      })),
+    ];
 
     return {
-      totalStarted: sessions.length,
-      totalCompleted: sessions.filter((s) => s.completed).length,
+      totalStarted,
+      totalCompleted: current.filter((s) => s.completed).length,
+      previous,
+      daily: buildDailySeries(current, windowStart, windowEnd),
       steps,
     };
   }

@@ -1,7 +1,12 @@
-import { useState, useEffect, useRef, Fragment } from 'react'
+import { useState, useEffect, useRef, useMemo, Fragment } from 'react'
+import { DayPicker } from 'react-day-picker'
+import { ptBR } from 'react-day-picker/locale'
+import 'react-day-picker/style.css'
 import {
   ListChecks, Plus, Trash2, ChevronUp, ChevronDown, Save, Eye,
   Copy, CheckCircle2, ExternalLink, Loader2, Image as ImageIcon, Zap, UploadCloud,
+  X, Users, BarChart3, CalendarRange, MousePointerClick, DoorOpen, Flag,
+  TrendingUp, TrendingDown, ArrowRight,
 } from 'lucide-react'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3002/api'
@@ -188,81 +193,496 @@ function fmtDate(iso) {
 // UTM completo pra saber de qual campanha/conjunto/anúncio cada resposta veio.
 // Diferente da fila do TrackingService (Redis, expira em 30min e só vira Lead
 // se a pessoa entrar no grupo), isso fica pra sempre desde o momento do submit.
-// Funil de abandono — 1 barra por pergunta (quantas sessões chegaram até
-// ali, incluindo quem foi além) + 1 barra final de quem completou de
-// verdade. Escala sequencial de magnitude: um hue só (violeta, a cor de
-// destaque do resto da tela), do mais escuro (mais gente) ao mais claro —
-// nunca cores diferentes por barra, isso seria categórico, não sequencial.
-function FunnelModal({ quiz, funnel, loading, onClose }) {
+// ─────────────────────────── Funil do quiz ───────────────────────────
+// Etapas na ordem: "Abriu o quiz" (base 100%, dispara sozinho ao carregar a
+// página) → "Clicou pra avançar" (clique real no botão da apresentação, a
+// métrica de conexão) → 1 linha por pergunta (quem chegou até ali, incluindo
+// quem foi além) → "Completou o quiz". Todas vêm prontas do getFunnel no
+// backend, que também devolve o período anterior (pros comparativos) e a
+// série diária (pro gráfico de evolução).
+
+/** 'YYYY-MM-DD' no fuso do navegador — o backend interpreta como dia de Brasília. */
+function funnelDayKey(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+function daysAgo(n) {
+  const d = new Date()
+  d.setDate(d.getDate() - n)
+  return d
+}
+
+const FUNNEL_PRESETS = [
+  { id: 'hoje', label: 'Hoje', range: () => ({ from: funnelDayKey(new Date()), to: funnelDayKey(new Date()) }) },
+  { id: '7d', label: 'Últimos 7 dias', range: () => ({ from: funnelDayKey(daysAgo(6)), to: funnelDayKey(new Date()) }) },
+  { id: '30d', label: 'Últimos 30 dias', range: () => ({ from: funnelDayKey(daysAgo(29)), to: funnelDayKey(new Date()) }) },
+  { id: 'tudo', label: 'Todo o período', range: () => ({ from: null, to: null }) },
+]
+
+function fmtDayBr(key) {
+  if (!key) return ''
+  const [y, m, d] = key.split('-')
+  return `${d}/${m}/${y}`
+}
+
+function fmtDayShort(key) {
+  if (!key) return ''
+  const [, m, d] = key.split('-')
+  return `${d}/${m}`
+}
+
+/**
+ * Variação vs. período anterior. Retorna null quando não dá pra comparar — sem
+ * período anterior, ou com base zero (dividir por zero viraria ∞/"+100%" e
+ * passaria uma precisão que o dado não tem).
+ */
+function funnelDelta(current, previous) {
+  if (previous === null || previous === undefined || previous === 0) return null
+  const diff = ((current - previous) / previous) * 100
+  if (Math.abs(diff) < 0.5) return { pct: 0, up: true, unit: '%' }
+  return { pct: Math.round(Math.abs(diff)), up: diff > 0, unit: '%' }
+}
+
+/**
+ * Variação de uma TAXA — em pontos percentuais, não em porcentagem relativa.
+ * 3% virando 20% é "+17 p.p.", não "+567%": aplicar variação relativa sobre um
+ * número que já é percentual dá um número enorme que não quer dizer nada.
+ */
+function funnelRateDelta(current, previous) {
+  if (previous === null || previous === undefined) return null
+  const diff = current - previous
+  if (Math.abs(diff) < 1) return null
+  return { pct: Math.abs(Math.round(diff)), up: diff > 0, unit: ' p.p.' }
+}
+
+function DeltaLabel({ delta, suffix = 'vs. período anterior' }) {
+  if (!delta) return <p className="text-xs text-slate-400 mt-1.5">{suffix}</p>
+  const Icon = delta.up ? TrendingUp : TrendingDown
+  return (
+    <p className="text-xs mt-1.5 flex items-center gap-1 flex-wrap">
+      <span className={`flex items-center gap-0.5 font-semibold ${delta.up ? 'text-emerald-600' : 'text-red-500'}`}>
+        <Icon className="w-3.5 h-3.5" />
+        {delta.up ? '+' : '-'}{delta.pct}{delta.unit}
+      </span>
+      <span className="text-slate-400">{suffix}</span>
+    </p>
+  )
+}
+
+function FunnelStatCard({ icon: Icon, iconClass, label, value, valueSuffix, delta }) {
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 p-4 flex-1 min-w-[200px]">
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-sm text-slate-500">{label}</p>
+        <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${iconClass}`}>
+          <Icon className="w-4 h-4" />
+        </div>
+      </div>
+      <p className="text-3xl font-bold text-slate-800 mt-1 tabular-nums">
+        {value}
+        {valueSuffix && <span className="text-xl">{valueSuffix}</span>}
+      </p>
+      <DeltaLabel delta={delta} />
+    </div>
+  )
+}
+
+// Atalhos de período + calendário pra intervalo customizado. Mesmo padrão do
+// DateRangePicker do Analytics (DayPicker em popover, fecha ao clicar fora).
+function FunnelPeriodPicker({ range, presetId, onChange }) {
+  const [open, setOpen] = useState(false)
+  const [draft, setDraft] = useState(undefined)
+  const containerRef = useRef(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onClickOutside = (e) => {
+      if (containerRef.current && !containerRef.current.contains(e.target)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onClickOutside)
+    return () => document.removeEventListener('mousedown', onClickOutside)
+  }, [open])
+
+  const label = range.from && range.to
+    ? `${fmtDayBr(range.from)}  →  ${fmtDayBr(range.to)}`
+    : 'Todo o período'
+
+  const applyDraft = () => {
+    if (!draft?.from) return
+    const to = draft.to || draft.from
+    onChange({ from: funnelDayKey(draft.from), to: funnelDayKey(to) }, null)
+    setOpen(false)
+  }
+
+  return (
+    <div className="flex items-center gap-2 flex-wrap">
+      <div className="relative" ref={containerRef}>
+        <button
+          onClick={() => setOpen(v => !v)}
+          className={`flex items-center gap-2 border rounded-lg px-3 py-2 text-sm transition ${
+            open ? 'border-violet-400 ring-2 ring-violet-100' : 'border-slate-200 hover:border-slate-300'
+          }`}
+        >
+          <CalendarRange className="w-4 h-4 text-slate-400" />
+          <span className="text-slate-700 font-medium tabular-nums">{label}</span>
+          <ChevronDown className="w-4 h-4 text-slate-400" />
+        </button>
+
+        {open && (
+          <div className="absolute left-0 top-full mt-2 z-20 bg-white rounded-xl border border-slate-200 shadow-xl p-3">
+            <DayPicker
+              mode="range"
+              locale={ptBR}
+              selected={draft}
+              onSelect={setDraft}
+              disabled={{ after: new Date() }}
+              defaultMonth={new Date()}
+              classNames={{
+                today: 'font-bold text-violet-600',
+                selected: '!bg-violet-600 !text-white',
+                range_middle: '!bg-violet-100 !text-violet-800',
+                range_start: '!bg-violet-600 !text-white',
+                range_end: '!bg-violet-600 !text-white',
+                chevron: 'fill-violet-600',
+              }}
+            />
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 mt-1">
+              <button onClick={() => setOpen(false)} className="px-3 py-1.5 rounded-md text-xs font-medium text-slate-500 hover:bg-slate-100 transition">
+                Cancelar
+              </button>
+              <button
+                onClick={applyDraft}
+                disabled={!draft?.from}
+                className="px-3 py-1.5 rounded-md text-xs font-semibold text-white bg-violet-600 hover:bg-violet-700 disabled:bg-slate-200 transition"
+              >
+                Aplicar
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {FUNNEL_PRESETS.map(preset => (
+        <button
+          key={preset.id}
+          onClick={() => onChange(preset.range(), preset.id)}
+          className={`px-4 py-2 rounded-lg text-sm font-medium border transition ${
+            presetId === preset.id
+              ? 'border-violet-300 bg-violet-50 text-violet-700'
+              : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+          }`}
+        >
+          {preset.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+const CHART_METRICS = [
+  { id: 'completed', label: 'Conclusões por dia', desc: 'Quantidade de pessoas que completaram o quiz por dia' },
+  { id: 'started', label: 'Sessões iniciadas por dia', desc: 'Quantidade de pessoas que abriram o quiz por dia' },
+]
+
+// Gráfico de evolução — área + linha num hue só (violeta), escala começando em
+// zero e rótulo de eixo em todo valor que a linha alcança. Sem biblioteca de
+// gráfico no projeto (ver HourlyChart no Analytics, mesmo padrão manual).
+function FunnelDailyChart({ daily }) {
+  const [metricId, setMetricId] = useState('completed')
+  const [hovered, setHovered] = useState(null)
+  const metric = CHART_METRICS.find(m => m.id === metricId)
+
+  const points = (daily || []).map(d => ({ date: d.date, value: d[metricId] ?? 0 }))
+  const max = Math.max(1, ...points.map(p => p.value))
+  const W = 760, H = 180, padL = 36, padR = 12, padT = 12, padB = 26
+  const innerW = W - padL - padR
+  const innerH = H - padT - padB
+  const xAt = (i) => (points.length <= 1 ? padL + innerW / 2 : padL + (i / (points.length - 1)) * innerW)
+  const yAt = (v) => padT + innerH - (v / max) * innerH
+
+  // Até 7 rótulos no eixo X — mais que isso vira uma parede de datas ilegível.
+  const labelStep = Math.max(1, Math.ceil(points.length / 7))
+  const ticks = [0, Math.round(max / 2), max].filter((v, i, arr) => arr.indexOf(v) === i)
+
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 p-5">
+      <div className="flex items-start justify-between gap-3 flex-wrap mb-4">
+        <div>
+          <h4 className="text-sm font-semibold text-slate-800">Evolução de conclusões</h4>
+          <p className="text-xs text-slate-400 mt-0.5">{metric.desc}</p>
+        </div>
+        <label className="flex items-center gap-2 text-xs text-slate-500">
+          Exibir:
+          <select
+            value={metricId}
+            onChange={e => setMetricId(e.target.value)}
+            className="border border-slate-200 rounded-lg px-2.5 py-1.5 text-sm text-slate-700 bg-white outline-none focus:ring-2 focus:ring-violet-200"
+          >
+            {CHART_METRICS.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
+          </select>
+        </label>
+      </div>
+
+      {points.length === 0 ? (
+        <p className="text-sm text-slate-400 text-center py-10">Sem dados no período selecionado.</p>
+      ) : (
+        <div className="relative">
+          <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: H }} role="img" aria-label={metric.desc}>
+            {ticks.map(t => (
+              <g key={t}>
+                <line x1={padL} y1={yAt(t)} x2={W - padR} y2={yAt(t)} stroke="#f1f5f9" strokeWidth="1" />
+                <text x={padL - 8} y={yAt(t) + 4} textAnchor="end" fontSize="11" fill="#94a3b8">{t}</text>
+              </g>
+            ))}
+
+            <path
+              d={`M ${xAt(0)},${padT + innerH} ${points.map((p, i) => `L ${xAt(i)},${yAt(p.value)}`).join(' ')} L ${xAt(points.length - 1)},${padT + innerH} Z`}
+              fill="#7c3aed"
+              fillOpacity="0.12"
+            />
+            <polyline
+              points={points.map((p, i) => `${xAt(i)},${yAt(p.value)}`).join(' ')}
+              fill="none"
+              stroke="#7c3aed"
+              strokeWidth="2"
+              strokeLinejoin="round"
+              strokeLinecap="round"
+            />
+
+            {points.map((p, i) => (
+              <g key={p.date}>
+                <circle cx={xAt(i)} cy={yAt(p.value)} r={hovered === i ? 5 : 3.5} fill="#7c3aed" stroke="#fff" strokeWidth="2" />
+                {/* alvo de hover maior que o ponto, senão fica impossível acertar */}
+                <circle
+                  cx={xAt(i)}
+                  cy={yAt(p.value)}
+                  r="14"
+                  fill="transparent"
+                  onMouseEnter={() => setHovered(i)}
+                  onMouseLeave={() => setHovered(null)}
+                />
+              </g>
+            ))}
+
+            {points.map((p, i) => (i % labelStep === 0 || i === points.length - 1) && (
+              <text key={`lbl-${p.date}`} x={xAt(i)} y={H - 6} textAnchor="middle" fontSize="11" fill="#94a3b8">
+                {fmtDayShort(p.date)}
+              </text>
+            ))}
+          </svg>
+
+          {hovered !== null && points[hovered] && (
+            <div
+              className="absolute pointer-events-none z-10 -translate-x-1/2 -translate-y-full"
+              style={{ left: `${(xAt(hovered) / W) * 100}%`, top: `${(yAt(points[hovered].value) / H) * 100}%` }}
+            >
+              <div className="bg-slate-800 text-white text-[11px] font-medium rounded-md px-2 py-1 shadow-lg whitespace-nowrap mb-2">
+                {fmtDayBr(points[hovered].date)} — {points[hovered].value}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Ícone/numeração da coluna "Etapa": perguntas de verdade são numeradas (P1,
+// P2...), os degraus de borda (abriu / clicou / completou) ganham ícone, pra
+// deixar claro que não são perguntas.
+function StepMarker({ step }) {
+  if (step.isFinal) {
+    return (
+      <div className="w-7 h-7 rounded-full bg-emerald-50 flex items-center justify-center shrink-0">
+        <Flag className="w-3.5 h-3.5 text-emerald-600" />
+      </div>
+    )
+  }
+  if (step.questionIndex === -1) {
+    return (
+      <div className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center shrink-0">
+        <DoorOpen className="w-3.5 h-3.5 text-slate-500" />
+      </div>
+    )
+  }
+  if (step.questionIndex === -0.5) {
+    return (
+      <div className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center shrink-0">
+        <MousePointerClick className="w-3.5 h-3.5 text-slate-500" />
+      </div>
+    )
+  }
+  return (
+    <div className="w-7 h-7 rounded-full bg-violet-50 flex items-center justify-center shrink-0 text-xs font-bold text-violet-700 tabular-nums">
+      {step.questionIndex + 1}
+    </div>
+  )
+}
+
+function FunnelModal({ quiz, onClose }) {
+  const [range, setRange] = useState(() => FUNNEL_PRESETS[1].range()) // últimos 7 dias
+  const [presetId, setPresetId] = useState('7d')
+  const [funnel, setFunnel] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    let active = true
+    setLoading(true)
+    setError('')
+    const params = new URLSearchParams()
+    if (range.from) params.set('from', range.from)
+    if (range.to) params.set('to', range.to)
+    fetch(`${API}/quiz/id/${quiz.id}/funnel?${params.toString()}`)
+      .then(r => r.json())
+      .then(data => { if (active) setFunnel(data) })
+      .catch(() => { if (active) setError('Erro ao carregar o funil.') })
+      .finally(() => { if (active) setLoading(false) })
+    return () => { active = false }
+  }, [quiz.id, range.from, range.to])
+
   const total = funnel?.totalStarted || 0
+  const completed = funnel?.totalCompleted || 0
+  const completionRate = total > 0 ? Math.round((completed / total) * 100) : 0
+  const prevRate = funnel?.previous && funnel.previous.totalStarted > 0
+    ? Math.round((funnel.previous.totalCompleted / funnel.previous.totalStarted) * 100)
+    : null
+
+  // Linhas da tabela = etapas do backend + a conclusão como última etapa, pra
+  // tudo cair no mesmo layout (barra, conversão e queda calculadas igual).
+  const rows = useMemo(() => {
+    if (!funnel?.steps) return []
+    return [...funnel.steps, { questionIndex: 999, question: 'Completou o quiz', reached: funnel.totalCompleted, isFinal: true }]
+  }, [funnel])
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div
-        className="bg-white rounded-xl w-[95vw] max-w-5xl h-[90vh] flex flex-col"
+        className="bg-slate-50 rounded-2xl w-[96vw] max-w-6xl max-h-[94vh] flex flex-col overflow-hidden"
         onClick={e => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200">
+        <div className="flex items-start justify-between gap-4 px-6 pt-5 pb-4 bg-white border-b border-slate-200">
           <div>
-            <p className="font-semibold text-slate-800 text-base">{quiz.name}</p>
-            <p className="text-sm text-slate-400 mt-0.5">
-              {loading ? 'Carregando...' : `${total} sessão${total !== 1 ? 'ões' : ''} iniciada${total !== 1 ? 's' : ''}`}
-            </p>
+            <h3 className="text-xl font-bold text-slate-800">{quiz.name}</h3>
+            <p className="text-sm text-slate-400 mt-0.5">Acompanhe o desempenho de cada etapa do seu quiz</p>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition p-1 -mt-1">
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
-        <div className="overflow-y-auto flex-1 p-6">
-          {loading && (
-            <div className="flex items-center justify-center py-16 text-slate-400">
-              <Loader2 className="w-5 h-5 animate-spin" />
-            </div>
-          )}
-          {!loading && funnel && total === 0 && (
-            <div className="text-center py-16 text-slate-400 text-base">
-              Ninguém abriu esse quiz ainda desde que o rastreio de progresso foi ativado.
-            </div>
-          )}
-          {!loading && funnel && total > 0 && (
-            <div className="max-w-3xl mx-auto space-y-5">
-              {funnel.steps.map((step, idx) => {
-                const pct = total > 0 ? Math.round((step.reached / total) * 100) : 0
-                const prevReached = idx === 0 ? total : funnel.steps[idx - 1].reached
-                const dropFromPrev = prevReached - step.reached
-                return (
-                  <div key={step.questionIndex}>
-                    <div className="flex items-baseline justify-between text-base mb-1.5 gap-2">
-                      <span className="text-slate-700 font-medium truncate">P{idx + 1}. {step.question}</span>
-                      <span className="text-slate-500 shrink-0 font-medium">{step.reached} ({pct}%)</span>
-                    </div>
-                    <div className="h-4 rounded-full bg-slate-100 overflow-hidden">
-                      <div
-                        className="h-full rounded-full bg-violet-600"
-                        style={{ width: `${pct}%`, opacity: 0.4 + 0.6 * (1 - idx / Math.max(1, funnel.steps.length - 1)) }}
-                      />
-                    </div>
-                    {idx > 0 && dropFromPrev > 0 && (
-                      <p className="text-sm text-red-500 mt-1">↓ {dropFromPrev} saíram antes de chegar aqui</p>
-                    )}
-                  </div>
-                )
-              })}
+        <div className="overflow-y-auto flex-1 px-6 py-5 space-y-5">
+          <div>
+            <p className="text-xs font-medium text-slate-500 mb-2">Período</p>
+            <FunnelPeriodPicker
+              range={range}
+              presetId={presetId}
+              onChange={(next, preset) => { setRange(next); setPresetId(preset) }}
+            />
+          </div>
 
-              <div className="pt-4 mt-4 border-t border-slate-200">
-                <div className="flex items-baseline justify-between text-base mb-1.5">
-                  <span className="text-emerald-700 font-semibold">Completou o quiz</span>
-                  <span className="text-slate-500 font-medium">
-                    {funnel.totalCompleted} ({total > 0 ? Math.round((funnel.totalCompleted / total) * 100) : 0}%)
-                  </span>
-                </div>
-                <div className="h-4 rounded-full bg-slate-100 overflow-hidden">
-                  <div
-                    className="h-full rounded-full bg-emerald-600"
-                    style={{ width: `${total > 0 ? Math.round((funnel.totalCompleted / total) * 100) : 0}%` }}
-                  />
-                </div>
-              </div>
+          {loading && (
+            <div className="flex items-center justify-center py-20 text-slate-400">
+              <Loader2 className="w-6 h-6 animate-spin" />
             </div>
+          )}
+          {!loading && error && <p className="text-red-500 text-sm text-center py-16">{error}</p>}
+          {!loading && !error && total === 0 && (
+            <p className="text-slate-400 text-base text-center py-16">
+              Nenhuma sessão nesse período.
+            </p>
+          )}
+
+          {!loading && !error && total > 0 && (
+            <>
+              <div className="flex gap-4 flex-wrap">
+                <FunnelStatCard
+                  icon={Users}
+                  iconClass="bg-violet-50 text-violet-600"
+                  label="Total de sessões iniciadas"
+                  value={total}
+                  delta={funnelDelta(total, funnel.previous?.totalStarted)}
+                />
+                <FunnelStatCard
+                  icon={CheckCircle2}
+                  iconClass="bg-emerald-50 text-emerald-600"
+                  label="Completaram o quiz"
+                  value={completed}
+                  delta={funnelDelta(completed, funnel.previous?.totalCompleted)}
+                />
+                <FunnelStatCard
+                  icon={BarChart3}
+                  iconClass="bg-sky-50 text-sky-600"
+                  label="Taxa de conclusão"
+                  value={completionRate}
+                  valueSuffix="%"
+                  delta={funnelRateDelta(completionRate, prevRate)}
+                />
+              </div>
+
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                <div className="hidden md:grid grid-cols-[minmax(0,2fr)_minmax(0,2fr)_130px_170px] gap-4 px-5 py-3 bg-slate-50 border-b border-slate-200 text-xs font-medium text-slate-500">
+                  <span>Etapa</span>
+                  <span>Sessões</span>
+                  <span className="text-right">
+                    Taxa de conversão
+                    <span className="block font-normal text-[11px] text-slate-400">(em relação ao início)</span>
+                  </span>
+                  <span className="text-right">Queda na etapa</span>
+                </div>
+
+                {rows.map((step, idx) => {
+                  const pct = total > 0 ? Math.round((step.reached / total) * 100) : 0
+                  const prevReached = idx === 0 ? total : rows[idx - 1].reached
+                  const dropPeople = Math.max(0, prevReached - step.reached)
+                  const dropPct = prevReached > 0 ? Math.round((dropPeople / prevReached) * 100) : 0
+                  const isQuestion = Number.isInteger(step.questionIndex) && step.questionIndex >= 0 && !step.isFinal
+                  return (
+                    <div
+                      key={`${step.questionIndex}-${idx}`}
+                      className="grid grid-cols-1 md:grid-cols-[minmax(0,2fr)_minmax(0,2fr)_130px_170px] gap-2 md:gap-4 px-5 py-3 border-b border-slate-100 last:border-b-0 items-center"
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <StepMarker step={step} />
+                        <span className={`text-sm leading-snug ${step.isFinal ? 'font-semibold text-emerald-700' : 'text-slate-700'}`}>
+                          {isQuestion ? `P${step.questionIndex + 1}. ${step.question}` : step.question}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <div className="h-2.5 flex-1 rounded-full bg-slate-100 overflow-hidden">
+                          <div
+                            className={`h-full rounded-full ${step.isFinal ? 'bg-emerald-600' : 'bg-violet-600'}`}
+                            style={{
+                              width: `${pct}%`,
+                              opacity: step.isFinal ? 1 : 0.45 + 0.55 * (1 - idx / Math.max(1, rows.length - 1)),
+                            }}
+                          />
+                        </div>
+                        <span className="text-sm text-slate-600 font-medium tabular-nums shrink-0 w-24 text-right">
+                          {step.reached} ({pct}%)
+                        </span>
+                      </div>
+
+                      <span className="text-sm text-slate-600 font-medium tabular-nums md:text-right">{pct}%</span>
+
+                      <span className="text-sm md:text-right tabular-nums">
+                        {idx === 0 || dropPeople === 0 ? (
+                          <span className="text-slate-300">—</span>
+                        ) : (
+                          <span className="text-red-500 font-medium">
+                            ↓ {dropPct}%{' '}
+                            <span className="text-slate-400 font-normal">({dropPeople} pessoas)</span>
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+
+              <FunnelDailyChart daily={funnel.daily} />
+            </>
           )}
         </div>
       </div>
@@ -1556,9 +1976,9 @@ export default function Quizzes() {
   const [submissionsQuiz, setSubmissionsQuiz] = useState(null)
   const [submissions, setSubmissions] = useState([])
   const [loadingSubmissions, setLoadingSubmissions] = useState(false)
+  // O FunnelModal busca os próprios dados (o período é escolhido lá dentro e
+  // muda a query), então aqui só guardamos qual quiz está aberto.
   const [funnelQuiz, setFunnelQuiz] = useState(null)
-  const [funnel, setFunnel] = useState(null)
-  const [loadingFunnel, setLoadingFunnel] = useState(false)
 
   useEffect(() => { loadQuizzes() }, [])
 
@@ -1646,19 +2066,6 @@ export default function Quizzes() {
     }
   }
 
-  async function openFunnel(quiz) {
-    setFunnelQuiz(quiz)
-    setLoadingFunnel(true)
-    try {
-      const res = await fetch(`${API}/quiz/id/${quiz.id}/funnel`)
-      setFunnel(await res.json())
-    } catch (err) {
-      console.error('Erro ao carregar funil:', err)
-      setFunnel(null)
-    } finally {
-      setLoadingFunnel(false)
-    }
-  }
 
   async function handleDeleteSubmission(id) {
     if (!confirm('Excluir essa resposta?')) return
@@ -1773,7 +2180,7 @@ export default function Quizzes() {
                 <button onClick={() => openSubmissions(quiz)} className="flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-violet-600 border border-slate-200 hover:border-violet-300 px-3 py-2 rounded-lg transition">
                   Respostas
                 </button>
-                <button onClick={() => openFunnel(quiz)} className="flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-violet-600 border border-slate-200 hover:border-violet-300 px-3 py-2 rounded-lg transition">
+                <button onClick={() => setFunnelQuiz(quiz)} className="flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-violet-600 border border-slate-200 hover:border-violet-300 px-3 py-2 rounded-lg transition">
                   Funil
                 </button>
                 <button onClick={() => handleDelete(quiz.id)} className="flex items-center gap-1.5 text-sm font-medium text-slate-400 hover:text-red-500 border border-slate-200 hover:border-red-200 px-3 py-2 rounded-lg transition">
@@ -1795,14 +2202,7 @@ export default function Quizzes() {
         />
       )}
 
-      {funnelQuiz && (
-        <FunnelModal
-          quiz={funnelQuiz}
-          funnel={funnel}
-          loading={loadingFunnel}
-          onClose={() => setFunnelQuiz(null)}
-        />
-      )}
+      {funnelQuiz && <FunnelModal quiz={funnelQuiz} onClose={() => setFunnelQuiz(null)} />}
     </div>
   )
 }

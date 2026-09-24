@@ -31,9 +31,11 @@ export class QuizController {
     return this.quizService.listSubmissions(id);
   }
 
+  // from/to no formato 'YYYY-MM-DD' (dias em Brasília, ver getFunnel). Sem
+  // eles, devolve o funil de todo o período.
   @Get('id/:id/funnel')
-  getFunnel(@Param('id') id: string) {
-    return this.quizService.getFunnel(id);
+  getFunnel(@Param('id') id: string, @Query('from') from?: string, @Query('to') to?: string) {
+    return this.quizService.getFunnel(id, from, to);
   }
 
   @Delete('submissions/:submissionId')

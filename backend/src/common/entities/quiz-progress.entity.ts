@@ -29,6 +29,14 @@ export class QuizProgress {
   @Column({ name: 'furthest_question_index', type: 'int', default: -1 })
   furthestQuestionIndex: number;
 
+  // true = clicou no botão "Continuar" da tela de apresentação, saindo dela
+  // rumo à pergunta 1 — distinto de furthestQuestionIndex, que só avança
+  // quando uma pergunta é de fato RESPONDIDA (ver trackProgress). É o sinal
+  // de "conectou de verdade" que faltava entre "abriu o quiz" (que dispara
+  // sozinho ao carregar, sem nenhuma ação da pessoa) e "respondeu a P1".
+  @Column({ name: 'clicked_continue', type: 'boolean', default: false })
+  clickedContinue: boolean;
+
   @Column({ name: 'total_questions', type: 'int' })
   totalQuestions: number;
 
