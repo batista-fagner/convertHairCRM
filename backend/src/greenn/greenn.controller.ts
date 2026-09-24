@@ -25,6 +25,12 @@ export class GreennController {
     if (!expected || secret !== expected) {
       throw new ForbiddenException();
     }
+    // DEBUG temporário (remover depois) — capturar onde fbc/fbp realmente
+    // aparecem no payload de venda paga, pra investigar por que
+    // extractTrackingFromSaleMetas não está achando (2026-09-24).
+    if (body?.sale?.status === 'paid' || body?.event === 'sale.paid') {
+      this.logger.warn(`[DEBUG payload sale/paid] ${JSON.stringify(body)}`);
+    }
     // Nunca deixa o handler estourar — Greenn pode reagir a 5xx com retry
     // agressivo, e um erro nosso não pode virar spam de webhook.
     await this.greennService.processWebhook(body).catch((err: any) => {
