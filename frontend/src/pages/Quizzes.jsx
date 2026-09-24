@@ -558,7 +558,11 @@ function FunnelModal({ quiz, onClose }) {
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div
-        className="bg-slate-50 rounded-2xl w-[96vw] max-w-6xl max-h-[94vh] flex flex-col overflow-hidden"
+        // Tamanho fixo de propósito (h-, não max-h-) — sem isso o modal "pula"
+        // de tamanho entre carregando/vazio/erro/cheio, porque cada estado tem
+        // uma altura de conteúdo bem diferente. overflow-y-auto no miolo cuida
+        // do conteúdo que não cabe, sem mexer no tamanho do modal em si.
+        className="bg-slate-50 rounded-2xl w-[96vw] max-w-6xl h-[85vh] flex flex-col overflow-hidden"
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-4 px-6 pt-5 pb-4 bg-white border-b border-slate-200">
@@ -571,8 +575,8 @@ function FunnelModal({ quiz, onClose }) {
           </button>
         </div>
 
-        <div className="overflow-y-auto flex-1 px-6 py-5 space-y-5">
-          <div>
+        <div className="overflow-y-auto flex-1 px-6 py-5 flex flex-col">
+          <div className="shrink-0">
             <p className="text-xs font-medium text-slate-500 mb-2">Período</p>
             <FunnelPeriodPicker
               range={range}
@@ -581,20 +585,27 @@ function FunnelModal({ quiz, onClose }) {
             />
           </div>
 
+          {/* Preenche o resto do espaço fixo do modal — sem isso a mensagem
+              de carregando/vazio/erro fica colada no topo com um vão enorme
+              embaixo, já que o modal não encolhe mais pra caber o conteúdo. */}
           {loading && (
-            <div className="flex items-center justify-center py-20 text-slate-400">
+            <div className="flex-1 flex items-center justify-center text-slate-400">
               <Loader2 className="w-6 h-6 animate-spin" />
             </div>
           )}
-          {!loading && error && <p className="text-red-500 text-sm text-center py-16">{error}</p>}
+          {!loading && error && (
+            <div className="flex-1 flex items-center justify-center">
+              <p className="text-red-500 text-sm">{error}</p>
+            </div>
+          )}
           {!loading && !error && total === 0 && (
-            <p className="text-slate-400 text-base text-center py-16">
-              Nenhuma sessão nesse período.
-            </p>
+            <div className="flex-1 flex items-center justify-center">
+              <p className="text-slate-400 text-base">Nenhuma sessão nesse período.</p>
+            </div>
           )}
 
           {!loading && !error && total > 0 && (
-            <>
+            <div className="space-y-5 mt-5">
               <div className="flex gap-4 flex-wrap">
                 <FunnelStatCard
                   icon={Users}
@@ -682,7 +693,7 @@ function FunnelModal({ quiz, onClose }) {
               </div>
 
               <FunnelDailyChart daily={funnel.daily} />
-            </>
+            </div>
           )}
         </div>
       </div>
