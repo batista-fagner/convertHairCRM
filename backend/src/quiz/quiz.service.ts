@@ -26,6 +26,17 @@ const MAX_QUESTIONS = 7;
 const MAX_IMAGE_SIZE_MB = 10;
 const ALLOWED_IMAGE_MIMETYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
+// Assinaturas de tráfego automatizado no User-Agent — pego "Chrome-Lighthouse"
+// poluindo o funil (PageSpeed Insights audita a página em mobile+desktop ao
+// mesmo tempo, sem responder nada) e adicionei os crawlers/scanners mais
+// comuns que fazem a mesma coisa. Nenhum navegador real usa essas strings.
+const BOT_USER_AGENT_PATTERN =
+  /bot|crawl(er)?|spider|lighthouse|pagespeed|headlesschrome|phantomjs|facebookexternalhit|facebot|meta-external(agent|ads)|whatsapp|slackbot|telegrambot|discordbot|ahrefsbot|semrushbot|mj12bot|petalbot|duckduckbot/i;
+
+function isBotUserAgent(userAgent?: string): boolean {
+  return !!userAgent && BOT_USER_AGENT_PATTERN.test(userAgent);
+}
+
 // As datas do filtro do funil ('YYYY-MM-DD') são dias no fuso de Brasília — é
 // onde o operador do CRM está, e é o que ele espera ver ao escolher "hoje".
 // Agrupar/cortar em UTC jogaria toda sessão da noite pro dia seguinte. O Brasil
@@ -228,6 +239,9 @@ export class QuizService {
   async trackProgress(slug: string, dto: ProgressDto): Promise<{ ok: true }> {
     const quiz = await this.findBySlug(slug);
     if (!dto.clickId) return { ok: true }; // sem clickId não dá pra agrupar a sessão — ignora silenciosamente
+    // Auditoria automatizada (Lighthouse/PageSpeed Insights) ou crawler — não é
+    // gente respondendo o quiz, não deve virar sessão nenhuma no funil.
+    if (isBotUserAgent(dto.userAgent)) return { ok: true };
 
     let progress = await this.progressRepo.findOne({ where: { quizId: quiz.id, clickId: dto.clickId } });
     if (!progress) {
