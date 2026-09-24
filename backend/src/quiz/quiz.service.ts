@@ -112,6 +112,11 @@ interface ProgressDto {
   questionIndex: number;
   questionId?: string;
   optionId?: string;
+  // Usados só na 1ª chamada de uma sessão nova, pra mandar o PageView via CAPI
+  // (ver trackProgress) — nas chamadas seguintes vêm vazios/repetidos, sem uso.
+  fbclid?: string;
+  fbc?: string;
+  fbp?: string;
   // Preenchidos pelo controller a partir do request — nunca vêm do body.
   clientIp?: string;
   userAgent?: string;
@@ -244,6 +249,7 @@ export class QuizService {
     if (isBotUserAgent(dto.userAgent)) return { ok: true };
 
     let progress = await this.progressRepo.findOne({ where: { quizId: quiz.id, clickId: dto.clickId } });
+    const isNewSession = !progress;
     if (!progress) {
       progress = this.progressRepo.create({
         quizId: quiz.id,
@@ -254,6 +260,28 @@ export class QuizService {
         answers: [],
         completed: false,
       });
+    }
+
+    // PageView via CAPI — a página do quiz nunca disparava esse evento padrão
+    // (nem client-side, nem servidor), então o "connect rate" do Meta Ads
+    // Manager (landing_page_view / clique) ficava artificialmente baixo em
+    // TODAS as campanhas: não é gente desistindo, é métrica nunca alimentada.
+    // Achado em 2026-09-24 investigando connect rate de ~20-30% na conta toda.
+    // Só na 1ª chamada da sessão (equivalente a "abriu a página"), fire-and-forget.
+    if (isNewSession) {
+      const quizPublicBase = (this.config.get<string>('QUIZ_PUBLIC_BASE_URL') || 'https://convert-hair-page.vercel.app/q').replace(/\/$/, '');
+      const pixelOverride = quiz.fbPixelId || quiz.fbAccessToken
+        ? { pixelId: quiz.fbPixelId ?? undefined, accessToken: quiz.fbAccessToken ?? undefined }
+        : undefined;
+      this.facebookService
+        .sendCustomEvent(
+          'PageView',
+          { fbclid: dto.fbclid, fbc: dto.fbc, fbp: dto.fbp, externalId: dto.clickId, clientIp: dto.clientIp, userAgent: dto.userAgent },
+          `${quizPublicBase}/${slug}`,
+          `quiz-pageview-${dto.clickId}`,
+          pixelOverride,
+        )
+        .catch((err) => this.logger.error(`Erro ao enviar PageView do quiz: ${err.message}`));
     }
 
     if (dto.questionIndex > progress.furthestQuestionIndex) {
