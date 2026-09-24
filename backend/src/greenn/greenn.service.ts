@@ -71,6 +71,23 @@ function extractUtmFromProductMetas(productMetas?: Record<string, string>) {
   };
 }
 
+/**
+ * Lê fbclid/fbc/fbp de sale.saleMetas (campos automáticos da Greenn, capturados
+ * do navegador de quem pagou — ver comentário no tipo GreennWebhookPayload).
+ * Existe pra cobrir quem compra direto no checkout sem nunca ter virado lead
+ * antes (quiz/grupo) — pra esses, é a ÚNICA fonte real de clique que temos;
+ * achado em 2026-09-24 depurando uma venda "orgânica" que na verdade tinha
+ * fbc/fbp de clique de anúncio, e a gente nunca guardava esse dado aqui.
+ */
+function extractTrackingFromSaleMetas(saleMetas?: { meta_key?: string; meta_value?: string }[]) {
+  const get = (key: string) => saleMetas?.find((m) => m.meta_key === key)?.meta_value || undefined;
+  return {
+    fbclid: get('fbclid'),
+    fbc: get('fbc'),
+    fbp: get('fbp'),
+  };
+}
+
 @Injectable()
 export class GreennService {
   private readonly logger = new Logger(GreennService.name);
@@ -156,6 +173,7 @@ export class GreennService {
         tag: TAG_COMPROU,
         kanbanStage: 'vendeu',
         ...extractUtmFromProductMetas(payload.productMetas),
+        ...extractTrackingFromSaleMetas(payload.sale?.saleMetas),
       });
       await this.sendWelcomeMessage(normalizedPhone, payload.client?.name);
     }
@@ -271,6 +289,7 @@ export class GreennService {
       tag: TAG_PIX_PENDENTE,
       kanbanStage: 'novo',
       ...extractUtmFromProductMetas(payload.productMetas),
+      ...extractTrackingFromSaleMetas(payload.sale?.saleMetas),
     });
 
     const jobData: PixPendingJobData = {
@@ -359,6 +378,9 @@ export class GreennService {
     utmSource?: string;
     utmMedium?: string;
     utmCampaign?: string;
+    fbclid?: string;
+    fbc?: string;
+    fbp?: string;
   }): Promise<void> {
     const { phone, tag, kanbanStage } = params;
     const name = params.name?.trim() || 'Cliente Greenn';
@@ -387,6 +409,12 @@ export class GreennService {
         if (campaignTag && !tags.includes(campaignTag)) tags = [...tags, campaignTag];
         if (JSON.stringify(tags) !== JSON.stringify(existing.tags || [])) patch.tags = tags;
         if (tag === TAG_COMPROU && existing.kanbanStage !== kanbanStage) patch.kanbanStage = kanbanStage;
+        // Só preenche o que tava faltando — nunca sobrescreve fbclid/fbc/fbp
+        // que o lead já tinha (do clique real capturado quando ele entrou no
+        // funil pelo quiz/grupo, que é uma atribuição melhor que a do checkout).
+        if (params.fbclid && !existing.fbclid) patch.fbclid = params.fbclid;
+        if (params.fbc && !existing.fbc) patch.fbc = params.fbc;
+        if (params.fbp && !existing.fbp) patch.fbp = params.fbp;
         if (Object.keys(patch).length === 0) return;
         const updated = await this.leadsService.update(existing.id, patch);
         this.realtime.emitLeadUpdated(updated);
@@ -404,6 +432,11 @@ export class GreennService {
         utmSource: params.utmSource,
         utmMedium: params.utmMedium,
         utmCampaign: params.utmCampaign,
+        // Única fonte de clique real que existe pra quem nunca passou pelo
+        // quiz/grupo antes de comprar — ver extractTrackingFromSaleMetas.
+        fbclid: params.fbclid,
+        fbc: params.fbc,
+        fbp: params.fbp,
         // Sem isso o lead não aparece em nenhuma raia do Kanban — findKanban
         // (leads.service.ts) filtra TODAS as raias por agentMode:'sdr', sem
         // fallback pra NULL (só kanbanStage tem fallback, na raia "novo").
