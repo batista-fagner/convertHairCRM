@@ -379,6 +379,7 @@ export default function Analytics() {
   const [period, setPeriod] = useState('today')
   const [customRange, setCustomRange] = useState(null) // { from: Date, to: Date }
   const [selectedAd, setSelectedAd] = useState(null)
+  const [campaignSpend, setCampaignSpend] = useState([])
 
   const range = useMemo(
     () => (period === 'custom' && customRange ? customRangeToRange(customRange.from, customRange.to) : periodToRange(period)),
@@ -395,9 +396,31 @@ export default function Analytics() {
       .then((data) => setRows(Array.isArray(data) ? data : []))
       .catch(() => setError('Erro ao carregar dados de performance'))
       .finally(() => setLoading(false))
+
+    fetch(`${API}/leads/analytics/campaigns?${params.toString()}`)
+      .then((r) => r.json())
+      .then((data) => setCampaignSpend(Array.isArray(data) ? data : []))
+      .catch(() => setCampaignSpend([]))
   }, [range.from, range.to])
 
-  const grouped = useMemo(() => (rows ? groupRows(rows, groupBy) : []), [rows, groupBy])
+  // Gasto real por campanha (Marketing API, nível conta) — substitui o valor derivado dos
+  // leads quando agrupado por Campanha, porque este último ignora anúncios sem lead no banco.
+  const campaignSpendByName = useMemo(() => {
+    const map = new Map()
+    campaignSpend.forEach((c) => map.set(c.campaignName, c.spend))
+    return map
+  }, [campaignSpend])
+
+  const grouped = useMemo(() => {
+    if (!rows) return []
+    const base = groupRows(rows, groupBy)
+    if (groupBy !== 'campaign') return base
+    return base.map((g) => {
+      const spend = campaignSpendByName.has(g.name) ? campaignSpendByName.get(g.name) : g.spend
+      const cpql = g.qualifiedCount > 0 ? spend / g.qualifiedCount : null
+      return { ...g, spend, cpql }
+    })
+  }, [rows, groupBy, campaignSpendByName])
 
   const summary = useMemo(() => {
     if (!rows) return null
