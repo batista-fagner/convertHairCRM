@@ -20,6 +20,7 @@ import InstagramPosts from './pages/InstagramPosts'
 import KanbanLeads from './pages/KanbanLeads'
 import InstantFormLeads from './pages/InstantFormLeads'
 import Prospeccao from './pages/Prospeccao'
+import ColdCall from './pages/ColdCall'
 import SmsInbox from './pages/sms/SmsInbox'
 import IgInbox from './pages/instagram-inbox/IgInbox'
 import Login from './pages/Login'
@@ -71,6 +72,7 @@ export default function App() {
           <Route path="/kanban" element={<KanbanLeads />} />
           <Route path="/instant-form-leads" element={<InstantFormLeads />} />
           <Route path="/prospeccao" element={<Prospeccao />} />
+          <Route path="/cold-call" element={<ColdCall />} />
           <Route path="/group-workshop" element={<GroupWorkshop />} />
           <Route path="/forms" element={<Forms />} />
           <Route path="/quiz-builder" element={<Quizzes />} />

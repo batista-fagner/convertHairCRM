@@ -23,6 +23,8 @@ import { Carousel } from './carousel/carousel.entity';
 import { Prospect } from './prospecting/prospect.entity';
 import { AudioAsset } from './video-edit/audio-asset.entity';
 import { VideoEditJob } from './video-edit/video-edit-job.entity';
+import { ColdCallLead } from './common/entities/coldcall-lead.entity';
+import { ColdCallStage } from './common/entities/coldcall-stage.entity';
 import { LeadsModule } from './leads/leads.module';
 import { EnrichmentModule } from './enrichment/enrichment.module';
 import { FormsModule } from './forms/forms.module';
@@ -42,6 +44,7 @@ import { CarouselModule } from './carousel/carousel.module';
 import { ProspectingModule } from './prospecting/prospecting.module';
 import { VideoEditModule } from './video-edit/video-edit.module';
 import { GreennModule } from './greenn/greenn.module';
+import { ColdCallModule } from './coldcall/coldcall.module';
 
 @Module({
   imports: [
@@ -59,7 +62,7 @@ import { GreennModule } from './greenn/greenn.module';
         // Supabase exige SSL; `DATABASE_SSL=false` permite apontar para um
         // Postgres local descartável ao testar sem tocar em produção.
         ssl: config.get('DATABASE_SSL') === 'false' ? false : { rejectUnauthorized: false },
-        entities: [Lead, KanbanCustomStage, Campaign, Form, InstagramAutomation, IgConversation, IgMessage, IgCommentEvent, Setting, FollowupRule, FollowupVideo, SmsContact, SmsMessage, IgPost, Quiz, QuizSubmission, QuizProgress, Carousel, Prospect, AudioAsset, VideoEditJob],
+        entities: [Lead, KanbanCustomStage, Campaign, Form, InstagramAutomation, IgConversation, IgMessage, IgCommentEvent, Setting, FollowupRule, FollowupVideo, SmsContact, SmsMessage, IgPost, Quiz, QuizSubmission, QuizProgress, Carousel, Prospect, AudioAsset, VideoEditJob, ColdCallLead, ColdCallStage],
         synchronize: true,
         logging: false,
         timezone: 'Z',
@@ -83,6 +86,7 @@ import { GreennModule } from './greenn/greenn.module';
     ProspectingModule,
     VideoEditModule,
     GreennModule,
+    ColdCallModule,
   ],
 })
 export class AppModule {}

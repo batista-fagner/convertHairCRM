@@ -28,6 +28,7 @@ import {
   Radar,
   Music,
   Clapperboard,
+  PhoneCall,
 } from 'lucide-react'
 
 const NAV_GROUPS = [
@@ -48,6 +49,7 @@ const NAV_GROUPS = [
       { icon: KanbanSquare, label: 'Kanban', path: '/kanban' },
       { icon: FileSpreadsheet, label: 'Formulário Instantâneo', path: '/instant-form-leads' },
       { icon: Radar, label: 'Prospecção', path: '/prospeccao' },
+      { icon: PhoneCall, label: 'Cold Call', path: '/cold-call' },
       { icon: Users, label: 'Grupo WhatsApp', path: '/group-workshop' },
     ],
   },
@@ -120,6 +122,7 @@ const PAGE_TITLES = {
   '/instagram-posts': 'Posts no Instagram',
   '/kanban': 'Kanban de Leads',
   '/prospeccao': 'Prospecção',
+  '/cold-call': 'Cold Call',
   '/settings': 'Configurações',
 }
 
