@@ -162,10 +162,17 @@ export class LeadsController {
 
   @Patch(':id')
   async edit(@Param('id') id: string, @Body() body: { name?: string; assignedTo?: string | null; notes?: string | null; groupJid?: string | null }) {
-    const data: { name?: string; assignedTo?: string | null; notes?: string | null; groupJid?: string | null } = {};
+    const data: { name?: string; assignedTo?: string | null; notes?: string | null; notesUpdatedAt?: Date; groupJid?: string | null } = {};
     if (typeof body.name === 'string' && body.name.trim()) data.name = body.name.trim();
     if ('assignedTo' in body) data.assignedTo = body.assignedTo?.trim() || null;
-    if ('notes' in body) data.notes = body.notes ?? null;
+    if ('notes' in body) {
+      const newNotes = body.notes ?? null;
+      // Só carimba a data quando o texto muda de verdade — não em todo PATCH
+      // que passa por aqui (ex: salvar o mesmo texto de novo no onBlur).
+      const current = await this.leadsService.findById(id);
+      if (newNotes !== (current?.notes ?? null)) data.notesUpdatedAt = new Date();
+      data.notes = newNotes;
+    }
     // Backfill manual — leads que entraram no grupo antes do groupJid existir
     // (ver SdrGroupJoinService) não têm como ser corrigidos automaticamente.
     if ('groupJid' in body) data.groupJid = body.groupJid ?? null;

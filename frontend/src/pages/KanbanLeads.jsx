@@ -773,11 +773,18 @@ function ConversationModal({ lead, onClose, onTogglePause, onAssign, onSaveNotes
               rows={3}
               className="w-full resize-none text-sm border border-amber-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-300 bg-white placeholder:text-slate-400"
             />
-            {notesSaved && (
-              <span className="flex items-center gap-1 text-[11px] text-emerald-600 mt-1">
-                <CheckCircle2 className="w-3 h-3" /> Nota salva
-              </span>
-            )}
+            <div className="flex items-center justify-between mt-1">
+              {lead.notesUpdatedAt ? (
+                <span className="text-[11px] text-slate-400">
+                  Última atualização: {new Date(lead.notesUpdatedAt).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}
+                </span>
+              ) : <span />}
+              {notesSaved && (
+                <span className="flex items-center gap-1 text-[11px] text-emerald-600">
+                  <CheckCircle2 className="w-3 h-3" /> Nota salva
+                </span>
+              )}
+            </div>
           </div>
         )}
 
@@ -1347,7 +1354,7 @@ export default function KanbanLeads() {
       })
       const fresh = await res.json()
       updateLeadInPlace(fresh)
-      setSelected(prev => prev?.id === leadId ? { ...prev, notes: fresh.notes } : prev)
+      setSelected(prev => prev?.id === leadId ? { ...prev, notes: fresh.notes, notesUpdatedAt: fresh.notesUpdatedAt } : prev)
     } catch (e) {
       console.error('Erro ao salvar notas', e)
     }

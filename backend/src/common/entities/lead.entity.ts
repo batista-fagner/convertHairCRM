@@ -216,6 +216,12 @@ export class Lead {
   @Column({ name: 'notes', type: 'text', nullable: true })
   notes?: string | null;
 
+  // Marca quando a nota foi editada pela última vez (não quando o lead foi
+  // criado) — setado manualmente no controller só na hora em que `notes`
+  // muda de verdade, pra não disparar em todo PATCH que toca o lead.
+  @Column({ name: 'notes_updated_at', type: 'timestamp', nullable: true })
+  notesUpdatedAt?: Date | null;
+
   // Foto de perfil do WhatsApp (uazapi /chat/details) — exibida no card do
   // Kanban e no header da conversa no lugar do círculo com iniciais.
   @Column({ name: 'avatar_url', type: 'varchar', nullable: true })
