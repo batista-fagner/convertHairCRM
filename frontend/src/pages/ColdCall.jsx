@@ -3,7 +3,7 @@ import { DndContext, DragOverlay, useDraggable, useDroppable, PointerSensor, use
 import {
   UserPlus, PhoneCall, Snowflake, CalendarClock, XCircle, Trophy,
   Phone, Mail, Globe, Loader2, X, Plus, Check, Pencil, Trash2, Upload,
-  StickyNote, Building2, MapPin, Layers,
+  StickyNote, Building2, MapPin, Layers, Link2,
 } from 'lucide-react'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3002/api'
@@ -284,38 +284,56 @@ function ProspectModal({ prospect, onClose, onSave, onDelete }) {
         </div>
 
         <div className="p-5 space-y-4">
-          <div className="flex flex-wrap gap-2">
-            {prospect.phone && (
-              <a
-                href={`tel:${prospect.phone}`}
-                className="flex items-center gap-1.5 text-sm font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg px-3 py-2 transition"
-              >
-                <Phone className="w-4 h-4" /> {prospect.phone}
-              </a>
+          {/* Dados do lote (CSV) — sempre visíveis, com rótulo, mesmo quando
+              vazios ("Não informado") pra deixar claro que é o CSV que não
+              tinha o dado, e não uma falha da tela. */}
+          <div className="bg-slate-50 rounded-xl p-4 space-y-2.5">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Dados do lote (CSV)</p>
+
+            <div className="flex items-center gap-2 text-sm">
+              <Phone className="w-4 h-4 text-slate-400 shrink-0" />
+              {prospect.phone ? (
+                <a href={`tel:${prospect.phone}`} className="font-medium text-emerald-700 hover:underline">{prospect.phone}</a>
+              ) : <span className="text-slate-400 italic">Telefone não informado</span>}
+            </div>
+
+            <div className="flex items-center gap-2 text-sm min-w-0">
+              <Mail className="w-4 h-4 text-slate-400 shrink-0" />
+              {prospect.email ? (
+                <a href={`mailto:${prospect.email}`} className="font-medium text-blue-700 hover:underline truncate">{prospect.email}</a>
+              ) : <span className="text-slate-400 italic">E-mail não informado</span>}
+            </div>
+
+            <div className="flex items-center gap-2 text-sm min-w-0">
+              <Globe className="w-4 h-4 text-slate-400 shrink-0" />
+              {prospect.website ? (
+                <a
+                  href={prospect.website.startsWith('http') ? prospect.website : `https://${prospect.website}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-medium text-slate-700 hover:underline truncate"
+                >
+                  {prospect.website}
+                </a>
+              ) : <span className="text-slate-400 italic">Site não informado</span>}
+            </div>
+
+            {prospect.sourceUrl && (
+              <div className="flex items-center gap-2 text-sm min-w-0">
+                <Link2 className="w-4 h-4 text-slate-400 shrink-0" />
+                <a href={prospect.sourceUrl} target="_blank" rel="noreferrer" className="font-medium text-slate-500 hover:underline truncate">
+                  Fonte: {prospect.sourceUrl}
+                </a>
+              </div>
             )}
-            {prospect.email && (
-              <a
-                href={`mailto:${prospect.email}`}
-                className="flex items-center gap-1.5 text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg px-3 py-2 transition truncate max-w-full"
-              >
-                <Mail className="w-4 h-4 shrink-0" /> <span className="truncate">{prospect.email}</span>
-              </a>
-            )}
-            {prospect.website && (
-              <a
-                href={prospect.website.startsWith('http') ? prospect.website : `https://${prospect.website}`}
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center gap-1.5 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg px-3 py-2 transition"
-              >
-                <Globe className="w-4 h-4" /> Site
-              </a>
+
+            {prospect.b2bEvidence && (
+              <div className="flex items-start gap-2 text-xs text-slate-500 pt-1 border-t border-slate-200 mt-1">
+                <span className="font-semibold shrink-0">Evidência B2B:</span>
+                <span className="italic">{prospect.b2bEvidence}</span>
+              </div>
             )}
           </div>
-
-          {prospect.b2bEvidence && (
-            <div className="text-xs text-slate-500 bg-slate-50 rounded-lg p-3 italic">{prospect.b2bEvidence}</div>
-          )}
 
           <div>
             <label className="block text-xs font-medium text-slate-500 mb-1">Responsável</label>
