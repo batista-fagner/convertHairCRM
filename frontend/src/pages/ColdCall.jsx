@@ -3,10 +3,13 @@ import { DndContext, DragOverlay, useDraggable, useDroppable, PointerSensor, use
 import {
   UserPlus, PhoneCall, Snowflake, CalendarClock, XCircle, Trophy,
   Phone, Mail, Globe, Loader2, X, Plus, Check, Pencil, Trash2, Upload,
-  StickyNote, Building2, MapPin, Layers, Link2,
+  StickyNote, Building2, MapPin, Layers, Link2, FileText,
 } from 'lucide-react'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3002/api'
+
+// Script de ligação (pesquisa de mercado B2B) — doc editável, ajustado direto ali sem precisar de deploy.
+const SCRIPT_URL = 'https://claude.ai/artifact/26FCQfziRLHkEm7WMW5ZnQ'
 
 const COLUMNS = [
   { id: 'novo',             title: 'Novo',             icon: UserPlus,     accent: 'slate',   dot: 'bg-slate-400' },
@@ -546,6 +549,14 @@ export default function ColdCall() {
           <p className="text-sm text-slate-500">Prospecção B2B — importe uma lista e organize as ligações por raia.</p>
         </div>
         <div className="flex items-center gap-3">
+          <a
+            href={SCRIPT_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center gap-1.5 text-xs font-medium text-violet-700 bg-violet-50 hover:bg-violet-100 border border-violet-200 px-3.5 py-2 rounded-lg transition"
+          >
+            <FileText className="w-4 h-4" /> Script da ligação
+          </a>
           {importResult && !importResult.error && (
             <span className="text-xs text-emerald-600 font-medium">
               {importResult.imported} importado(s), {importResult.skipped} ignorado(s) (duplicado/sem nome)
