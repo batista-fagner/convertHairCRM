@@ -3,13 +3,15 @@ import { DndContext, DragOverlay, useDraggable, useDroppable, PointerSensor, use
 import {
   UserPlus, PhoneCall, Snowflake, CalendarClock, XCircle, Trophy,
   Phone, Mail, Globe, Loader2, X, Plus, Check, Pencil, Trash2, Upload,
-  StickyNote, Building2, MapPin, Layers, Link2, FileText,
+  StickyNote, Building2, MapPin, Layers, Link2, FileText, Sparkles,
 } from 'lucide-react'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3002/api'
 
 // Script de ligação (pesquisa de mercado B2B) — doc editável, ajustado direto ali sem precisar de deploy.
 const SCRIPT_URL = 'https://claude.ai/artifact/26FCQfziRLHkEm7WMW5ZnQ'
+// Cola visual (cheat sheet colorido, em ordem de fala) — mesmo conteúdo do script, editável direto na página.
+const COLA_URL = 'https://claude.ai/artifact/W6cpRT63Gec6kpjNsAkvkv'
 
 const COLUMNS = [
   { id: 'novo',             title: 'Novo',             icon: UserPlus,     accent: 'slate',   dot: 'bg-slate-400' },
@@ -556,6 +558,14 @@ export default function ColdCall() {
             className="flex items-center gap-1.5 text-xs font-medium text-violet-700 bg-violet-50 hover:bg-violet-100 border border-violet-200 px-3.5 py-2 rounded-lg transition"
           >
             <FileText className="w-4 h-4" /> Script da ligação
+          </a>
+          <a
+            href={COLA_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center gap-1.5 text-xs font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-3.5 py-2 rounded-lg transition"
+          >
+            <Sparkles className="w-4 h-4" /> Cola da ligação
           </a>
           {importResult && !importResult.error && (
             <span className="text-xs text-emerald-600 font-medium">
