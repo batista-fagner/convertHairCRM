@@ -21,6 +21,13 @@ export class ColdCallStage {
   @Column({ name: 'title', type: 'varchar' })
   title: string;
 
+  // Posição da raia no board (ordem da esquerda pra direita) — inteiro, trocado
+  // por swap com o vizinho ao mover (ver ColdCallService.moveStage). Raias
+  // antigas (criadas antes desse campo existir) começam null e são
+  // preenchidas uma vez por script de migração, nunca em runtime.
+  @Column({ name: 'position', type: 'float', nullable: true })
+  position?: number | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 }

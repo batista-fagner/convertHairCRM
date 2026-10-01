@@ -4,6 +4,7 @@ import {
   UserPlus, PhoneCall, Snowflake, CalendarClock, XCircle, Trophy,
   Phone, Mail, Globe, Loader2, X, Plus, Check, Pencil, Trash2, Upload,
   StickyNote, Building2, MapPin, Layers, Link2, FileText, Sparkles,
+  ChevronLeft, ChevronRight,
 } from 'lucide-react'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3002/api'
@@ -13,14 +14,16 @@ const SCRIPT_URL = 'https://claude.ai/artifact/26FCQfziRLHkEm7WMW5ZnQ'
 // Cola visual (cheat sheet colorido, em ordem de fala) — mesmo conteúdo do script, editável direto na página.
 const COLA_URL = 'https://claude.ai/artifact/LvD5bxXBN68DT8BApMLSUR'
 
-const COLUMNS = [
-  { id: 'novo',             title: 'Novo',             icon: UserPlus,     accent: 'slate',   dot: 'bg-slate-400' },
-  { id: 'tentando-contato', title: 'Tentando contato', icon: PhoneCall,    accent: 'indigo',  dot: 'bg-indigo-400' },
-  { id: 'sem-resposta',     title: 'Sem resposta',     icon: Snowflake, accent: 'cyan',   dot: 'bg-cyan-400' },
-  { id: 'agendado',         title: 'Agendado',         icon: CalendarClock, accent: 'amber',  dot: 'bg-amber-400' },
-  { id: 'nao-interessado',  title: 'Não interessado',  icon: XCircle,      accent: 'red',     dot: 'bg-red-400' },
-  { id: 'fechado',          title: 'Fechado',          icon: Trophy,       accent: 'emerald', dot: 'bg-emerald-500' },
-]
+// Ícone bonito pras 6 raias originais (seedadas no banco na migração) —
+// qualquer raia criada depois cai no ícone genérico (Layers).
+const DEFAULT_STAGE_ICONS = {
+  'novo': UserPlus,
+  'tentando-contato': PhoneCall,
+  'sem-resposta': Snowflake,
+  'agendado': CalendarClock,
+  'nao-interessado': XCircle,
+  'fechado': Trophy,
+}
 
 const COLUMN_STYLES = {
   slate:   'bg-slate-50 border-slate-200',
@@ -35,15 +38,19 @@ const COLUMN_STYLES = {
   violet:  'bg-violet-50/60 border-violet-200',
 }
 
-// Estilo genérico pras raias criadas pelo botão "Nova raia" — mesmo padrão do Kanban de leads.
-const CUSTOM_COLUMN_STYLES = [
-  { accent: 'fuchsia', dot: 'bg-fuchsia-400' },
-  { accent: 'lime',    dot: 'bg-lime-500' },
-  { accent: 'teal',    dot: 'bg-teal-400' },
-  { accent: 'violet',  dot: 'bg-violet-400' },
-]
+// Ciclo de cores por posição no board — todas as raias passam por aqui
+// (não existe mais distinção fixa/custom), então a cor acompanha a ordem,
+// não a origem da raia.
+const STAGE_COLOR_CYCLE = ['slate', 'indigo', 'cyan', 'amber', 'red', 'emerald', 'fuchsia', 'lime', 'teal', 'violet']
+const STAGE_DOT = {
+  slate: 'bg-slate-400', indigo: 'bg-indigo-400', cyan: 'bg-cyan-400', amber: 'bg-amber-400',
+  red: 'bg-red-400', emerald: 'bg-emerald-500', fuchsia: 'bg-fuchsia-400', lime: 'bg-lime-500',
+  teal: 'bg-teal-400', violet: 'bg-violet-400',
+}
 
-function useCustomStages() {
+// Todas as raias do board vêm daqui — as 6 originais e as criadas depois,
+// sem distinção (todas editáveis/excluíveis/reordenáveis).
+function useStages() {
   const [stages, setStages] = useState([])
   const load = useCallback(() => fetch(`${API}/coldcall/stages`).then((r) => r.json()).then((d) => setStages(Array.isArray(d) ? d : [])).catch(() => {}), [])
   useEffect(() => { load() }, [load])
@@ -129,7 +136,7 @@ function ProspectCard({ prospect, onOpen }) {
   )
 }
 
-function Column({ column, prospects, onOpen, custom, onRenameStage, onDeleteStage }) {
+function Column({ column, prospects, onOpen, isFirst, isLast, onRenameStage, onDeleteStage, onMoveStage }) {
   const { setNodeRef, isOver } = useDroppable({ id: column.id })
   const Icon = column.icon
   const [renaming, setRenaming] = useState(false)
@@ -164,8 +171,24 @@ function Column({ column, prospects, onOpen, custom, onRenameStage, onDeleteStag
           )}
         </div>
         <div className="flex items-center gap-1 shrink-0">
-          {custom && !renaming && (
+          {!renaming && (
             <>
+              <button
+                onClick={() => onMoveStage(column, 'left')}
+                disabled={isFirst}
+                title="Mover raia pra esquerda"
+                className="p-1 text-slate-300 hover:text-violet-500 disabled:opacity-0 disabled:pointer-events-none transition"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => onMoveStage(column, 'right')}
+                disabled={isLast}
+                title="Mover raia pra direita"
+                className="p-1 text-slate-300 hover:text-violet-500 disabled:opacity-0 disabled:pointer-events-none transition"
+              >
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
               <button onClick={startRename} title="Renomear raia" className="p-1 text-slate-300 hover:text-violet-500 transition">
                 <Pencil className="w-3.5 h-3.5" />
               </button>
@@ -394,7 +417,7 @@ function ProspectModal({ prospect, onClose, onSave, onDelete }) {
 }
 
 export default function ColdCall() {
-  const { stages: customStages, reload: reloadCustomStages, setStages: setCustomStages } = useCustomStages()
+  const { stages, reload: reloadStages, setStages } = useStages()
   const [board, setBoard] = useState({})
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState(null)
@@ -405,17 +428,15 @@ export default function ColdCall() {
   const boardRef = useRef(board)
   boardRef.current = board
 
-  const columns = useMemo(() => [
-    ...COLUMNS,
-    ...customStages.map((cs, i) => ({
-      id: cs.stageKey,
-      dbId: cs.id,
-      title: cs.title,
-      icon: Layers,
-      custom: true,
-      ...CUSTOM_COLUMN_STYLES[i % CUSTOM_COLUMN_STYLES.length],
-    })),
-  ], [customStages])
+  // stages já vem ordenado por position (backend) — todas editáveis/excluíveis/reordenáveis.
+  const columns = useMemo(() => stages.map((s, i) => ({
+    id: s.stageKey,
+    dbId: s.id,
+    title: s.title,
+    icon: DEFAULT_STAGE_ICONS[s.stageKey] || Layers,
+    accent: STAGE_COLOR_CYCLE[i % STAGE_COLOR_CYCLE.length],
+    dot: STAGE_DOT[STAGE_COLOR_CYCLE[i % STAGE_COLOR_CYCLE.length]],
+  })), [stages])
   const columnsRef = useRef(columns)
   columnsRef.current = columns
 
@@ -500,18 +521,18 @@ export default function ColdCall() {
     })
     if (!res.ok) throw new Error((await res.json().catch(() => null))?.message || 'Erro ao criar raia')
     const stage = await res.json()
-    setCustomStages((prev) => [...prev, stage])
+    setStages((prev) => [...prev, stage])
     setBoard((prev) => ({ ...prev, [stage.stageKey]: [] }))
-  }, [setCustomStages])
+  }, [setStages])
 
   const renameStage = useCallback(async (column, title) => {
-    setCustomStages((prev) => prev.map((s) => (s.id === column.dbId ? { ...s, title } : s)))
+    setStages((prev) => prev.map((s) => (s.id === column.dbId ? { ...s, title } : s)))
     await fetch(`${API}/coldcall/stages/${column.dbId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title }),
-    }).catch(() => reloadCustomStages())
-  }, [setCustomStages, reloadCustomStages])
+    }).catch(() => reloadStages())
+  }, [setStages, reloadStages])
 
   const deleteStage = useCallback(async (column) => {
     const res = await fetch(`${API}/coldcall/stages/${column.dbId}`, { method: 'DELETE' })
@@ -520,8 +541,19 @@ export default function ColdCall() {
       alert(err?.message || 'Não foi possível excluir essa raia')
       return
     }
-    setCustomStages((prev) => prev.filter((s) => s.id !== column.dbId))
-  }, [setCustomStages])
+    setStages((prev) => prev.filter((s) => s.id !== column.dbId))
+  }, [setStages])
+
+  const moveStage = useCallback(async (column, direction) => {
+    const res = await fetch(`${API}/coldcall/stages/${column.dbId}/move`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ direction }),
+    })
+    if (!res.ok) { reloadStages(); return }
+    const updated = await res.json()
+    setStages(Array.isArray(updated) ? updated : [])
+  }, [setStages, reloadStages])
 
   const handleFileSelect = async (e) => {
     const file = e.target.files?.[0]
@@ -591,15 +623,17 @@ export default function ColdCall() {
       ) : (
         <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
           <div className="flex gap-4 flex-1 overflow-x-auto pb-2">
-            {columns.map((col) => (
+            {columns.map((col, i) => (
               <Column
                 key={col.id}
                 column={col}
                 prospects={board[col.id] || []}
                 onOpen={setSelected}
-                custom={col.custom}
+                isFirst={i === 0}
+                isLast={i === columns.length - 1}
                 onRenameStage={renameStage}
                 onDeleteStage={deleteStage}
+                onMoveStage={moveStage}
               />
             ))}
             <NewStageColumn onCreate={createStage} />

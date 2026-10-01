@@ -66,4 +66,12 @@ export class ColdCallController {
     await this.coldCallService.deleteCustomStage(id);
     return { success: true };
   }
+
+  @Patch('stages/:id/move')
+  async moveStage(@Param('id') id: string, @Body() body: { direction?: 'left' | 'right' }) {
+    if (body.direction !== 'left' && body.direction !== 'right') {
+      throw new BadRequestException('direction deve ser "left" ou "right"');
+    }
+    return this.coldCallService.moveStage(id, body.direction);
+  }
 }

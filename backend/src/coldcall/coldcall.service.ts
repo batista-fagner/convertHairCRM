@@ -1,7 +1,7 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull } from 'typeorm';
-import { ColdCallLead, COLDCALL_STAGES } from '../common/entities/coldcall-lead.entity';
+import { ColdCallLead } from '../common/entities/coldcall-lead.entity';
 import { ColdCallStage } from '../common/entities/coldcall-stage.entity';
 
 /** Teto de cards carregados POR RAIA no Kanban — mesmo raciocínio do Kanban de leads. */
@@ -113,8 +113,9 @@ export class ColdCallService {
   }
 
   async findKanban(): Promise<Record<string, ColdCallLead[]>> {
-    const customStages = await this.getCustomStages();
-    const allStages: string[] = [...COLDCALL_STAGES, ...customStages.map((s) => s.stageKey)];
+    // getCustomStages() já traz TODAS as raias (as 6 originais seedadas na
+    // migração + as criadas depois) — não existe mais lista fixa separada.
+    const allStages: string[] = (await this.getCustomStages()).map((s) => s.stageKey);
 
     const perStage = await Promise.all(
       allStages.map(async (stage) => {
@@ -142,15 +143,28 @@ export class ColdCallService {
     await this.repo.delete(id);
   }
 
+  /**
+   * TODAS as raias do board — as 6 originais (seedadas uma vez via script de
+   * migração direto na tabela, ver memória do módulo) e as criadas depois
+   * pelo botão "Nova raia", sem distinção: todas editáveis, excluíveis e
+   * reordenáveis a partir daqui. Ordenadas por `position`; raias muito
+   * antigas sem position (não deveria mais existir após a migração) caem
+   * pro fim via NULLS LAST.
+   */
   async getCustomStages(): Promise<ColdCallStage[]> {
-    return this.stageRepo.find({ order: { createdAt: 'ASC' } });
+    return this.stageRepo
+      .createQueryBuilder('s')
+      .orderBy('s.position', 'ASC', 'NULLS LAST')
+      .addOrderBy('s.createdAt', 'ASC')
+      .getMany();
   }
 
   async createCustomStage(title: string): Promise<ColdCallStage> {
     const trimmed = title.trim();
     if (!trimmed) throw new ConflictException('Nome da raia não pode ser vazio');
 
-    const existingKeys = new Set<string>([...COLDCALL_STAGES, ...(await this.getCustomStages()).map((s) => s.stageKey)]);
+    const existing = await this.getCustomStages();
+    const existingKeys = new Set<string>(existing.map((s) => s.stageKey));
     const base =
       trimmed
         .normalize('NFD')
@@ -164,7 +178,8 @@ export class ColdCallService {
       stageKey = `${base}-${suffix++}`;
     }
 
-    const stage = this.stageRepo.create({ stageKey, title: trimmed });
+    const maxPosition = existing.reduce((max, s) => Math.max(max, s.position ?? -1), -1);
+    const stage = this.stageRepo.create({ stageKey, title: trimmed, position: maxPosition + 1 });
     return this.stageRepo.save(stage);
   }
 
@@ -180,10 +195,35 @@ export class ColdCallService {
   async deleteCustomStage(id: string): Promise<void> {
     const stage = await this.stageRepo.findOne({ where: { id } });
     if (!stage) throw new NotFoundException(`Raia ${id} não encontrada`);
-    const inStage = await this.repo.count({ where: { kanbanStage: stage.stageKey } });
+    // 'novo' é o fallback de prospect sem raia (ver findKanban) — conta os
+    // dois casos pra não deixar prospect "órfão" apontando pra raia excluída.
+    const where = stage.stageKey === 'novo' ? [{ kanbanStage: 'novo' }, { kanbanStage: IsNull() }] : { kanbanStage: stage.stageKey };
+    const inStage = await this.repo.count({ where: where as any });
     if (inStage > 0) {
       throw new ConflictException(`Mova os ${inStage} prospect(s) dessa raia antes de excluí-la.`);
     }
     await this.stageRepo.delete(id);
+  }
+
+  /**
+   * Troca de posição com o vizinho imediato — nunca recalcula o board
+   * inteiro, só troca os dois `position` envolvidos. Todas as posições são
+   * inteiros distintos (seed inicial 0-5, próxima raia = max+1), então o
+   * swap não tem risco de colisão/drift de float.
+   */
+  async moveStage(id: string, direction: 'left' | 'right'): Promise<ColdCallStage[]> {
+    const stages = await this.getCustomStages();
+    const idx = stages.findIndex((s) => s.id === id);
+    if (idx === -1) throw new NotFoundException(`Raia ${id} não encontrada`);
+    const targetIdx = direction === 'left' ? idx - 1 : idx + 1;
+    if (targetIdx < 0 || targetIdx >= stages.length) return stages;
+
+    const a = stages[idx];
+    const b = stages[targetIdx];
+    const posA = a.position ?? idx;
+    const posB = b.position ?? targetIdx;
+    await this.stageRepo.update(a.id, { position: posB });
+    await this.stageRepo.update(b.id, { position: posA });
+    return this.getCustomStages();
   }
 }
