@@ -163,6 +163,8 @@ Quando qualificado → `stage=quente` + `handoff=true` → notificação ao oper
 - A SDR enxerga o **mesmo board** de leads que o sócio (não é uma view filtrada) — só o menu é mais curto.
 - Fluxo de trabalho sugerido: SDR liga pro lead → se agendar, arrasta o card pra uma raia tipo "Agendamentos"; enquanto está no meio da ligação/tentativa, usa uma raia tipo "Atendimento pelo SDR" (essas raias não existem prontas — o sócio cria pelo Kanban, ver seção abaixo). Se a Sofia (IA) ainda estiver ativa nesse lead, ela continua respondendo normalmente — a SDR precisa pausar manualmente (switch que já existe no card/modal do Kanban) antes de assumir a conversa.
 
+**Agendamento de reunião pro closer** (adicionado em 2026-10-01): no modal do lead (Kanban), botão "Reunião" abre um campo de data/hora. Salvar chama `PATCH /leads/:id/meeting` (`leads.controller.ts`), grava `leads.meeting_at` e manda WhatsApp (instância do CRM, `SDR_UAZAPI_TOKEN`) pros números de Configurações → "Aviso de Reunião Agendada (closer)" (setting `meeting_notify_phones`). Avisa ao agendar, remarcar e desmarcar; o card mostra um selo com a data. Não move o card de raia sozinho e não manda lembrete antes da reunião.
+
 ⚠️ **Limitação conhecida (mesma do login do sócio):** é só uma trava de UI. Nenhum endpoint do backend valida token/role — quem tiver a URL da API pode chamar qualquer rota direto. Não é um problema novo introduzido aqui, é a mesma superfície que o CRM já tinha.
 
 ---

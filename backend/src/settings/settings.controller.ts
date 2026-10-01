@@ -1,5 +1,5 @@
 import { Controller, Get, Put, Post, Body } from '@nestjs/common';
-import { SettingsService } from './settings.service';
+import { SettingsService, MEETING_NOTIFY_PHONES_KEY } from './settings.service';
 import { SDR_PROMPT_KEY, DEFAULT_SDR_PROMPT, SDR_MODEL_KEY, SDR_DEFAULT_MODEL } from '../sdr/sdr.prompt';
 import { SDR_NOTIFY_PHONES_KEY } from '../sdr/sdr.controller';
 import { CURIOSITY_MESSAGES_KEY, DEFAULT_CURIOSITY_MESSAGES } from '../sdr/manual-message.controller';
@@ -54,6 +54,22 @@ export class SettingsController {
       .filter(Boolean);
     const value = phones.join(',');
     await this.settingsService.set(SDR_NOTIFY_PHONES_KEY, value);
+    return { phone1: phones[0] ?? '', phone2: phones[1] ?? '' };
+  }
+
+  @Get('meeting-notify')
+  async getMeetingNotifyPhones() {
+    const value = await this.settingsService.get(MEETING_NOTIFY_PHONES_KEY);
+    const phones = value ? value.split(',').map((p) => p.trim()).filter(Boolean) : [];
+    return { phone1: phones[0] ?? '', phone2: phones[1] ?? '' };
+  }
+
+  @Put('meeting-notify')
+  async setMeetingNotifyPhones(@Body() body: { phone1: string; phone2: string }) {
+    const phones = [body.phone1, body.phone2]
+      .map((p) => (p || '').replace(/\D/g, ''))
+      .filter(Boolean);
+    await this.settingsService.set(MEETING_NOTIFY_PHONES_KEY, phones.join(','));
     return { phone1: phones[0] ?? '', phone2: phones[1] ?? '' };
   }
 

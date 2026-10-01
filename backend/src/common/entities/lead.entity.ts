@@ -222,6 +222,11 @@ export class Lead {
   @Column({ name: 'notes_updated_at', type: 'timestamp', nullable: true })
   notesUpdatedAt?: Date | null;
 
+  // Reunião agendada pela SDR (humana) pro closer — ao salvar/alterar/desmarcar,
+  // os números de Configurações → "Aviso de reunião" recebem WhatsApp.
+  @Column({ name: 'meeting_at', type: 'timestamp', nullable: true })
+  meetingAt?: Date | null;
+
   // Foto de perfil do WhatsApp (uazapi /chat/details) — exibida no card do
   // Kanban e no header da conversa no lugar do círculo com iniciais.
   @Column({ name: 'avatar_url', type: 'varchar', nullable: true })

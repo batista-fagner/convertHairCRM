@@ -7,9 +7,10 @@ import { LeadsController } from './leads.controller';
 import { FacebookModule } from '../facebook/facebook.module';
 import { QuizModule } from '../quiz/quiz.module';
 import { RealtimeModule } from '../realtime/realtime.module';
+import { SettingsModule } from '../settings/settings.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Lead, KanbanCustomStage]), FacebookModule, QuizModule, RealtimeModule],
+  imports: [TypeOrmModule.forFeature([Lead, KanbanCustomStage]), FacebookModule, QuizModule, RealtimeModule, SettingsModule],
   providers: [LeadsService],
   controllers: [LeadsController],
   exports: [LeadsService],

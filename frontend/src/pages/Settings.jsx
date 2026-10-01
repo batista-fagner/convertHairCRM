@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Settings as SettingsIcon, Key, Webhook, MessageCircle, Share2, Bot, Save, RotateCcw, Loader2, CheckCircle2, Send, Trash2, Clock, Sparkles, ToggleLeft, ToggleRight, Wifi, WifiOff, Timer, RefreshCw, XCircle, Activity, Plus, Pencil, Tag, Layers, Video, Copy } from 'lucide-react'
+import { Settings as SettingsIcon, Key, Webhook, MessageCircle, Share2, Bot, Save, RotateCcw, Loader2, CheckCircle2, Send, Trash2, Clock, Sparkles, ToggleLeft, ToggleRight, Wifi, WifiOff, Timer, RefreshCw, XCircle, Activity, Plus, Pencil, Tag, Layers, Video, Copy, CalendarClock } from 'lucide-react'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3002/api'
 
@@ -1587,7 +1587,12 @@ function FollowupStatus() {
   )
 }
 
-function NotifyPhonesConfig() {
+function NotifyPhonesConfig({
+  endpoint = 'sdr-notify',
+  icon: Icon = MessageCircle,
+  title = 'Notificação de Lead Qualificado',
+  description = 'Números que recebem aviso no WhatsApp quando um lead vira qualificado (MQL)',
+}) {
   const [phone1, setPhone1] = useState('')
   const [phone2, setPhone2] = useState('')
   const [loading, setLoading] = useState(true)
@@ -1595,17 +1600,17 @@ function NotifyPhonesConfig() {
   const [saved, setSaved] = useState(false)
 
   useEffect(() => {
-    fetch(`${API}/settings/sdr-notify`)
+    fetch(`${API}/settings/${endpoint}`)
       .then(r => r.json())
       .then(d => { setPhone1(d.phone1 || ''); setPhone2(d.phone2 || '') })
       .finally(() => setLoading(false))
-  }, [])
+  }, [endpoint])
 
   const save = async () => {
     setSaving(true)
     setSaved(false)
     try {
-      await fetch(`${API}/settings/sdr-notify`, {
+      await fetch(`${API}/settings/${endpoint}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone1, phone2 }),
@@ -1620,10 +1625,10 @@ function NotifyPhonesConfig() {
   return (
     <div className="bg-white rounded-2xl border border-slate-200 p-5 mb-4">
       <div className="flex items-center gap-2 mb-4">
-        <MessageCircle className="w-5 h-5 text-emerald-500" />
+        <Icon className="w-5 h-5 text-emerald-500" />
         <div>
-          <p className="font-semibold text-slate-800 text-sm">Notificação de Lead Qualificado</p>
-          <p className="text-xs text-slate-400 mt-0.5">Números que recebem aviso no WhatsApp quando um lead vira qualificado (MQL)</p>
+          <p className="font-semibold text-slate-800 text-sm">{title}</p>
+          <p className="text-xs text-slate-400 mt-0.5">{description}</p>
         </div>
       </div>
 
@@ -1778,6 +1783,13 @@ export default function Settings() {
       <IgCatchallEditor />
 
       <NotifyPhonesConfig />
+
+      <NotifyPhonesConfig
+        endpoint="meeting-notify"
+        icon={CalendarClock}
+        title="Aviso de Reunião Agendada (closer)"
+        description="Números que recebem WhatsApp quando a SDR agenda, remarca ou desmarca uma reunião no Kanban"
+      />
 
       <CuriosityMessagesConfig />
 

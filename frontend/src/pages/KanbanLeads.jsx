@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo, useSyncExternalStore } from 'react'
 import { DndContext, DragOverlay, useDraggable, useDroppable, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { io } from 'socket.io-client'
-import { Flame, Snowflake, UserPlus, XCircle, Phone, Mail, UserCheck, Loader2, X, MessageCircle, PauseCircle, Bot, MoreVertical, Pencil, Trash2, Play, Eye, EyeOff, Handshake, Trophy, HeadphonesIcon, Paperclip, Send, FileText, Video, StickyNote, ChevronDown, ChevronUp, Plus, CheckCircle2, Megaphone, Search, Layers, Mic, Square, Check } from 'lucide-react'
+import { Flame, Snowflake, UserPlus, XCircle, Phone, Mail, UserCheck, Loader2, X, MessageCircle, PauseCircle, Bot, MoreVertical, Pencil, Trash2, Play, Eye, EyeOff, Handshake, Trophy, HeadphonesIcon, Paperclip, Send, FileText, Video, StickyNote, ChevronDown, ChevronUp, Plus, CheckCircle2, Megaphone, Search, Layers, Mic, Square, Check, CalendarClock } from 'lucide-react'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3002/api'
 const SOCKET_URL = API.replace(/\/api\/?$/, '') || 'http://localhost:3002'
@@ -159,6 +159,32 @@ const TEMP_BADGE = {
   frio:   { label: '❄️ Frio',   className: 'bg-cyan-100 text-cyan-700' },
 }
 
+function formatMeeting(value) {
+  return new Date(value).toLocaleString('pt-BR', {
+    timeZone: 'America/Sao_Paulo', weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+  })
+}
+
+function toDatetimeLocalValue(value) {
+  if (!value) return ''
+  const d = new Date(value)
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+function MeetingBadge({ meetingAt }) {
+  if (!meetingAt) return null
+  const past = new Date(meetingAt).getTime() < Date.now()
+  return (
+    <span
+      className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium flex items-center gap-0.5 ${past ? 'bg-slate-100 text-slate-500' : 'bg-sky-100 text-sky-700'}`}
+      title={past ? 'Reunião já passou' : 'Reunião agendada com o closer'}
+    >
+      <CalendarClock className="w-3 h-3" /> {formatMeeting(meetingAt)}
+    </span>
+  )
+}
+
 // Visual puro do card (reusado no card e no DragOverlay)
 function CardContent({ lead, overlay = false }) {
   const msg = lastMessage(lead)
@@ -218,6 +244,7 @@ function CardContent({ lead, overlay = false }) {
             👤 {lead.assignedTo}
           </span>
         )}
+        <MeetingBadge meetingAt={lead.meetingAt} />
         {lead.followupSentAt && (
           <span
             className="text-[10px] px-1.5 py-0.5 rounded-full bg-teal-100 text-teal-700 font-medium flex items-center gap-0.5"
@@ -324,6 +351,7 @@ function LeadCard({ lead, onOpen, onEdit, onDelete }) {
             👤 {lead.assignedTo}
           </span>
         )}
+        <MeetingBadge meetingAt={lead.meetingAt} />
         {lead.followupSentAt && (
           <span
             className="text-[10px] px-1.5 py-0.5 rounded-full bg-teal-100 text-teal-700 font-medium flex items-center gap-0.5"
@@ -470,7 +498,7 @@ function mediaIcon(type) {
   return <FileText className="w-4 h-4" />
 }
 
-function ConversationModal({ lead, onClose, onTogglePause, onAssign, onSaveNotes }) {
+function ConversationModal({ lead, onClose, onTogglePause, onAssign, onSaveNotes, onSaveMeeting }) {
   if (!lead) return null
   const ctx = Array.isArray(lead.aiContext) ? lead.aiContext : []
   const paused = !!lead.aiPaused
@@ -478,6 +506,10 @@ function ConversationModal({ lead, onClose, onTogglePause, onAssign, onSaveNotes
   const [notes, setNotes] = useState(lead.notes || '')
   const [notesOpen, setNotesOpen] = useState(!!lead.notes)
   const [notesSaved, setNotesSaved] = useState(false)
+  const [meetingOpen, setMeetingOpen] = useState(false)
+  const [meetingValue, setMeetingValue] = useState(toDatetimeLocalValue(lead.meetingAt))
+  const [meetingSaving, setMeetingSaving] = useState(false)
+  const [meetingResult, setMeetingResult] = useState(null) // { ok, text }
   const [draft, setDraft] = useState('')
   const [pendingMedia, setPendingMedia] = useState(null) // { type, base64, dataUrl, filename, mimeType }
   const [sending, setSending] = useState(false)
@@ -517,6 +549,29 @@ function ConversationModal({ lead, onClose, onTogglePause, onAssign, onSaveNotes
     onSaveNotes(lead.id, val)
     setNotesSaved(true)
     setTimeout(() => setNotesSaved(false), 2000)
+  }
+
+  const saveMeeting = async (clear = false) => {
+    const iso = clear ? null : (meetingValue ? new Date(meetingValue).toISOString() : null)
+    if (!clear && !iso) return
+    const current = lead.meetingAt ? new Date(lead.meetingAt).getTime() : null
+    if ((iso ? new Date(iso).getTime() : null) === current) {
+      setMeetingResult({ ok: true, text: 'Nada mudou — reunião já está nesse horário' })
+      return
+    }
+    setMeetingSaving(true)
+    setMeetingResult(null)
+    try {
+      const notified = await onSaveMeeting(lead.id, iso)
+      if (clear) setMeetingValue('')
+      setMeetingResult(notified > 0
+        ? { ok: true, text: clear ? 'Desmarcada — closer avisado no WhatsApp' : 'Salva — closer avisado no WhatsApp' }
+        : { ok: false, text: 'Salva, mas o aviso não saiu — confira o telefone do closer em Configurações' })
+    } catch {
+      setMeetingResult({ ok: false, text: 'Erro ao salvar a reunião. Tente de novo.' })
+    } finally {
+      setMeetingSaving(false)
+    }
   }
 
   const handleFileSelect = (e) => {
@@ -736,6 +791,19 @@ function ConversationModal({ lead, onClose, onTogglePause, onAssign, onSaveNotes
               {notesOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
             </button>
             <button
+              onClick={() => setMeetingOpen(o => !o)}
+              className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg border transition ${
+                meetingOpen || lead.meetingAt
+                  ? 'bg-sky-50 border-sky-200 text-sky-700'
+                  : 'border-slate-200 text-slate-500 hover:bg-slate-100'
+              }`}
+              title="Agendar reunião com o closer (avisa no WhatsApp)"
+            >
+              <CalendarClock className="w-3.5 h-3.5" />
+              {lead.meetingAt ? formatMeeting(lead.meetingAt) : 'Reunião'}
+              {meetingOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+            </button>
+            <button
               onClick={handleCuriosityBlast}
               disabled={curiosityLoading}
               className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg border border-orange-200 text-orange-600 hover:bg-orange-50 disabled:opacity-50 transition shrink-0"
@@ -785,6 +853,46 @@ function ConversationModal({ lead, onClose, onTogglePause, onAssign, onSaveNotes
                 </span>
               )}
             </div>
+          </div>
+        )}
+
+        {/* Agendamento da reunião com o closer */}
+        {meetingOpen && (
+          <div className="px-5 py-3 border-b border-slate-200 bg-sky-50/50">
+            <label htmlFor="meeting-at" className="text-xs font-medium text-slate-600 block mb-1.5">
+              Data e horário da reunião com o closer
+            </label>
+            <div className="flex items-center gap-2 flex-wrap">
+              <input
+                id="meeting-at"
+                type="datetime-local"
+                value={meetingValue}
+                onChange={e => setMeetingValue(e.target.value)}
+                className="text-sm border border-sky-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-sky-300"
+              />
+              <button
+                onClick={() => saveMeeting(false)}
+                disabled={meetingSaving || !meetingValue}
+                className="flex items-center gap-1.5 text-xs font-medium text-white bg-sky-600 hover:bg-sky-700 disabled:opacity-50 px-3 py-2 rounded-lg transition"
+              >
+                {meetingSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                Salvar e avisar closer
+              </button>
+              {lead.meetingAt && (
+                <button
+                  onClick={() => saveMeeting(true)}
+                  disabled={meetingSaving}
+                  className="text-xs font-medium text-red-600 hover:bg-red-50 border border-red-200 disabled:opacity-50 px-3 py-2 rounded-lg transition"
+                >
+                  Desmarcar
+                </button>
+              )}
+            </div>
+            {meetingResult && (
+              <p className={`text-[11px] mt-1.5 flex items-center gap-1 ${meetingResult.ok ? 'text-emerald-600' : 'text-amber-700'}`}>
+                {meetingResult.ok && <CheckCircle2 className="w-3 h-3" />} {meetingResult.text}
+              </p>
+            )}
           </div>
         )}
 
@@ -1360,6 +1468,19 @@ export default function KanbanLeads() {
     }
   }, [updateLeadInPlace])
 
+  // Devolve quantos números receberam o aviso — o modal usa isso pra dizer se o closer foi avisado.
+  const saveMeeting = useCallback(async (leadId, meetingAt) => {
+    const res = await fetch(`${API}/leads/${leadId}/meeting`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ meetingAt }),
+    })
+    if (!res.ok) throw new Error('Falha ao salvar reunião')
+    const { lead: fresh, notified } = await res.json()
+    updateLeadInPlace({ id: leadId, meetingAt: fresh.meetingAt })
+    return notified
+  }, [updateLeadInPlace])
+
   const createLead = useCallback((lead) => {
     placeLead(lead)
   }, [placeLead])
@@ -1579,7 +1700,7 @@ export default function KanbanLeads() {
         </DndContext>
       )}
 
-      <ConversationModal key={selected?.id} lead={selected} onClose={() => setSelected(null)} onTogglePause={togglePause} onAssign={assignVendedor} onSaveNotes={saveNotes} />
+      <ConversationModal key={selected?.id} lead={selected} onClose={() => setSelected(null)} onTogglePause={togglePause} onAssign={assignVendedor} onSaveNotes={saveNotes} onSaveMeeting={saveMeeting} />
       <EditNameModal key={editing?.id} lead={editing} onClose={() => setEditing(null)} onSave={saveName} />
       <ConfirmDeleteModal lead={deleting} onClose={() => setDeleting(null)} onConfirm={deleteLead} />
       <CreateLeadModal open={creating} onClose={() => setCreating(false)} onCreate={createLead} />

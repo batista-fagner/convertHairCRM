@@ -4,6 +4,17 @@ import { LeadsService } from './leads.service';
 import { FacebookService } from '../facebook/facebook.service';
 import { QuizService } from '../quiz/quiz.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { SettingsService, MEETING_NOTIFY_PHONES_KEY } from '../settings/settings.service';
+import { Lead } from '../common/entities/lead.entity';
+
+type MeetingChange = 'agendada' | 'remarcada' | 'desmarcada';
+
+function formatMeetingDate(d: Date): string {
+  const tz = 'America/Sao_Paulo';
+  const day = d.toLocaleDateString('pt-BR', { timeZone: tz, weekday: 'long', day: '2-digit', month: '2-digit' });
+  const time = d.toLocaleTimeString('pt-BR', { timeZone: tz, hour: '2-digit', minute: '2-digit' });
+  return `${day} às ${time}`;
+}
 
 @Controller('leads')
 export class LeadsController {
@@ -15,7 +26,50 @@ export class LeadsController {
     private quizService: QuizService,
     private realtime: RealtimeGateway,
     private config: ConfigService,
+    private settingsService: SettingsService,
   ) {}
+
+  // Sai pela instância do CRM (mesma da Sofia), não pela do Efraim/Greenn.
+  private async notifyMeeting(lead: Lead, change: MeetingChange, previous: Date | null): Promise<number> {
+    const stored = await this.settingsService.get(MEETING_NOTIFY_PHONES_KEY);
+    const phones = stored ? stored.split(',').map((p) => p.trim()).filter(Boolean) : [];
+    const baseUrl = this.config.get('SDR_UAZAPI_BASE_URL') || this.config.get('UAZAPI_BASE_URL');
+    const token = this.config.get('SDR_UAZAPI_TOKEN');
+    if (phones.length === 0 || !baseUrl || !token) return 0;
+
+    const header = {
+      agendada: '📅 Reunião agendada!',
+      remarcada: '🔁 Reunião remarcada!',
+      desmarcada: '❌ Reunião desmarcada',
+    }[change];
+    const notes = (lead.notes || '').trim();
+    const lines = [
+      header,
+      '',
+      `Lead: ${lead.name}`,
+      `WhatsApp: ${lead.phone}`,
+      lead.meetingAt ? `Quando: ${formatMeetingDate(new Date(lead.meetingAt))}` : null,
+      previous && change !== 'agendada' ? `${change === 'remarcada' ? 'Antes' : 'Era'}: ${formatMeetingDate(previous)}` : null,
+      lead.assignedTo ? `Responsável: ${lead.assignedTo}` : null,
+      notes ? `\nNotas: ${notes.length > 400 ? `${notes.slice(0, 400)}…` : notes}` : null,
+    ].filter((l) => l !== null);
+    const text = lines.join('\n');
+
+    const results = await Promise.allSettled(
+      phones.map(async (number) => {
+        const res = await fetch(`${baseUrl}/send/text`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', token },
+          body: JSON.stringify({ number, text }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      }),
+    );
+    results.forEach((r, i) => {
+      if (r.status === 'rejected') this.logger.error(`[Reunião] Falha ao avisar ${phones[i]}: ${r.reason?.message}`);
+    });
+    return results.filter((r) => r.status === 'fulfilled').length;
+  }
 
   // Se o lead veio de um quiz com pixel/CAPI próprio, o Purchase precisa ir pra esse
   // pixel — não pro global — senão a campanha do quiz nunca vê a conversão de verdade.
@@ -179,6 +233,28 @@ export class LeadsController {
     const lead = await this.leadsService.update(id, data);
     this.realtime.emitLeadUpdated(lead);
     return lead;
+  }
+
+  @Patch(':id/meeting')
+  async setMeeting(@Param('id') id: string, @Body() body: { meetingAt?: string | null }) {
+    let meetingAt: Date | null = null;
+    if (body.meetingAt) {
+      meetingAt = new Date(body.meetingAt);
+      if (isNaN(meetingAt.getTime())) throw new HttpException('Data da reunião inválida', HttpStatus.BAD_REQUEST);
+    }
+    const current = await this.leadsService.findById(id);
+    const previous = current.meetingAt ? new Date(current.meetingAt) : null;
+    const changed = (previous?.getTime() ?? null) !== (meetingAt?.getTime() ?? null);
+
+    const lead = await this.leadsService.update(id, { meetingAt });
+    this.realtime.emitLeadUpdated(lead);
+
+    let notified = 0;
+    if (changed) {
+      const change: MeetingChange = !meetingAt ? 'desmarcada' : previous ? 'remarcada' : 'agendada';
+      notified = await this.notifyMeeting(lead, change, previous);
+    }
+    return { lead, notified };
   }
 
   @Get(':id')

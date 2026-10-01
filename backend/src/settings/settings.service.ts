@@ -6,6 +6,10 @@ import OpenAI from 'openai';
 import { Setting } from './setting.entity';
 import { SDR_PROMPT_KEY, DEFAULT_SDR_PROMPT, SDR_JSON_FORMAT, SDR_MODEL_KEY, SDR_DEFAULT_MODEL } from '../sdr/sdr.prompt';
 
+// Números (CSV, só dígitos com DDI) que recebem WhatsApp quando a SDR agenda,
+// remarca ou desmarca uma reunião no Kanban — normalmente o(s) closer(s).
+export const MEETING_NOTIFY_PHONES_KEY = 'meeting_notify_phones';
+
 @Injectable()
 export class SettingsService {
   private readonly openai: OpenAI;
