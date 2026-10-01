@@ -11,7 +11,7 @@ const API = import.meta.env.VITE_API_URL || 'http://localhost:3002/api'
 // Script de ligação (pesquisa de mercado B2B) — doc editável, ajustado direto ali sem precisar de deploy.
 const SCRIPT_URL = 'https://claude.ai/artifact/26FCQfziRLHkEm7WMW5ZnQ'
 // Cola visual (cheat sheet colorido, em ordem de fala) — mesmo conteúdo do script, editável direto na página.
-const COLA_URL = 'https://claude.ai/artifact/W6cpRT63Gec6kpjNsAkvkv'
+const COLA_URL = 'https://claude.ai/artifact/LvD5bxXBN68DT8BApMLSUR'
 
 const COLUMNS = [
   { id: 'novo',             title: 'Novo',             icon: UserPlus,     accent: 'slate',   dot: 'bg-slate-400' },
