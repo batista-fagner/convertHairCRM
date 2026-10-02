@@ -4,10 +4,13 @@ import {
   UserPlus, PhoneCall, Snowflake, CalendarClock, XCircle, Trophy,
   Phone, Mail, Globe, Loader2, X, Plus, Check, Pencil, Trash2, Upload,
   StickyNote, Building2, MapPin, Layers, Link2, FileText, Sparkles,
-  ChevronLeft, ChevronRight,
+  ChevronLeft, ChevronRight, MessageCircle,
 } from 'lucide-react'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3002/api'
+
+// Link wa.me — só dígitos (o CSV traz phone_e164 com "+55...").
+const waLink = (phone) => `https://wa.me/${String(phone).replace(/\D/g, '')}`
 
 // Script de ligação (pesquisa de mercado B2B) — doc editável, ajustado direto ali sem precisar de deploy.
 const SCRIPT_URL = 'https://claude.ai/artifact/26FCQfziRLHkEm7WMW5ZnQ'
@@ -101,14 +104,27 @@ function ProspectCard({ prospect, onOpen, showList }) {
       </div>
 
       {prospect.phone && (
-        <a
-          href={`tel:${prospect.phone}`}
-          onClick={stop}
-          onPointerDown={stop}
-          className="mt-2 flex items-center gap-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg px-2 py-1.5 transition w-fit"
-        >
-          <Phone className="w-3.5 h-3.5" /> {prospect.phone}
-        </a>
+        <div className="mt-2 flex items-center gap-1.5">
+          <a
+            href={`tel:${prospect.phone}`}
+            onClick={stop}
+            onPointerDown={stop}
+            className="flex items-center gap-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg px-2 py-1.5 transition w-fit"
+          >
+            <Phone className="w-3.5 h-3.5" /> {prospect.phone}
+          </a>
+          <a
+            href={waLink(prospect.phone)}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={stop}
+            onPointerDown={stop}
+            title="Abrir no WhatsApp"
+            className="flex items-center gap-1 text-xs font-medium text-green-700 bg-green-50 hover:bg-green-100 rounded-lg px-2 py-1.5 transition"
+          >
+            <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
+          </a>
+        </div>
       )}
 
       <div className="flex items-center gap-1.5 mt-2 flex-wrap">
@@ -326,8 +342,13 @@ function ProspectModal({ prospect, onClose, onSave, onDelete }) {
             <div className="flex items-center gap-2 text-sm">
               <Phone className="w-4 h-4 text-slate-400 shrink-0" />
               {prospect.phone ? (
-                <a href={`tel:${prospect.phone}`} className="font-medium text-emerald-700 hover:underline">{prospect.phone}</a>
-              ) : <span className="text-slate-400 italic">Telefone não informado</span>}
+                <>
+                  <a href={`tel:${prospect.phone}`} className="font-medium text-emerald-700 hover:underline">{prospect.phone}</a>
+                  <a href={waLink(prospect.phone)} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs font-medium text-green-700 bg-green-50 hover:bg-green-100 rounded-lg px-2 py-1 transition">
+                    <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
+                  </a>
+                </>
+              ) :<span className="text-slate-400 italic">Telefone não informado</span>}
             </div>
 
             <div className="flex items-center gap-2 text-sm min-w-0">
