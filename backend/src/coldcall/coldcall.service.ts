@@ -68,8 +68,9 @@ export class ColdCallService {
    * subido de novo. Linhas sem telefone sempre entram (não dá pra deduplicar
    * com segurança só por nome da empresa).
    */
-  async importCsv(fileContent: string): Promise<{ imported: number; skipped: number; total: number }> {
+  async importCsv(fileContent: string, listName?: string): Promise<{ imported: number; skipped: number; total: number; listName: string | null }> {
     const rows = parseCsv(fileContent);
+    const list = listName?.trim() || null;
     const existingPhones = new Set(
       (await this.repo.find({ select: ['phone'] })).map((l) => l.phone).filter((p): p is string => !!p),
     );
@@ -101,6 +102,7 @@ export class ColdCallService {
         sourceUrl: row['source_url']?.trim() || null,
         b2bEvidence: row['b2b_evidence']?.trim() || null,
         kanbanStage: 'novo',
+        listName: list,
       });
       imported++;
     }
@@ -109,17 +111,33 @@ export class ColdCallService {
       await this.repo.insert(toInsert);
     }
 
-    return { imported, skipped, total: rows.length };
+    return { imported, skipped, total: rows.length, listName: list };
   }
 
-  async findKanban(): Promise<Record<string, ColdCallLead[]>> {
+  /** Listas importadas (nome + quantos prospects), pro filtro do Kanban. */
+  async getLists(): Promise<{ name: string; count: number }[]> {
+    const rows = await this.repo
+      .createQueryBuilder('l')
+      .select('l.list_name', 'name')
+      .addSelect('COUNT(*)', 'count')
+      .where('l.list_name IS NOT NULL')
+      .groupBy('l.list_name')
+      .orderBy('l.list_name', 'ASC')
+      .getRawMany<{ name: string; count: string }>();
+    return rows.map((r) => ({ name: r.name, count: Number(r.count) }));
+  }
+
+  async findKanban(listName?: string): Promise<Record<string, ColdCallLead[]>> {
     // getCustomStages() já traz TODAS as raias (as 6 originais seedadas na
     // migração + as criadas depois) — não existe mais lista fixa separada.
     const allStages: string[] = (await this.getCustomStages()).map((s) => s.stageKey);
 
     const perStage = await Promise.all(
       allStages.map(async (stage) => {
-        const where = stage === 'novo' ? [{ kanbanStage: 'novo' }, { kanbanStage: IsNull() }] : { kanbanStage: stage };
+        const list = listName ? { listName } : {};
+        const where = stage === 'novo'
+          ? [{ kanbanStage: 'novo', ...list }, { kanbanStage: IsNull(), ...list }]
+          : { kanbanStage: stage, ...list };
         const leads = await this.repo.find({
           where: where as any,
           order: { updatedAt: 'DESC' },

@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ColdCallService } from './coldcall.service';
 
@@ -16,14 +16,19 @@ export class ColdCallController {
 
   @Post('import')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }))
-  async importCsv(@UploadedFile() file: UploadedCsvFile) {
+  async importCsv(@UploadedFile() file: UploadedCsvFile, @Body() body: { listName?: string }) {
     if (!file) throw new BadRequestException('Nenhum arquivo enviado');
-    return this.coldCallService.importCsv(file.buffer.toString('utf-8'));
+    return this.coldCallService.importCsv(file.buffer.toString('utf-8'), body?.listName);
+  }
+
+  @Get('lists')
+  async getLists() {
+    return this.coldCallService.getLists();
   }
 
   @Get('kanban')
-  async getKanban() {
-    return this.coldCallService.findKanban();
+  async getKanban(@Query('list') list?: string) {
+    return this.coldCallService.findKanban(list);
   }
 
   @Patch(':id')

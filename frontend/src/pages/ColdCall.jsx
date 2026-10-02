@@ -74,7 +74,7 @@ function toDatetimeLocalValue(value) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
-function ProspectCard({ prospect, onOpen }) {
+function ProspectCard({ prospect, onOpen, showList }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: prospect.id })
   const stop = (e) => e.stopPropagation()
 
@@ -112,6 +112,11 @@ function ProspectCard({ prospect, onOpen }) {
       )}
 
       <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+        {showList && prospect.listName && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-sky-100 text-sky-700 font-medium">
+            {prospect.listName}
+          </span>
+        )}
         {prospect.assignedTo && (
           <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700 font-medium">
             👤 {prospect.assignedTo}
@@ -136,7 +141,7 @@ function ProspectCard({ prospect, onOpen }) {
   )
 }
 
-function Column({ column, prospects, onOpen, isFirst, isLast, onRenameStage, onDeleteStage, onMoveStage }) {
+function Column({ column, prospects, onOpen, showList, isFirst, isLast, onRenameStage, onDeleteStage, onMoveStage }) {
   const { setNodeRef, isOver } = useDroppable({ id: column.id })
   const Icon = column.icon
   const [renaming, setRenaming] = useState(false)
@@ -206,7 +211,7 @@ function Column({ column, prospects, onOpen, isFirst, isLast, onRenameStage, onD
           isOver ? 'ring-2 ring-violet-300' : ''
         }`}
       >
-        {prospects.map((p) => <ProspectCard key={p.id} prospect={p} onOpen={() => onOpen(p)} />)}
+        {prospects.map((p) => <ProspectCard key={p.id} prospect={p} showList={showList} onOpen={() => onOpen(p)} />)}
         {prospects.length === 0 && <p className="text-[11px] text-slate-400 text-center py-6">Vazio</p>}
       </div>
     </div>
@@ -424,6 +429,12 @@ export default function ColdCall() {
   const [activeId, setActiveId] = useState(null)
   const [importing, setImporting] = useState(false)
   const [importResult, setImportResult] = useState(null)
+  const [lists, setLists] = useState([])
+  const [listFilter, setListFilter] = useState(() => {
+    try { return localStorage.getItem('coldcall_list_filter') || '' } catch { return '' }
+  })
+  const [pendingFile, setPendingFile] = useState(null)
+  const [listNameDraft, setListNameDraft] = useState('')
   const fileInputRef = useRef(null)
   const boardRef = useRef(board)
   boardRef.current = board
@@ -440,14 +451,28 @@ export default function ColdCall() {
   const columnsRef = useRef(columns)
   columnsRef.current = columns
 
-  const loadBoard = useCallback(() => {
-    return fetch(`${API}/coldcall/kanban`)
+  const loadLists = useCallback(() => {
+    return fetch(`${API}/coldcall/lists`)
       .then((r) => r.json())
-      .then((d) => setBoard(d && typeof d === 'object' && !Array.isArray(d) ? d : {}))
+      .then((d) => setLists(Array.isArray(d) ? d : []))
       .catch(() => {})
   }, [])
 
+  const loadBoard = useCallback(() => {
+    const qs = listFilter ? `?list=${encodeURIComponent(listFilter)}` : ''
+    return fetch(`${API}/coldcall/kanban${qs}`)
+      .then((r) => r.json())
+      .then((d) => setBoard(d && typeof d === 'object' && !Array.isArray(d) ? d : {}))
+      .catch(() => {})
+  }, [listFilter])
+
+  useEffect(() => { loadLists() }, [loadLists])
   useEffect(() => { loadBoard().finally(() => setLoading(false)) }, [loadBoard])
+
+  const changeListFilter = (value) => {
+    setListFilter(value)
+    try { localStorage.setItem('coldcall_list_filter', value) } catch {}
+  }
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
 
@@ -555,19 +580,34 @@ export default function ColdCall() {
     setStages(Array.isArray(updated) ? updated : [])
   }, [setStages, reloadStages])
 
-  const handleFileSelect = async (e) => {
+  const handleFileSelect = (e) => {
     const file = e.target.files?.[0]
     e.target.value = ''
     if (!file) return
+    setPendingFile(file)
+    setListNameDraft(file.name.replace(/\.csv$/i, '').replace(/[_-]+/g, ' ').trim())
+  }
+
+  const confirmImport = async () => {
+    const file = pendingFile
+    const listName = listNameDraft.trim()
+    if (!file || !listName) return
+    setPendingFile(null)
     setImporting(true)
     setImportResult(null)
     try {
       const formData = new FormData()
+      formData.append('listName', listName)
       formData.append('file', file)
       const res = await fetch(`${API}/coldcall/import`, { method: 'POST', body: formData })
+      if (!res.ok) throw new Error('import failed')
       const result = await res.json()
       setImportResult(result)
-      await loadBoard()
+      await loadLists()
+      // Mostra a lista recém-importada (senão o usuário não vê o que acabou de subir).
+      if (result.imported > 0) setListFilter(listName)
+      else await loadBoard()
+      if (result.imported > 0) { try { localStorage.setItem('coldcall_list_filter', listName) } catch {} }
     } catch (e) {
       setImportResult({ error: true })
     } finally {
@@ -583,6 +623,17 @@ export default function ColdCall() {
           <p className="text-sm text-slate-500">Prospecção B2B — importe uma lista e organize as ligações por raia.</p>
         </div>
         <div className="flex items-center gap-3">
+          <select
+            value={listFilter}
+            onChange={(e) => changeListFilter(e.target.value)}
+            aria-label="Filtrar por lista"
+            className="text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-300"
+          >
+            <option value="">Todas as listas</option>
+            {lists.map((l) => (
+              <option key={l.name} value={l.name}>{l.name} ({l.count})</option>
+            ))}
+          </select>
           <a
             href={SCRIPT_URL}
             target="_blank"
@@ -601,7 +652,7 @@ export default function ColdCall() {
           </a>
           {importResult && !importResult.error && (
             <span className="text-xs text-emerald-600 font-medium">
-              {importResult.imported} importado(s), {importResult.skipped} ignorado(s) (duplicado/sem nome)
+              {importResult.imported} importado(s) em "{importResult.listName}", {importResult.skipped} ignorado(s) (duplicado/sem nome)
             </span>
           )}
           {importResult?.error && <span className="text-xs text-red-600 font-medium">Erro ao importar CSV</span>}
@@ -629,6 +680,7 @@ export default function ColdCall() {
                 column={col}
                 prospects={board[col.id] || []}
                 onOpen={setSelected}
+                showList={!listFilter}
                 isFirst={i === 0}
                 isLast={i === columns.length - 1}
                 onRenameStage={renameStage}
@@ -639,9 +691,46 @@ export default function ColdCall() {
             <NewStageColumn onCreate={createStage} />
           </div>
           <DragOverlay dropAnimation={null}>
-            {activeProspect ? <ProspectCard prospect={activeProspect} onOpen={() => {}} /> : null}
+            {activeProspect ? <ProspectCard prospect={activeProspect} showList={!listFilter} onOpen={() => {}} /> : null}
           </DragOverlay>
         </DndContext>
+      )}
+
+      {pendingFile && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setPendingFile(null)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-5" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-bold text-slate-800">Nome da lista</h3>
+            <p className="text-xs text-slate-500 mt-1 mb-3 truncate">{pendingFile.name}</p>
+            <input
+              id="coldcall-list-name"
+              autoFocus
+              list="coldcall-existing-lists"
+              value={listNameDraft}
+              onChange={(e) => setListNameDraft(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') confirmImport() }}
+              placeholder="Ex.: Sem site"
+              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-300"
+            />
+            <datalist id="coldcall-existing-lists">
+              {lists.map((l) => <option key={l.name} value={l.name} />)}
+            </datalist>
+            <p className="text-[11px] text-slate-400 mt-2">
+              Use um nome novo pra separar a lista. Escolher um nome que já existe soma os prospects nela.
+            </p>
+            <div className="flex justify-end gap-2 mt-4">
+              <button onClick={() => setPendingFile(null)} className="text-xs font-medium text-slate-600 hover:bg-slate-100 px-3.5 py-2 rounded-lg transition">
+                Cancelar
+              </button>
+              <button
+                onClick={confirmImport}
+                disabled={!listNameDraft.trim()}
+                className="text-xs font-medium text-white bg-violet-600 hover:bg-violet-700 disabled:opacity-50 px-3.5 py-2 rounded-lg transition"
+              >
+                Importar
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       <ProspectModal

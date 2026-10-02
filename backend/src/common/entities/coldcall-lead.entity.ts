@@ -39,6 +39,12 @@ export class ColdCallLead {
   @Column({ name: 'b2b_evidence', type: 'text', nullable: true })
   b2bEvidence?: string | null;
 
+  // Nome da lista/lote de origem (ex.: "Dedetizadoras", "Sem site") — dado na
+  // importação do CSV, usado só pra filtrar o Kanban. null = import antigo
+  // (o script de migração marcou os existentes).
+  @Column({ name: 'list_name', type: 'varchar', nullable: true })
+  listName?: string | null;
+
   @Column({ name: 'kanban_stage', type: 'varchar', default: 'novo' })
   kanbanStage: string;
 
