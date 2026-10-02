@@ -9,7 +9,25 @@ const KANBAN_PER_STAGE_LIMIT = 200;
 
 // Colunas esperadas no CSV (ver lote_03_dedetizadoras_b2b_50.csv): company_name,
 // city, state, phone_e164, email, website, source_url, b2b_evidence.
+// Opcionais de enriquecimento: nota_google, avaliacoes_google, bairro.
 const CSV_COLUMNS = ['company_name', 'city', 'state', 'phone_e164', 'email', 'website', 'source_url', 'b2b_evidence'] as const;
+
+// Nomes alternativos (em português) aceitos no cabeçalho → nome canônico.
+const HEADER_ALIASES: Record<string, string> = {
+  nome: 'company_name',
+  cidade: 'city',
+  estado: 'state',
+  telefone_e164: 'phone_e164',
+  google_rating: 'nota_google',
+  google_reviews: 'avaliacoes_google',
+  neighborhood: 'bairro',
+};
+
+/** "5,0" / "4.8" → número; vazio ou inválido → null. */
+function parseNumber(value?: string): number | null {
+  const n = parseFloat((value ?? '').replace(',', '.'));
+  return Number.isFinite(n) ? n : null;
+}
 
 /** Parser simples de CSV (aspas + vírgula) — arquivo pequeno (dezenas de linhas), não justifica dependência nova. */
 function parseCsv(text: string): Record<string, string>[] {
@@ -44,7 +62,11 @@ function parseCsv(text: string): Record<string, string>[] {
     return fields.map((f) => f.trim());
   };
 
-  const header = parseLine(lines[0]).map((h) => h.toLowerCase());
+  // BOM do Excel ("﻿") grudaria no nome da 1ª coluna e ela nunca casaria.
+  const header = parseLine(lines[0].replace(/^﻿/, '')).map((h) => {
+    const key = h.toLowerCase();
+    return HEADER_ALIASES[key] ?? key;
+  });
   return lines.slice(1).map((line) => {
     const values = parseLine(line);
     const row: Record<string, string> = {};
@@ -68,15 +90,19 @@ export class ColdCallService {
    * subido de novo. Linhas sem telefone sempre entram (não dá pra deduplicar
    * com segurança só por nome da empresa).
    */
-  async importCsv(fileContent: string, listName?: string): Promise<{ imported: number; skipped: number; total: number; listName: string | null }> {
+  async importCsv(fileContent: string, listName?: string): Promise<{ imported: number; skipped: number; enriched: number; total: number; listName: string | null }> {
     const rows = parseCsv(fileContent);
     const list = listName?.trim() || null;
-    const existingPhones = new Set(
-      (await this.repo.find({ select: ['phone'] })).map((l) => l.phone).filter((p): p is string => !!p),
+    const existingByPhone = new Map(
+      (await this.repo.find({ select: ['id', 'phone', 'googleRating', 'googleReviews', 'neighborhood'] }))
+        .filter((l) => !!l.phone)
+        .map((l) => [l.phone as string, l]),
     );
+    const insertedPhones = new Set<string>();
 
     let imported = 0;
     let skipped = 0;
+    let enriched = 0;
     const toInsert: Partial<ColdCallLead>[] = [];
 
     for (const row of rows) {
@@ -86,11 +112,32 @@ export class ColdCallService {
         continue;
       }
       const phone = row['phone_e164']?.trim() || null;
-      if (phone && existingPhones.has(phone)) {
+      const enrichment = {
+        googleRating: parseNumber(row['nota_google']),
+        googleReviews: parseNumber(row['avaliacoes_google']),
+        neighborhood: row['bairro']?.trim() || null,
+      };
+
+      // Já existe: não duplica, mas completa o enriquecimento que estiver vazio
+      // (reimportar uma lista com nota/avaliações/bairro atualiza os cards).
+      const existing = phone ? existingByPhone.get(phone) : undefined;
+      if (existing) {
+        const patch: Partial<ColdCallLead> = {};
+        if (existing.googleRating == null && enrichment.googleRating != null) patch.googleRating = enrichment.googleRating;
+        if (existing.googleReviews == null && enrichment.googleReviews != null) patch.googleReviews = Math.round(enrichment.googleReviews);
+        if (!existing.neighborhood && enrichment.neighborhood) patch.neighborhood = enrichment.neighborhood;
+        if (Object.keys(patch).length > 0) {
+          await this.repo.update(existing.id, patch);
+          enriched++;
+        }
         skipped++;
         continue;
       }
-      if (phone) existingPhones.add(phone);
+      if (phone && insertedPhones.has(phone)) {
+        skipped++;
+        continue;
+      }
+      if (phone) insertedPhones.add(phone);
 
       toInsert.push({
         companyName,
@@ -101,6 +148,9 @@ export class ColdCallService {
         website: row['website']?.trim() || null,
         sourceUrl: row['source_url']?.trim() || null,
         b2bEvidence: row['b2b_evidence']?.trim() || null,
+        googleRating: enrichment.googleRating,
+        googleReviews: enrichment.googleReviews != null ? Math.round(enrichment.googleReviews) : null,
+        neighborhood: enrichment.neighborhood,
         kanbanStage: 'novo',
         listName: list,
       });
@@ -111,7 +161,7 @@ export class ColdCallService {
       await this.repo.insert(toInsert);
     }
 
-    return { imported, skipped, total: rows.length, listName: list };
+    return { imported, skipped, enriched, total: rows.length, listName: list };
   }
 
   /** Listas importadas (nome + quantos prospects), pro filtro do Kanban. */

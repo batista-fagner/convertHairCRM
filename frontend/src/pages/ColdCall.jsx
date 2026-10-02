@@ -4,12 +4,14 @@ import {
   UserPlus, PhoneCall, Snowflake, CalendarClock, XCircle, Trophy,
   Phone, Mail, Globe, Loader2, X, Plus, Check, Pencil, Trash2, Upload,
   StickyNote, Building2, MapPin, Layers, Link2, FileText, Sparkles,
-  ChevronLeft, ChevronRight, MessageCircle,
+  ChevronLeft, ChevronRight, MessageCircle, Star,
 } from 'lucide-react'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3002/api'
 
 // Link wa.me — só dígitos (o CSV traz phone_e164 com "+55...").
+const formatRating = (n) => Number(n).toFixed(1).replace('.', ',')
+
 const waLink = (phone) => `https://wa.me/${String(phone).replace(/\D/g, '')}`
 
 // Ligação: disca no formato nacional (DDD + número, sem +55) — via iPhone/Continuity
@@ -102,9 +104,16 @@ function ProspectCard({ prospect, onOpen, showList }) {
         </div>
         <div className="min-w-0 flex-1">
           <p className="font-semibold text-slate-800 text-sm truncate">{prospect.companyName}</p>
-          {(prospect.city || prospect.state) && (
+          {(prospect.neighborhood || prospect.city || prospect.state) && (
             <p className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5 truncate">
-              <MapPin className="w-3 h-3 shrink-0" /> {[prospect.city, prospect.state].filter(Boolean).join(' - ')}
+              <MapPin className="w-3 h-3 shrink-0" /> {[prospect.neighborhood, prospect.city, prospect.state].filter(Boolean).join(' - ')}
+            </p>
+          )}
+          {prospect.googleRating != null && (
+            <p className="text-[11px] text-slate-600 flex items-center gap-1 mt-0.5">
+              <Star className="w-3 h-3 shrink-0 fill-amber-400 text-amber-400" />
+              <span className="font-semibold">{formatRating(prospect.googleRating)}</span>
+              {prospect.googleReviews != null && <span className="text-slate-400">({prospect.googleReviews} avaliações)</span>}
             </p>
           )}
         </div>
@@ -330,8 +339,8 @@ function ProspectModal({ prospect, onClose, onSave, onDelete }) {
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
           <div className="min-w-0">
             <h3 className="font-bold text-slate-800 truncate">{prospect.companyName}</h3>
-            {(prospect.city || prospect.state) && (
-              <p className="text-xs text-slate-500">{[prospect.city, prospect.state].filter(Boolean).join(' - ')}</p>
+            {(prospect.neighborhood || prospect.city || prospect.state) && (
+              <p className="text-xs text-slate-500">{[prospect.neighborhood, prospect.city, prospect.state].filter(Boolean).join(' - ')}</p>
             )}
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 shrink-0">
@@ -356,6 +365,23 @@ function ProspectModal({ prospect, onClose, onSave, onDelete }) {
                   </a>
                 </>
               ) :<span className="text-slate-400 italic">Telefone não informado</span>}
+            </div>
+
+            <div className="flex items-center gap-2 text-sm">
+              <MapPin className="w-4 h-4 text-slate-400 shrink-0" />
+              {prospect.neighborhood
+                ? <span className="font-medium text-slate-700">{prospect.neighborhood}</span>
+                : <span className="text-slate-400 italic">Bairro não informado</span>}
+            </div>
+
+            <div className="flex items-center gap-2 text-sm">
+              <Star className="w-4 h-4 text-slate-400 shrink-0" />
+              {prospect.googleRating != null ? (
+                <span className="font-medium text-slate-700">
+                  {formatRating(prospect.googleRating)} no Google
+                  {prospect.googleReviews != null && <span className="text-slate-500 font-normal"> · {prospect.googleReviews} avaliações</span>}
+                </span>
+              ) : <span className="text-slate-400 italic">Nota do Google não informada</span>}
             </div>
 
             <div className="flex items-center gap-2 text-sm min-w-0">
@@ -680,7 +706,7 @@ export default function ColdCall() {
           </a>
           {importResult && !importResult.error && (
             <span className="text-xs text-emerald-600 font-medium">
-              {importResult.imported} importado(s) em "{importResult.listName}", {importResult.skipped} ignorado(s) (duplicado/sem nome)
+              {importResult.imported} importado(s) em "{importResult.listName}", {importResult.skipped} ignorado(s) (duplicado/sem nome){importResult.enriched > 0 && `, ${importResult.enriched} atualizado(s) com nota/bairro`}
             </span>
           )}
           {importResult?.error && <span className="text-xs text-red-600 font-medium">Erro ao importar CSV</span>}

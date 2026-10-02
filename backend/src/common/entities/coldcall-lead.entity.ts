@@ -45,6 +45,16 @@ export class ColdCallLead {
   @Column({ name: 'list_name', type: 'varchar', nullable: true })
   listName?: string | null;
 
+  // Enriquecimento opcional do CSV (Google Maps / levantamento manual).
+  @Column({ name: 'google_rating', type: 'real', nullable: true })
+  googleRating?: number | null;
+
+  @Column({ name: 'google_reviews', type: 'int', nullable: true })
+  googleReviews?: number | null;
+
+  @Column({ name: 'neighborhood', type: 'varchar', nullable: true })
+  neighborhood?: string | null;
+
   @Column({ name: 'kanban_stage', type: 'varchar', default: 'novo' })
   kanbanStage: string;
 
