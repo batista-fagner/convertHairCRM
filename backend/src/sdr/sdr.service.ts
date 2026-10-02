@@ -15,6 +15,7 @@ export interface SdrResponse {
   vendeCabelo?: boolean | null;
   mensagensPorDia?: number | null;
   semEstimativaVolume?: boolean | null;
+  investeAnuncio?: boolean | null;
   instagram?: string | null;
   semInstagram?: boolean | null;
   iniciante?: boolean | null;
@@ -47,15 +48,14 @@ function buildSystemPrompt(basePrompt: string, lead?: Lead | null, openingGreeti
   return `${basePrompt}\n${buildLeadContext(lead, openingGreeting)}\n\n${SDR_JSON_FORMAT}`;
 }
 
-/** Volume mínimo de mensagens/dia pra ser considerado qualificado — abaixo disso, desqualifica mesmo vendendo cabelo. */
-export const MIN_MENSAGENS_POR_DIA = 10;
+/** Volume mínimo de mensagens/dia pra ser considerado qualificado — abaixo disso, desqualifica. */
+export const MIN_MENSAGENS_POR_DIA = 15;
 
 /**
- * Mapeia a resposta de qualificação (vende cabelo) + estágio da conversa pra
- * raia do Kanban. `vendeCabelo` é a "verdade" da qualificação: true → só é
- * qualificado (MQL) se ALÉM disso o volume de mensagens/dia já for conhecido
- * e >= MIN_MENSAGENS_POR_DIA. Investir em anúncio NÃO muda de raia, só soma a
- * tag "mql_premium" (ver sdr.controller.ts).
+ * Mapeia a resposta de qualificação + estágio da conversa pra raia do Kanban.
+ * O volume de mensagens/dia é a "verdade" da qualificação: qualificado (MQL)
+ * quando >= MIN_MENSAGENS_POR_DIA. `vendeCabelo=false` (lead disse que não
+ * vende / é cliente final) desqualifica. Investir em anúncio NÃO muda de raia.
  *
  * Desqualifica (mesmo vendendo cabelo) quando o lead é "iniciante" (ainda não
  * vende de verdade, só começando) ou recebe menos de MIN_MENSAGENS_POR_DIA
@@ -81,7 +81,10 @@ export function deriveKanbanStage(
   if (vendeCabelo === false) return 'nao-qualificado';
   if (iniciante === true) return 'nao-qualificado';
   if (typeof mensagensPorDia === 'number' && mensagensPorDia < MIN_MENSAGENS_POR_DIA) return 'nao-qualificado';
-  if (vendeCabelo === true && typeof mensagensPorDia === 'number' && mensagensPorDia >= MIN_MENSAGENS_POR_DIA) {
+  // Fluxo de 2 perguntas (volume + tráfego pago): o volume sozinho qualifica —
+  // a Sofia não pergunta mais se vende cabelo, então só um "não vende" explícito
+  // (vendeCabelo=false, tratado acima) desqualifica. Tráfego pago não muda a raia.
+  if (typeof mensagensPorDia === 'number' && mensagensPorDia >= MIN_MENSAGENS_POR_DIA) {
     return 'qualificado';
   }
   if (leadRespondeu) return 'atendimento';

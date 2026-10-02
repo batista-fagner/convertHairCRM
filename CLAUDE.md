@@ -127,20 +127,19 @@ VITE_WA_URL=https://chat.whatsapp.com/<link-do-grupo>
 5. `ja-fez-prompt`, `ja-apresentado`, `em-negociacao`, `vendeu`, `perdido` — raias do operador
 6. Raias **criadas pelo usuário** direto no Kanban (botão "Nova raia") — ver seção "Raias customizadas do Kanban" abaixo. A IA nunca move um lead pra nenhuma delas.
 
-**Fluxo de qualificação (5 perguntas):**
-1. O que a empresa vende (tipo de cabelo)
-2. Tem time de vendas ou é o próprio dono que vende?
-3. Quem toma as decisões (é proprietário/decisor)?
-4. Já usou ou usa alguma IA?
-5. O Instagram da empresa
+**Fluxo de qualificação (2 perguntas — desde 2026-10-01):**
+Abertura = saudação (bolha 1, calculada no código) + já a pergunta 1 (bolha 2).
+1. Quantas mensagens recebe por dia no WhatsApp? (`mensagensPorDia`)
+2. Faz tráfego pago? (`investeAnuncio`) — só perguntada se volume >= 15
 
-**Critério de QUALIFICADO:**
-- ✔ Atua no mercado de cabelo
-- ✔ É proprietário ou decisor
-- ✔ Informou o Instagram da empresa
-- ✔ Respondeu **no mínimo 3 das 5 perguntas**
+**Critério de QUALIFICADO:** `mensagensPorDia >= 15` (`MIN_MENSAGENS_POR_DIA` em `sdr.service.ts`), faça tráfego ou não. Não pergunta mais se vende cabelo nem Instagram — só desqualifica `vendeCabelo=false` se o lead disser espontaneamente (ou cliente final comprando pra si).
 
-Quando qualificado → `stage=quente` + `handoff=true` → notificação ao operador + MQL event ao Meta
+- Volume >= 15 → MQL pro Meta na hora (raia "qualificado")
+- Resposta de tráfego (ou Sofia desistiu dela → `stage=encerrado`) → handoff: mensagem de transferência + `aiPaused=true` + notificação ao operador (inclui "Faz tráfego pago: sim/não")
+- Não soube estimar volume (`semEstimativaVolume`) → também faz handoff, sem virar MQL
+- Volume < 15 / iniciante → encerra, stage=frio, IA pausa
+
+⚠️ O prompt que roda em produção é o salvo no banco (`settings.sdr_prompt`), não o do código — mudança de fluxo exige atualizar os dois (e subir o código ANTES de trocar o do banco, senão a lógica de qualificação/handoff fica desalinhada).
 
 **Prompt:** `backend/src/sdr/sdr.prompt.ts` — `DEFAULT_SDR_PROMPT` (editável em Settings, com chat simulador)
 
@@ -148,7 +147,7 @@ Quando qualificado → `stage=quente` + `handoff=true` → notificação ao oper
 
 **Desqualificação automática:** stage=frio → `aiPaused=true` (IA para de responder)
 
-**Extração de dados:** IA retorna `instagram` no JSON → salvo no lead, exibido na notificação ao operador
+**Extração de dados:** IA retorna `mensagensPorDia` / `investeAnuncio` no JSON → salvos no lead, exibidos na notificação ao operador
 
 ---
 

@@ -109,6 +109,9 @@ export class SettingsService {
       nome: parsed.nome ?? null,
       vendeCabelo: parsed.vendeCabelo ?? null,
       mensagensPorDia: parsed.mensagensPorDia ?? null,
+      semEstimativaVolume: parsed.semEstimativaVolume ?? null,
+      investeAnuncio: parsed.investeAnuncio ?? null,
+      iniciante: parsed.iniciante ?? null,
       instagram: parsed.instagram ?? null,
       semInstagram: parsed.semInstagram ?? null,
     };

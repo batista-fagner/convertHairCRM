@@ -446,6 +446,7 @@ export class SdrController {
     const mensagensPorDia = typeof ai.mensagensPorDia === 'number' ? ai.mensagensPorDia : lead.mensagensPorDia ?? null;
     const semEstimativaVolume = ai.semEstimativaVolume === true ? true : lead.semEstimativaVolume ?? null;
     const semInstagram = ai.semInstagram === true ? true : lead.semInstagram ?? null;
+    const investeAnuncio = ai.investeAnuncio === true || ai.investeAnuncio === false ? ai.investeAnuncio : lead.investeAnuncio ?? null;
     const iniciante = ai.iniciante === true ? true : lead.iniciante ?? null;
     const instagramValue = ai.instagram && typeof ai.instagram === 'string' && ai.instagram !== 'null'
       ? ai.instagram.replace('@', '').trim()
@@ -476,6 +477,7 @@ export class SdrController {
       mensagensPorDia,
       semEstimativaVolume,
       semInstagram,
+      investeAnuncio,
       iniciante,
     };
 
@@ -491,14 +493,14 @@ export class SdrController {
       updateData.aiPaused = true;
     }
 
-    // Qualificação completa (já é MQL e o Instagram — ou a confirmação de que
-    // não tem — já foi coletado, a última pergunta do fluxo): a Sofia manda a
-    // mensagem final de transferência e para por aqui, o Lucas assume dali em
-    // diante. Antes disso (ex.: virou MQL mas o Instagram ainda não foi
-    // perguntado) a conversa continua normal — só pausa quando não há mais
-    // nada pendente pra perguntar.
-    const hasInstagramInfo = Boolean(instagramValue) || semInstagram === true;
-    if (derivedStage === 'qualificado' && hasInstagramInfo) {
+    // Handoff (fluxo de 2 perguntas): já é qualificado pelo volume e a pergunta
+    // de tráfego pago foi respondida — ou a Sofia desistiu dela e mandou a
+    // mensagem de transferência mesmo assim (stage=encerrado). A IA pausa aqui e
+    // o operador é avisado logo abaixo, já com a resposta de tráfego.
+    // Quem não soube estimar o volume também vai pro Lucas (avalia na call), sem virar MQL.
+    const readyForHandoff = derivedStage === 'qualificado' || (derivedStage === 'atendimento' && semEstimativaVolume === true);
+    const handoffNow = readyForHandoff && !lead.aiPaused && (investeAnuncio !== null || ai.stage === 'encerrado');
+    if (handoffNow) {
       updateData.aiPaused = true;
     }
 
@@ -521,13 +523,10 @@ export class SdrController {
       this.logger.log(`[SDR] Lead ${phone} entrou em atendimento — evento Lead enviado ao Meta`);
     }
 
-    // Qualificado (vende cabelo, sem ser iniciante/baixo volume) → MQL: marca
-    // e dispara evento pro Meta (uma única vez). Independe de investir em
-    // anúncio — isso só soma a tag premium abaixo. Usa "qualified" (mesma raia
-    // derivada acima) em vez de só vendeCabelo, senão iniciante/baixo volume
-    // vira MQL indevidamente. justQualified também é o gatilho da notificação
-    // pro operador (ver abaixo) — não espera mais o Instagram nem pausa a IA,
-    // a conversa segue normal depois de avisar o time.
+    // Qualificado (volume >= MIN_MENSAGENS_POR_DIA, sem ser iniciante) → MQL:
+    // marca e dispara evento pro Meta (uma única vez), independente de tráfego
+    // pago. A notificação pro operador NÃO sai aqui — espera o handoff (ver
+    // handoffNow), depois da pergunta de tráfego.
     const justQualified = qualified && !lead.isMql;
     if (justQualified) {
       updateData.isMql = true;
@@ -545,7 +544,7 @@ export class SdrController {
       this.logger.log(`[SDR] Lead ${phone} deixou de ser MQL (raia: ${derivedStage}) — corrigindo is_mql`);
     }
 
-    // Volume de mensagens/dia define premium (>=50) vs básico (10-49) — mesma
+    // Volume de mensagens/dia define premium (>=50) vs básico (15-49) — mesma
     // raia "qualificado", sem evento novo pro Meta, só diferencia visualmente
     // quem tem mais volume. Remove a tag oposta se o lead corrigir a resposta.
     const existingTags = lead.tags || [];
@@ -575,9 +574,10 @@ export class SdrController {
 
     if (ai.reply) await this.sendReplyAsBubbles(phone, ai.reply);
 
-    // Virou MQL agora: avisa o operador e destaca o card — sem pausar a IA
-    // nem esperar o Instagram, a conversa continua normal depois disso.
-    if (justQualified) {
+    // Handoff: avisa o operador e destaca o card. O MQL pro Meta já saiu antes,
+    // assim que o volume qualificou (justQualified); o aviso espera a resposta
+    // de tráfego pago pra já chegar completo.
+    if (handoffNow) {
       await this.notifyOperator(lead);
       this.realtime.emitLeadHandoff(lead);
     } else {
@@ -673,8 +673,9 @@ export class SdrController {
       '',
       `Nome: ${lead.name}`,
       `WhatsApp: ${lead.phone}`,
-      lead.instagram ? `Instagram: @${lead.instagram.replace('@', '')}` : 'Instagram: não tem',
+      ...(lead.instagram ? [`Instagram: @${lead.instagram.replace('@', '')}`] : []),
       `Mensagens/dia: ${this.formatMensagensPorDia(lead)}`,
+      `Faz tráfego pago: ${lead.investeAnuncio === true ? 'sim' : lead.investeAnuncio === false ? 'não' : 'não informado'}`,
       `Anúncio: ${this.formatAdSource(lead)}`,
       '',
       'Assuma a conversa.',
