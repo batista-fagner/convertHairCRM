@@ -27,8 +27,9 @@ export interface CalendarEventResult {
 /**
  * Integração mínima com o Google Agenda via REST (sem googleapis — só 3
  * chamadas: troca de código, refresh de token e CRUD de evento).
- * App OAuth em modo "Teste" no Google Cloud: o refresh token expira em 7 dias,
- * aí é só clicar em "Conectar Google Agenda" de novo.
+ * App OAuth publicado ("Em produção", não verificado) no projeto Google Cloud
+ * converthair-crm-agenda — refresh token não expira sozinho. Se for revogado,
+ * é só clicar em "Conectar Google Agenda" de novo.
  */
 @Injectable()
 export class GoogleCalendarService {
