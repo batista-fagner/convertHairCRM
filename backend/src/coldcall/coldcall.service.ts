@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull } from 'typeorm';
 import { ColdCallLead } from '../common/entities/coldcall-lead.entity';
 import { ColdCallStage } from '../common/entities/coldcall-stage.entity';
+import { GoogleCalendarService } from '../google-calendar/google-calendar.service';
 
 /** Teto de cards carregados POR RAIA no Kanban — mesmo raciocínio do Kanban de leads. */
 const KANBAN_PER_STAGE_LIMIT = 200;
@@ -82,6 +83,7 @@ export class ColdCallService {
   constructor(
     @InjectRepository(ColdCallLead) private readonly repo: Repository<ColdCallLead>,
     @InjectRepository(ColdCallStage) private readonly stageRepo: Repository<ColdCallStage>,
+    private readonly calendar: GoogleCalendarService,
   ) {}
 
   /**
@@ -205,6 +207,51 @@ export class ColdCallService {
     const lead = await this.repo.findOne({ where: { id } });
     if (!lead) throw new NotFoundException(`Prospect ${id} não encontrado`);
     return lead;
+  }
+
+  /**
+   * Agenda / remarca / desmarca a reunião do prospect e espelha no Google
+   * Agenda (30 min, lembrete por e-mail). meetingAt=null desmarca e apaga o evento.
+   */
+  async setMeeting(
+    id: string,
+    opts: { meetingAt: Date | null; withMeet: boolean; inviteProspect: boolean },
+  ): Promise<ColdCallLead> {
+    const lead = await this.repo.findOne({ where: { id } });
+    if (!lead) throw new NotFoundException(`Prospect ${id} não encontrado`);
+
+    if (!opts.meetingAt) {
+      if (lead.meetingEventId) await this.calendar.deleteEvent(lead.meetingEventId, lead.meetingInvited);
+      return this.update(id, { meetingAt: null, meetingEventId: null, meetingLink: null, meetingInvited: false });
+    }
+
+    const attendeeEmail = opts.inviteProspect && lead.email ? lead.email : null;
+    const description = [
+      lead.phone ? `Telefone: ${lead.phone}` : null,
+      lead.phone ? `WhatsApp: https://wa.me/${lead.phone.replace(/\D/g, '')}` : null,
+      [lead.neighborhood, lead.city, lead.state].filter(Boolean).join(' - ') || null,
+      lead.listName ? `Lista: ${lead.listName}` : null,
+      'Agendado pelo Cold Call (CRM ConvertHair)',
+    ].filter(Boolean).join('\n');
+    const input = {
+      summary: `Reunião — ${lead.companyName}`,
+      description,
+      start: opts.meetingAt,
+      durationMinutes: 30,
+      withMeet: opts.withMeet,
+      attendeeEmail,
+    };
+
+    const result = lead.meetingEventId
+      ? await this.calendar.updateEvent(lead.meetingEventId, input, !!lead.meetingLink)
+      : await this.calendar.createEvent(input);
+
+    return this.update(id, {
+      meetingAt: opts.meetingAt,
+      meetingEventId: result.eventId,
+      meetingLink: opts.withMeet ? result.meetLink : null,
+      meetingInvited: !!attendeeEmail,
+    });
   }
 
   async remove(id: string): Promise<void> {

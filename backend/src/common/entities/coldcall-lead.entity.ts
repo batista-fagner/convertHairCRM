@@ -55,6 +55,19 @@ export class ColdCallLead {
   @Column({ name: 'neighborhood', type: 'varchar', nullable: true })
   neighborhood?: string | null;
 
+  // Reunião agendada pelo card — espelhada num evento do Google Agenda.
+  @Column({ name: 'meeting_at', type: 'timestamptz', nullable: true })
+  meetingAt?: Date | null;
+
+  @Column({ name: 'meeting_event_id', type: 'varchar', nullable: true })
+  meetingEventId?: string | null;
+
+  @Column({ name: 'meeting_link', type: 'varchar', nullable: true })
+  meetingLink?: string | null;
+
+  @Column({ name: 'meeting_invited', type: 'boolean', default: false })
+  meetingInvited: boolean;
+
   @Column({ name: 'kanban_stage', type: 'varchar', default: 'novo' })
   kanbanStage: string;
 

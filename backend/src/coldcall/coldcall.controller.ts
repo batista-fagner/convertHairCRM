@@ -44,6 +44,23 @@ export class ColdCallController {
     return this.coldCallService.update(id, data);
   }
 
+  @Patch(':id/meeting')
+  async setMeeting(
+    @Param('id') id: string,
+    @Body() body: { meetingAt?: string | null; withMeet?: boolean; inviteProspect?: boolean },
+  ) {
+    let meetingAt: Date | null = null;
+    if (body.meetingAt) {
+      meetingAt = new Date(body.meetingAt);
+      if (isNaN(meetingAt.getTime())) throw new BadRequestException('Data da reunião inválida');
+    }
+    return this.coldCallService.setMeeting(id, {
+      meetingAt,
+      withMeet: body.withMeet !== false,
+      inviteProspect: !!body.inviteProspect,
+    });
+  }
+
   @Delete(':id')
   async remove(@Param('id') id: string) {
     await this.coldCallService.remove(id);
