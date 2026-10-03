@@ -206,6 +206,19 @@ function CardContent({ lead, overlay = false }) {
           {displayPhone(lead.phone, demoMode) && (
             <p className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
               <Phone className="w-3 h-3" /> {displayPhone(lead.phone, demoMode)}
+              {!demoMode && (
+                <a
+                  href={`https://wa.me/${String(lead.phone).replace(/\D/g, '')}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={e => e.stopPropagation()}
+                  onPointerDown={e => e.stopPropagation()}
+                  title="Abrir no WhatsApp"
+                  className="ml-1 flex items-center gap-0.5 text-[10px] font-medium text-green-700 bg-green-50 hover:bg-green-100 rounded px-1.5 py-0.5"
+                >
+                  <MessageCircle className="w-3 h-3" /> WhatsApp
+                </a>
+              )}
             </p>
           )}
           {lead.email && (
@@ -313,6 +326,19 @@ function LeadCard({ lead, onOpen, onEdit, onDelete }) {
           {displayPhone(lead.phone, demoMode) && (
             <p className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
               <Phone className="w-3 h-3" /> {displayPhone(lead.phone, demoMode)}
+              {!demoMode && (
+                <a
+                  href={`https://wa.me/${String(lead.phone).replace(/\D/g, '')}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={e => e.stopPropagation()}
+                  onPointerDown={e => e.stopPropagation()}
+                  title="Abrir no WhatsApp"
+                  className="ml-1 flex items-center gap-0.5 text-[10px] font-medium text-green-700 bg-green-50 hover:bg-green-100 rounded px-1.5 py-0.5"
+                >
+                  <MessageCircle className="w-3 h-3" /> WhatsApp
+                </a>
+              )}
             </p>
           )}
           {lead.email && (
