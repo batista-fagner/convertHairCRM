@@ -116,6 +116,18 @@ function ProspectCard({ prospect, onOpen, showList }) {
               {prospect.googleReviews != null && <span className="text-slate-400">({prospect.googleReviews} avaliações)</span>}
             </p>
           )}
+          {prospect.website && (
+            <a
+              href={prospect.website.startsWith('http') ? prospect.website : `https://${prospect.website}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={stop}
+              onPointerDown={stop}
+              className="text-[11px] text-blue-700 hover:underline flex items-center gap-1 mt-0.5 truncate"
+            >
+              <Globe className="w-3 h-3 shrink-0" /> {prospect.website.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')}
+            </a>
+          )}
         </div>
       </div>
 

@@ -22,6 +22,7 @@ const HEADER_ALIASES: Record<string, string> = {
   google_rating: 'nota_google',
   google_reviews: 'avaliacoes_google',
   neighborhood: 'bairro',
+  site: 'website',
 };
 
 /** "5,0" / "4.8" → número; vazio ou inválido → null. */
@@ -128,6 +129,8 @@ export class ColdCallService {
         if (existing.googleRating == null && enrichment.googleRating != null) patch.googleRating = enrichment.googleRating;
         if (existing.googleReviews == null && enrichment.googleReviews != null) patch.googleReviews = Math.round(enrichment.googleReviews);
         if (!existing.neighborhood && enrichment.neighborhood) patch.neighborhood = enrichment.neighborhood;
+        const website = row['website']?.trim();
+        if (!existing.website && website) patch.website = website;
         if (Object.keys(patch).length > 0) {
           await this.repo.update(existing.id, patch);
           enriched++;
