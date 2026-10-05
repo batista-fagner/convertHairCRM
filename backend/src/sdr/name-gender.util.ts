@@ -71,7 +71,9 @@ export async function buildOpeningGreeting(rawName: string): Promise<string> {
     return 'Oi! 👋';
   }
 
+  // Sem gênero no IBGE = provavelmente não é nome de pessoa (ex.: "Espaço
+  // Maria's...", "Studio X") — cai na saudação genérica em vez de "Fala Espaço".
   const gender = await lookupGender(firstName);
-  if (gender === null) return `Fala ${firstName} tudo bem?`;
+  if (gender === null) return 'Oi! 👋';
   return gender === 'M' ? `Fala ${firstName}, blz?` : `Olá minha amiga ${firstName}, tudo bem?`;
 }
