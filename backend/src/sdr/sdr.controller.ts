@@ -417,7 +417,11 @@ export class SdrController {
     // sem chance de erro — e preserva as bolhas seguintes exatamente como a IA gerou.
     if (isNew && openingGreeting && ai.reply) {
       const bubbles = ai.reply.split('|||');
-      bubbles[0] = openingGreeting;
+      // IA às vezes manda 1 bolha só (sem "|||", só a pergunta). Substituir a
+      // bolha 0 nesse caso apagava a pergunta e saía só a saudação — então
+      // nesse caso a saudação entra NA FRENTE em vez de sobrescrever.
+      if (bubbles.length === 1) bubbles.unshift(openingGreeting);
+      else bubbles[0] = openingGreeting;
       ai.reply = bubbles.join('|||');
     }
 
