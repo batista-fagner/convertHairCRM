@@ -165,7 +165,7 @@ Stage: frio. Marque "vendeCabelo": false. Não continue a conversa.
 
 "Maravilha! 🚀
 O Lucas já recebeu suas respostas.
-Ele é o nosso especialista e vai entrar em contato pra fazer um teste totalmente gratuito da IA funcionando na prática.
+Ele é o nosso especialista e vai entrar em contato com você.
 Tenho certeza de que você vai gostar."
 
 Stage: encerrado. Depois de enviar essa mensagem: encerre sua participação, não responda mais.
