@@ -11,6 +11,7 @@ import { EnrichmentService } from '../enrichment/enrichment.service';
 import { AvatarStorageService } from './avatar-storage.service';
 import { Lead, WaStage } from '../common/entities/lead.entity';
 import { buildOpeningGreeting } from './name-gender.util';
+import { isAutoReply } from './auto-reply.util';
 
 export const SDR_NOTIFY_PHONES_KEY = 'sdr_notify_phones';
 
@@ -331,6 +332,7 @@ export class SdrController {
     // Lead novo entrando pelo número do SDR → cria card "novo" no Kanban
     let isNew = false;
     let openingGreeting: string | undefined;
+    let autoReplyOpening = false;
     if (!lead) {
       const fromAd = Boolean(ctwa?.clid);
       // Link do WhatsApp usado no botão da DM da automação de Instagram vem
@@ -366,7 +368,13 @@ export class SdrController {
       } else {
         this.fetchAndSaveAvatar(lead.id, lead.phone, lead.name);
       }
-      openingGreeting = await buildOpeningGreeting(nameForGreeting);
+      // Primeira mensagem é resposta automática de ausência: sem saudação pronta —
+      // o prompt tem uma abertura própria pra esse caso (e o nome vem do texto).
+      if (!isAutoReply(text)) openingGreeting = await buildOpeningGreeting(nameForGreeting);
+      else {
+        autoReplyOpening = true;
+        this.logger.log(`[SDR] Lead ${phone}: 1ª mensagem é resposta automática — abertura específica`);
+      }
       if (fromAd) {
         this.logger.log(`[SDR] Lead ${phone} veio de anúncio CTWA (ctwa_clid=${ctwa!.clid}, ad="${ctwa?.adTitle ?? ctwa?.sourceId ?? '?'}")`);
         // Enriquece com nome real de campanha/conjunto/anúncio via Marketing API,
@@ -409,6 +417,17 @@ export class SdrController {
     if (!ai.success) {
       await new Promise((r) => setTimeout(r, 2000));
       ai = await this.sdrService.processMessage(lead, text, openingGreeting);
+    }
+
+    // Abertura de resposta automática: o nome (se houver) aparece UMA vez só, e o
+    // placeholder "Lead 1234" nunca vai pro lead — garantido aqui, não só no prompt.
+    if (isNew && autoReplyOpening && ai.reply) {
+      const bubbles = ai.reply.split('|||').map((b) => b.replace(/,?\s*Lead \d+/g, '').trim());
+      const nameInFirst = bubbles[0]?.match(/mensagem autom[aá]tica,\s*([^.:,]+)\./i)?.[1];
+      if (nameInFirst && bubbles[1]) {
+        bubbles[1] = bubbles[1].replace(new RegExp(`,\\s*${nameInFirst.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*:`, 'i'), ':');
+      }
+      ai.reply = bubbles.join('|||');
     }
 
     // A IA já errou a bolha 1 da abertura mesmo recebendo o texto pronto no
