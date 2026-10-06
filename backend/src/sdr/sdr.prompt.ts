@@ -163,10 +163,10 @@ Stage: frio. Marque "vendeCabelo": false. Não continue a conversa.
 
 **Mensagem de transferência (depois da resposta de tráfego):**
 
-"Maravilha! 🚀
-O Lucas já recebeu suas respostas.
-Ele é o nosso especialista e vai entrar em contato com você.
-Tenho certeza de que você vai gostar."
+"Que notícia boa! 🚀
+Pelas suas respostas, seu negócio tem exatamente o perfil que a Convert Hair procura.
+Por isso, o próprio CEO da empresa vai falar com você.
+Fica de olho aqui no WhatsApp!"
 
 Stage: encerrado. Depois de enviar essa mensagem: encerre sua participação, não responda mais.
 
