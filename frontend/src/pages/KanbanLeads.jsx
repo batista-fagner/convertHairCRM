@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo, useSyncExternalStore } from 'react'
 import { DndContext, DragOverlay, useDraggable, useDroppable, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { io } from 'socket.io-client'
-import { Flame, Snowflake, UserPlus, XCircle, Phone, Mail, UserCheck, Loader2, X, MessageCircle, PauseCircle, Bot, MoreVertical, Pencil, Trash2, Play, Eye, EyeOff, Handshake, Trophy, HeadphonesIcon, Paperclip, Send, FileText, Video, StickyNote, ChevronDown, ChevronUp, Plus, CheckCircle2, Megaphone, Search, Layers, Mic, Square, Check, CalendarClock } from 'lucide-react'
+import { Flame, Snowflake, UserPlus, XCircle, Phone, Mail, UserCheck, Loader2, X, MessageCircle, PauseCircle, Bot, MoreVertical, Pencil, Trash2, Play, Eye, EyeOff, Handshake, Trophy, HeadphonesIcon, Paperclip, Send, FileText, Video, StickyNote, ChevronDown, ChevronUp, Plus, CheckCircle2, Megaphone, Search, Layers, Mic, Square, Check, CalendarClock, Zap } from 'lucide-react'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3002/api'
 const SOCKET_URL = API.replace(/\/api\/?$/, '') || 'http://localhost:3002'
@@ -524,14 +524,12 @@ function mediaIcon(type) {
   return <FileText className="w-4 h-4" />
 }
 
-function ConversationModal({ lead, onClose, onTogglePause, onAssign, onSaveNotes, onSaveMeeting }) {
+function ConversationModal({ lead, onClose, onTogglePause, onAssign, onNoteRequest, onSaveMeeting }) {
   if (!lead) return null
   const ctx = Array.isArray(lead.aiContext) ? lead.aiContext : []
   const paused = !!lead.aiPaused
   const [assignedTo, setAssignedTo] = useState(lead.assignedTo || '')
-  const [notes, setNotes] = useState(lead.notes || '')
-  const [notesOpen, setNotesOpen] = useState(!!lead.notes)
-  const [notesSaved, setNotesSaved] = useState(false)
+  const [notesOpen, setNotesOpen] = useState(false)
   const [meetingOpen, setMeetingOpen] = useState(false)
   const [meetingValue, setMeetingValue] = useState(toDatetimeLocalValue(lead.meetingAt))
   const [meetingSaving, setMeetingSaving] = useState(false)
@@ -567,14 +565,6 @@ function ConversationModal({ lead, onClose, onTogglePause, onAssign, onSaveNotes
   const saveAssign = () => {
     const val = assignedTo.trim() || null
     if (val !== (lead.assignedTo || null)) onAssign(lead.id, val)
-  }
-
-  const saveNotes = () => {
-    const val = notes.trim() || null
-    if (val === (lead.notes || null)) return
-    onSaveNotes(lead.id, val)
-    setNotesSaved(true)
-    setTimeout(() => setNotesSaved(false), 2000)
   }
 
   const saveMeeting = async (clear = false) => {
@@ -757,7 +747,7 @@ function ConversationModal({ lead, onClose, onTogglePause, onAssign, onSaveNotes
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
       <div
-        className="bg-white rounded-2xl w-full max-w-3xl h-[88vh] flex flex-col shadow-2xl overflow-hidden"
+        className={`bg-white rounded-2xl w-full ${notesOpen ? 'max-w-6xl' : 'max-w-3xl'} h-[88vh] flex flex-col shadow-2xl overflow-hidden transition-[max-width] duration-200`}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -816,7 +806,7 @@ function ConversationModal({ lead, onClose, onTogglePause, onAssign, onSaveNotes
             <button
               onClick={() => setNotesOpen(o => !o)}
               className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg border transition ${
-                notesOpen || lead.notes
+                notesOpen || lead.notes || lead.noteEntries?.length
                   ? 'bg-amber-50 border-amber-200 text-amber-700'
                   : 'border-slate-200 text-slate-500 hover:bg-slate-100'
               }`}
@@ -855,32 +845,6 @@ function ConversationModal({ lead, onClose, onTogglePause, onAssign, onSaveNotes
             )}
           </div>
         </div>
-
-        {/* Painel de notas internas */}
-        {notesOpen && (
-          <div className="px-5 py-3 border-b border-slate-200 bg-amber-50/50">
-            <textarea
-              value={notes}
-              onChange={e => setNotes(e.target.value)}
-              onBlur={saveNotes}
-              placeholder="Anotações internas sobre esse lead (visível só para a equipe)..."
-              rows={3}
-              className="w-full resize-none text-sm border border-amber-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-300 bg-white placeholder:text-slate-400"
-            />
-            <div className="flex items-center justify-between mt-1">
-              {lead.notesUpdatedAt ? (
-                <span className="text-[11px] text-slate-400">
-                  Última atualização: {new Date(lead.notesUpdatedAt).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}
-                </span>
-              ) : <span />}
-              {notesSaved && (
-                <span className="flex items-center gap-1 text-[11px] text-emerald-600">
-                  <CheckCircle2 className="w-3 h-3" /> Nota salva
-                </span>
-              )}
-            </div>
-          </div>
-        )}
 
         {/* Agendamento da reunião com o closer */}
         {meetingOpen && (
@@ -922,6 +886,8 @@ function ConversationModal({ lead, onClose, onTogglePause, onAssign, onSaveNotes
           </div>
         )}
 
+        <div className="flex-1 flex min-h-0">
+        <div className="flex-1 flex flex-col min-w-0">
         {/* Conversa */}
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3 bg-slate-50">
           {ctx.length === 0 && (
@@ -1102,8 +1068,182 @@ function ConversationModal({ lead, onClose, onTogglePause, onAssign, onSaveNotes
             {' · '}Última msg {timeAgo(lead.waLastMessageAt || lead.updatedAt)}
           </p>
         </div>
+        </div>
+        {notesOpen && <NotesPanel lead={lead} onClose={() => setNotesOpen(false)} onNoteRequest={onNoteRequest} />}
+        </div>
       </div>
     </div>
+  )
+}
+
+const NOTE_MAX = 1000
+const NOTE_AUTHOR = 'ConvertHair' // até existir login de verdade — aí vira o usuário logado
+
+function formatNoteDate(iso) {
+  if (!iso) return ''
+  return new Date(iso).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
+function NoteAuthorAvatar() {
+  return (
+    <div className="w-8 h-8 shrink-0 rounded-full bg-violet-500 flex items-center justify-center" aria-hidden="true">
+      <Zap className="w-4 h-4 text-white" />
+    </div>
+  )
+}
+
+function NotesPanel({ lead, onClose, onNoteRequest }) {
+  const [draft, setDraft] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const [menuId, setMenuId] = useState(null)
+  const [editingId, setEditingId] = useState(null)
+  const [editText, setEditText] = useState('')
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null)
+
+  // Nota antiga (texto único, de antes do painel) aparece como a primeira do histórico.
+  const entries = lead.noteEntries?.length
+    ? lead.noteEntries
+    : lead.notes?.trim()
+      ? [{ id: 'legacy', author: NOTE_AUTHOR, content: lead.notes.trim(), createdAt: lead.notesUpdatedAt }]
+      : []
+
+  const run = async (fn) => {
+    setSaving(true)
+    setError('')
+    try { await fn(); return true }
+    catch { setError('Não foi possível salvar. Tente de novo.'); return false }
+    finally { setSaving(false) }
+  }
+
+  const addNote = async () => {
+    const content = draft.trim()
+    if (!content) return
+    if (await run(() => onNoteRequest(lead.id, 'POST', '', { content, author: NOTE_AUTHOR }))) setDraft('')
+  }
+
+  const saveEdit = async (id) => {
+    const content = editText.trim()
+    if (!content) return
+    if (await run(() => onNoteRequest(lead.id, 'PATCH', `/${id}`, { content }))) setEditingId(null)
+  }
+
+  const removeNote = async (id) => {
+    if (await run(() => onNoteRequest(lead.id, 'DELETE', `/${id}`))) setConfirmDeleteId(null)
+  }
+
+  return (
+    <aside className="w-[360px] shrink-0 border-l border-slate-200 bg-white flex flex-col min-h-0">
+      <div className="flex items-center justify-between px-5 py-4">
+        <h3 className="flex items-center gap-2 text-base font-semibold text-slate-800">
+          <FileText className="w-5 h-5 text-amber-500" /> Notas
+        </h3>
+        <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition" title="Fechar notas">
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-5 pb-5 space-y-4">
+        <div>
+          <div className="relative">
+            <label htmlFor="new-note" className="sr-only">Nova nota</label>
+            <textarea
+              id="new-note"
+              value={draft}
+              onChange={e => setDraft(e.target.value.slice(0, NOTE_MAX))}
+              onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) addNote() }}
+              placeholder="Adicione uma nova nota..."
+              rows={5}
+              className="w-full resize-y min-h-[120px] text-sm border border-amber-300 rounded-xl px-3.5 py-3 pb-7 bg-amber-50/60 focus:outline-none focus:ring-2 focus:ring-amber-300 placeholder:text-slate-400"
+            />
+            <span className="absolute right-3 bottom-3 text-[11px] text-slate-400 tabular-nums">{draft.length}/{NOTE_MAX}</span>
+          </div>
+          <button
+            onClick={addNote}
+            disabled={saving || !draft.trim()}
+            className="mt-2 w-full flex items-center justify-center gap-2 text-sm font-medium text-white bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 disabled:cursor-not-allowed py-2.5 rounded-xl transition"
+          >
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
+            Salvar nota
+          </button>
+          {error && <p className="text-[11px] text-red-600 mt-1.5">{error}</p>}
+        </div>
+
+        <div>
+          <p className="text-sm font-semibold text-slate-700 mb-2">Notas anteriores ({entries.length})</p>
+          {entries.length === 0 && <p className="text-xs text-slate-400">Nenhuma nota ainda.</p>}
+          <div className="space-y-2.5">
+            {entries.map((n) => (
+              <div key={n.id} className="border border-slate-200 rounded-xl p-3.5">
+                <div className="flex items-start gap-2.5">
+                  <NoteAuthorAvatar />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-slate-700 leading-tight">{n.author || NOTE_AUTHOR}</p>
+                    <p className="text-[11px] text-slate-400 tabular-nums">
+                      {formatNoteDate(n.createdAt)}{n.updatedAt ? ' · editada' : ''}
+                    </p>
+                  </div>
+                  <div className="relative">
+                    <button
+                      onClick={() => setMenuId(menuId === n.id ? null : n.id)}
+                      className="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded transition"
+                      title="Opções da nota"
+                    >
+                      <MoreVertical className="w-4 h-4" />
+                    </button>
+                    {menuId === n.id && (
+                      <div className="absolute right-0 top-7 z-10 w-32 bg-white border border-slate-200 rounded-lg shadow-lg py-1 text-sm">
+                        <button
+                          onClick={() => { setEditingId(n.id); setEditText(n.content); setMenuId(null); setConfirmDeleteId(null) }}
+                          className="w-full flex items-center gap-2 px-3 py-1.5 text-slate-600 hover:bg-slate-50"
+                        >
+                          <Pencil className="w-3.5 h-3.5" /> Editar
+                        </button>
+                        <button
+                          onClick={() => { setConfirmDeleteId(n.id); setMenuId(null); setEditingId(null) }}
+                          className="w-full flex items-center gap-2 px-3 py-1.5 text-red-600 hover:bg-red-50"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" /> Excluir
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {editingId === n.id ? (
+                  <div className="mt-2.5">
+                    <label htmlFor={`edit-note-${n.id}`} className="sr-only">Editar nota</label>
+                    <textarea
+                      id={`edit-note-${n.id}`}
+                      value={editText}
+                      onChange={e => setEditText(e.target.value.slice(0, NOTE_MAX))}
+                      rows={4}
+                      className="w-full resize-y text-sm border border-amber-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                    />
+                    <div className="flex justify-end gap-2 mt-1.5">
+                      <button onClick={() => setEditingId(null)} className="text-xs text-slate-500 px-2.5 py-1.5 rounded-lg hover:bg-slate-100">Cancelar</button>
+                      <button onClick={() => saveEdit(n.id)} disabled={saving || !editText.trim()} className="text-xs font-medium text-white bg-amber-500 hover:bg-amber-600 disabled:opacity-50 px-3 py-1.5 rounded-lg">Salvar</button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="mt-2.5 text-sm text-slate-600 whitespace-pre-wrap break-words">{n.content}</p>
+                )}
+
+                {confirmDeleteId === n.id && (
+                  <div className="mt-2.5 flex items-center justify-between gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                    <span className="text-xs text-red-700">Excluir esta nota?</span>
+                    <div className="flex gap-1.5">
+                      <button onClick={() => setConfirmDeleteId(null)} className="text-xs text-slate-500 px-2 py-1 rounded hover:bg-white">Não</button>
+                      <button onClick={() => removeNote(n.id)} disabled={saving} className="text-xs font-medium text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 px-2.5 py-1 rounded">Excluir</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </aside>
   )
 }
 
@@ -1478,20 +1618,18 @@ export default function KanbanLeads() {
     }
   }, [setCustomStages])
 
-  const saveNotes = useCallback(async (leadId, notes) => {
-    updateLeadInPlace({ id: leadId, notes })
-    try {
-      const res = await fetch(`${API}/leads/${leadId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ notes }),
-      })
-      const fresh = await res.json()
-      updateLeadInPlace(fresh)
-      setSelected(prev => prev?.id === leadId ? { ...prev, notes: fresh.notes, notesUpdatedAt: fresh.notesUpdatedAt } : prev)
-    } catch (e) {
-      console.error('Erro ao salvar notas', e)
-    }
+  // Notas do painel lateral: cria/edita/exclui e já aplica o lead atualizado
+  // no board e no modal aberto. Lança erro pro painel mostrar a mensagem.
+  const noteRequest = useCallback(async (leadId, method, path = '', body) => {
+    const res = await fetch(`${API}/leads/${leadId}/notes${path}`, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: body ? JSON.stringify(body) : undefined,
+    })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const fresh = await res.json()
+    updateLeadInPlace(fresh)
+    return fresh
   }, [updateLeadInPlace])
 
   // Devolve quantos números receberam o aviso — o modal usa isso pra dizer se o closer foi avisado.
@@ -1726,7 +1864,7 @@ export default function KanbanLeads() {
         </DndContext>
       )}
 
-      <ConversationModal key={selected?.id} lead={selected} onClose={() => setSelected(null)} onTogglePause={togglePause} onAssign={assignVendedor} onSaveNotes={saveNotes} onSaveMeeting={saveMeeting} />
+      <ConversationModal key={selected?.id} lead={selected} onClose={() => setSelected(null)} onTogglePause={togglePause} onAssign={assignVendedor} onNoteRequest={noteRequest} onSaveMeeting={saveMeeting} />
       <EditNameModal key={editing?.id} lead={editing} onClose={() => setEditing(null)} onSave={saveName} />
       <ConfirmDeleteModal lead={deleting} onClose={() => setDeleting(null)} onConfirm={deleteLead} />
       <CreateLeadModal open={creating} onClose={() => setCreating(false)} onCreate={createLead} />

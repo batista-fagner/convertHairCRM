@@ -6,6 +6,7 @@ import { QuizService } from '../quiz/quiz.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { SettingsService, MEETING_NOTIFY_PHONES_KEY } from '../settings/settings.service';
 import { Lead } from '../common/entities/lead.entity';
+import { randomUUID } from 'crypto';
 
 type MeetingChange = 'agendada' | 'remarcada' | 'desmarcada';
 
@@ -233,6 +234,55 @@ export class LeadsController {
     const lead = await this.leadsService.update(id, data);
     this.realtime.emitLeadUpdated(lead);
     return lead;
+  }
+
+  // ── Notas (painel lateral) ────────────────────────────────────────────────
+  // Nota legada (texto único de antes do painel) vira a primeira entrada do
+  // histórico na primeira escrita, pra não sumir.
+  private noteEntriesOf(lead: Lead) {
+    const entries = Array.isArray(lead.noteEntries) ? [...lead.noteEntries] : [];
+    if (entries.length === 0 && lead.notes?.trim()) {
+      const at = (lead.notesUpdatedAt ?? lead.updatedAt ?? new Date()).toISOString();
+      entries.push({ id: 'legacy', author: 'ConvertHair', content: lead.notes.trim(), createdAt: at });
+    }
+    return entries;
+  }
+
+  private async saveNoteEntries(id: string, entries: Lead['noteEntries']) {
+    const lead = await this.leadsService.update(id, {
+      noteEntries: entries,
+      notes: entries[0]?.content ?? null,
+      notesUpdatedAt: new Date(),
+    } as any);
+    this.realtime.emitLeadUpdated(lead);
+    return lead;
+  }
+
+  @Post(':id/notes')
+  async addNote(@Param('id') id: string, @Body() body: { content?: string; author?: string }) {
+    const content = (body.content || '').trim().slice(0, 1000);
+    if (!content) throw new HttpException('Nota vazia', HttpStatus.BAD_REQUEST);
+    const lead = await this.leadsService.findById(id);
+    if (!lead) throw new HttpException('Lead não encontrado', HttpStatus.NOT_FOUND);
+    const entry = { id: randomUUID(), author: body.author?.trim() || 'ConvertHair', content, createdAt: new Date().toISOString() };
+    return this.saveNoteEntries(id, [entry, ...this.noteEntriesOf(lead)]);
+  }
+
+  @Patch(':id/notes/:noteId')
+  async editNote(@Param('id') id: string, @Param('noteId') noteId: string, @Body() body: { content?: string }) {
+    const content = (body.content || '').trim().slice(0, 1000);
+    if (!content) throw new HttpException('Nota vazia', HttpStatus.BAD_REQUEST);
+    const lead = await this.leadsService.findById(id);
+    if (!lead) throw new HttpException('Lead não encontrado', HttpStatus.NOT_FOUND);
+    const entries = this.noteEntriesOf(lead).map((n) => (n.id === noteId ? { ...n, content, updatedAt: new Date().toISOString() } : n));
+    return this.saveNoteEntries(id, entries);
+  }
+
+  @Delete(':id/notes/:noteId')
+  async deleteNote(@Param('id') id: string, @Param('noteId') noteId: string) {
+    const lead = await this.leadsService.findById(id);
+    if (!lead) throw new HttpException('Lead não encontrado', HttpStatus.NOT_FOUND);
+    return this.saveNoteEntries(id, this.noteEntriesOf(lead).filter((n) => n.id !== noteId));
   }
 
   @Patch(':id/meeting')

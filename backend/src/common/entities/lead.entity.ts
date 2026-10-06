@@ -222,6 +222,13 @@ export class Lead {
   @Column({ name: 'notes_updated_at', type: 'timestamp', nullable: true })
   notesUpdatedAt?: Date | null;
 
+  // Histórico de notas (painel lateral do Kanban), mais nova primeiro. `notes`
+  // acima continua existindo e espelha a nota mais recente — o aviso de reunião
+  // pro closer lê de lá. Autor por enquanto é fixo ("ConvertHair") até existir
+  // login de verdade.
+  @Column({ name: 'note_entries', type: 'jsonb', default: () => "'[]'" })
+  noteEntries: Array<{ id: string; author: string; content: string; createdAt: string; updatedAt?: string }>;
+
   // Reunião agendada pela SDR (humana) pro closer — ao salvar/alterar/desmarcar,
   // os números de Configurações → "Aviso de reunião" recebem WhatsApp.
   @Column({ name: 'meeting_at', type: 'timestamp', nullable: true })
