@@ -529,7 +529,8 @@ function ConversationModal({ lead, onClose, onTogglePause, onAssign, onNoteReque
   const ctx = Array.isArray(lead.aiContext) ? lead.aiContext : []
   const paused = !!lead.aiPaused
   const [assignedTo, setAssignedTo] = useState(lead.assignedTo || '')
-  const [notesOpen, setNotesOpen] = useState(false)
+  // Abre o painel de notas direto quando o lead já tem nota (remonta por key={lead.id})
+  const [notesOpen, setNotesOpen] = useState(() => !!(lead.noteEntries?.length || lead.notes))
   const [meetingOpen, setMeetingOpen] = useState(false)
   const [meetingValue, setMeetingValue] = useState(toDatetimeLocalValue(lead.meetingAt))
   const [meetingSaving, setMeetingSaving] = useState(false)
