@@ -781,8 +781,8 @@ function ConversationModal({ lead, onClose, onTogglePause, onAssign, onSaveNotes
         </div>
 
         {/* Controles */}
-        <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200 bg-slate-50 gap-4">
-          <div className="flex items-center gap-2 text-sm flex-1">
+        <div className="flex flex-wrap items-center justify-between px-5 py-3 border-b border-slate-200 bg-slate-50 gap-x-4 gap-y-2">
+          <div className="flex items-center gap-3 text-sm">
             {paused ? (
               <span className="flex items-center gap-1.5 text-amber-600 font-medium">
                 <PauseCircle className="w-4 h-4" /> IA pausada — você assume a conversa
@@ -792,8 +792,18 @@ function ConversationModal({ lead, onClose, onTogglePause, onAssign, onSaveNotes
                 <Bot className="w-4 h-4" /> IA respondendo automaticamente
               </span>
             )}
+            <button
+              onClick={() => onTogglePause(lead)}
+              className="flex items-center gap-2 text-xs font-medium text-slate-600 shrink-0"
+              title={paused ? 'Reativar IA' : 'Pausar IA'}
+            >
+              <span>{paused ? 'Pausada' : 'Ativa'}</span>
+              <span className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${paused ? 'bg-slate-300' : 'bg-emerald-500'}`}>
+                <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${paused ? 'translate-x-0.5' : 'translate-x-[22px]'}`} />
+              </span>
+            </button>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <input
               type="text"
               value={assignedTo}
@@ -843,16 +853,6 @@ function ConversationModal({ lead, onClose, onTogglePause, onAssign, onSaveNotes
                 {curiosityResult.text}
               </span>
             )}
-            <button
-              onClick={() => onTogglePause(lead)}
-              className="flex items-center gap-2 text-xs font-medium text-slate-600 shrink-0"
-              title={paused ? 'Reativar IA' : 'Pausar IA'}
-            >
-              <span>{paused ? 'Pausada' : 'Ativa'}</span>
-              <span className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${paused ? 'bg-slate-300' : 'bg-emerald-500'}`}>
-                <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${paused ? 'translate-x-0.5' : 'translate-x-[22px]'}`} />
-              </span>
-            </button>
           </div>
         </div>
 
