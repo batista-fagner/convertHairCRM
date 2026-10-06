@@ -145,6 +145,53 @@ function displayPhone(phone, demoMode) {
   return demoMode ? maskPhone(phone) : formatPhone(phone)
 }
 
+const waLink = (phone) => `https://wa.me/${String(phone).replace(/\D/g, '')}`
+
+// Ligação: disca no formato nacional (DDD + número, sem +55) — mesmo do Cold Call;
+// o +55 falhava em alguns números via iPhone/Continuity.
+const telLink = (phone) => {
+  const digits = String(phone).replace(/\D/g, '')
+  return `tel:${digits.startsWith('55') && digits.length >= 12 ? digits.slice(2) : digits}`
+}
+
+const stopDrag = (e) => e.stopPropagation()
+
+function CardPhone({ phone, demoMode }) {
+  const shown = displayPhone(phone, demoMode)
+  if (!shown) return null
+  if (demoMode) {
+    return (
+      <p className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
+        <Phone className="w-3 h-3" /> {shown}
+      </p>
+    )
+  }
+  return (
+    <div className="flex items-center gap-1 mt-1 flex-wrap">
+      <a
+        href={telLink(phone)}
+        onClick={stopDrag}
+        onPointerDown={stopDrag}
+        title="Ligar"
+        className="flex items-center gap-0.5 text-[10px] font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded px-1.5 py-0.5"
+      >
+        <Phone className="w-3 h-3" /> {shown}
+      </a>
+      <a
+        href={waLink(phone)}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={stopDrag}
+        onPointerDown={stopDrag}
+        title="Abrir no WhatsApp"
+        className="flex items-center gap-0.5 text-[10px] font-medium text-green-700 bg-green-50 hover:bg-green-100 rounded px-1.5 py-0.5"
+      >
+        <MessageCircle className="w-3 h-3" /> WhatsApp
+      </a>
+    </div>
+  )
+}
+
 function lastMessage(lead) {
   const ctx = Array.isArray(lead.aiContext) ? lead.aiContext : []
   for (let i = ctx.length - 1; i >= 0; i--) {
@@ -203,24 +250,7 @@ function CardContent({ lead, overlay = false }) {
             <p className="font-semibold text-slate-800 text-sm truncate">{lead.name}</p>
             <span className="text-[10px] text-slate-400 shrink-0">{timeAgo(lead.waLastMessageAt || lead.updatedAt)}</span>
           </div>
-          {displayPhone(lead.phone, demoMode) && (
-            <p className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
-              <Phone className="w-3 h-3" /> {displayPhone(lead.phone, demoMode)}
-              {!demoMode && (
-                <a
-                  href={`https://wa.me/${String(lead.phone).replace(/\D/g, '')}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={e => e.stopPropagation()}
-                  onPointerDown={e => e.stopPropagation()}
-                  title="Abrir no WhatsApp"
-                  className="ml-1 flex items-center gap-0.5 text-[10px] font-medium text-green-700 bg-green-50 hover:bg-green-100 rounded px-1.5 py-0.5"
-                >
-                  <MessageCircle className="w-3 h-3" /> WhatsApp
-                </a>
-              )}
-            </p>
-          )}
+          <CardPhone phone={lead.phone} demoMode={demoMode} />
           {lead.email && (
             <p className="text-[11px] text-slate-500 flex items-center gap-1 truncate">
               <Mail className="w-3 h-3 shrink-0" /> {lead.email}
@@ -323,24 +353,7 @@ function LeadCard({ lead, onOpen, onEdit, onDelete }) {
               )}
             </div>
           </div>
-          {displayPhone(lead.phone, demoMode) && (
-            <p className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
-              <Phone className="w-3 h-3" /> {displayPhone(lead.phone, demoMode)}
-              {!demoMode && (
-                <a
-                  href={`https://wa.me/${String(lead.phone).replace(/\D/g, '')}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={e => e.stopPropagation()}
-                  onPointerDown={e => e.stopPropagation()}
-                  title="Abrir no WhatsApp"
-                  className="ml-1 flex items-center gap-0.5 text-[10px] font-medium text-green-700 bg-green-50 hover:bg-green-100 rounded px-1.5 py-0.5"
-                >
-                  <MessageCircle className="w-3 h-3" /> WhatsApp
-                </a>
-              )}
-            </p>
-          )}
+          <CardPhone phone={lead.phone} demoMode={demoMode} />
           {lead.email && (
             <p className="text-[11px] text-slate-500 flex items-center gap-1 truncate">
               <Mail className="w-3 h-3 shrink-0" /> {lead.email}
@@ -756,7 +769,27 @@ function ConversationModal({ lead, onClose, onTogglePause, onAssign, onNoteReque
           <Avatar lead={lead} size="w-11 h-11 text-sm" />
           <div className="min-w-0 flex-1">
             <p className="font-semibold text-slate-800 truncate text-[15px]">{lead.name}</p>
-            <p className="text-xs text-slate-500">{formatPhone(lead.phone)}</p>
+            {lead.phone && (
+              <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                <span className="text-xs text-slate-500">{formatPhone(lead.phone)}</span>
+                <a
+                  href={telLink(lead.phone)}
+                  title="Ligar"
+                  className="flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg px-2 py-1 transition"
+                >
+                  <Phone className="w-3.5 h-3.5" /> Ligar
+                </a>
+                <a
+                  href={waLink(lead.phone)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Abrir no WhatsApp"
+                  className="flex items-center gap-1 text-xs font-medium text-green-700 bg-green-50 hover:bg-green-100 rounded-lg px-2 py-1 transition"
+                >
+                  <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
+                </a>
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-1.5">
             {lead.isMql && <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-medium">🎯 MQL</span>}
