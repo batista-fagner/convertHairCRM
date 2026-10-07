@@ -522,7 +522,13 @@ export class SdrController {
     // o operador é avisado logo abaixo, já com a resposta de tráfego.
     // Quem não soube estimar o volume também vai pro Lucas (avalia na call), sem virar MQL.
     const readyForHandoff = derivedStage === 'qualificado' || (derivedStage === 'atendimento' && semEstimativaVolume === true);
-    const handoffNow = readyForHandoff && !lead.aiPaused && (investeAnuncio !== null || ai.stage === 'encerrado');
+    // stage=encerrado = a Sofia JÁ mandou a mensagem de transferência pro lead.
+    // A promessa foi feita, então o handoff acontece mesmo sem o volume salvo
+    // (ex.: lead respondeu "muitas mensagens" e a IA aceitou sem número) — antes
+    // a IA seguia ativa, repetia a transferência e entrava no follow-up.
+    const disqualified = vendeCabelo === false || iniciante === true || lowVolume;
+    const transferSent = ai.stage === 'encerrado' && !disqualified;
+    const handoffNow = !lead.aiPaused && (transferSent || (readyForHandoff && investeAnuncio !== null));
     if (handoffNow) {
       updateData.aiPaused = true;
     }
