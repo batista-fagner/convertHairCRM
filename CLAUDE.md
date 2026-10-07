@@ -132,7 +132,7 @@ Abertura = saudação (bolha 1, calculada no código) + já a pergunta 1 (bolha 
 1. Quantas mensagens recebe por dia no WhatsApp? (`mensagensPorDia`)
 2. Faz tráfego pago? (`investeAnuncio`) — só perguntada se volume >= 15
 
-**Critério de QUALIFICADO:** `mensagensPorDia >= 15` (`MIN_MENSAGENS_POR_DIA` em `sdr.service.ts`), faça tráfego ou não. Não pergunta mais se vende cabelo nem Instagram — só desqualifica `vendeCabelo=false` se o lead disser espontaneamente (ou cliente final comprando pra si).
+**Critério de QUALIFICADO:** `mensagensPorDia >= 10` (`MIN_MENSAGENS_POR_DIA` em `sdr.service.ts`), faça tráfego ou não. Não pergunta mais se vende cabelo nem Instagram — só desqualifica `vendeCabelo=false` se o lead disser espontaneamente (ou cliente final comprando pra si).
 
 - Volume >= 15 → MQL pro Meta na hora (raia "qualificado")
 - Resposta de tráfego (ou Sofia desistiu dela → `stage=encerrado`) → handoff: mensagem de transferência + `aiPaused=true` + notificação ao operador (inclui "Faz tráfego pago: sim/não")

@@ -49,7 +49,7 @@ function buildSystemPrompt(basePrompt: string, lead?: Lead | null, openingGreeti
 }
 
 /** Volume mínimo de mensagens/dia pra ser considerado qualificado — abaixo disso, desqualifica. */
-export const MIN_MENSAGENS_POR_DIA = 15;
+export const MIN_MENSAGENS_POR_DIA = 10;
 
 /**
  * Mapeia a resposta de qualificação + estágio da conversa pra raia do Kanban.
