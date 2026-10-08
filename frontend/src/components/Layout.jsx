@@ -308,10 +308,10 @@ export default function Layout() {
           <div className="p-3 border-t border-slate-700/50">
             <div className="flex items-center gap-2.5 px-2 py-1.5">
               <div className="w-7 h-7 rounded-full bg-violet-500 flex items-center justify-center text-white text-xs font-bold shrink-0">
-                {isSdr ? 'S' : 'F'}
+                {(currentUser?.name || currentUser?.email || '?').trim().charAt(0).toUpperCase()}
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-xs font-semibold text-white truncate">{isSdr ? 'SDR' : 'Fagner Batista'}</p>
+                <p className="text-xs font-semibold text-white truncate">{currentUser?.name || currentUser?.email}</p>
                 <p className="text-[10px] text-slate-400 truncate">{isSdr ? 'Atendimento' : 'Admin'}</p>
               </div>
               <button

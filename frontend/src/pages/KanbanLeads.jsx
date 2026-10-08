@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo, useSyncExternalStore } from 'react'
 import { DndContext, DragOverlay, useDraggable, useDroppable, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { io } from 'socket.io-client'
-import { socketOptions } from '../lib/auth'
+import { socketOptions, getUser } from '../lib/auth'
 import { Flame, Snowflake, UserPlus, XCircle, Phone, Mail, UserCheck, Loader2, X, MessageCircle, PauseCircle, Bot, MoreVertical, Pencil, Trash2, Play, Eye, EyeOff, Handshake, Trophy, HeadphonesIcon, Paperclip, Send, FileText, Video, StickyNote, ChevronDown, ChevronUp, Plus, CheckCircle2, Megaphone, Search, Layers, Mic, Square, Check, CalendarClock, Zap } from 'lucide-react'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3002/api'
@@ -1112,7 +1112,8 @@ function ConversationModal({ lead, onClose, onTogglePause, onAssign, onNoteReque
 }
 
 const NOTE_MAX = 1000
-const NOTE_AUTHOR = 'ConvertHair' // até existir login de verdade — aí vira o usuário logado
+const NOTE_AUTHOR = 'ConvertHair' // fallback p/ notas antigas; novas usam o nome do usuário logado
+const noteAuthor = () => getUser()?.name || NOTE_AUTHOR
 
 function formatNoteDate(iso) {
   if (!iso) return ''
@@ -1154,7 +1155,7 @@ function NotesPanel({ lead, onClose, onNoteRequest }) {
   const addNote = async () => {
     const content = draft.trim()
     if (!content) return
-    if (await run(() => onNoteRequest(lead.id, 'POST', '', { content, author: NOTE_AUTHOR }))) setDraft('')
+    if (await run(() => onNoteRequest(lead.id, 'POST', '', { content, author: noteAuthor() }))) setDraft('')
   }
 
   const saveEdit = async (id) => {
