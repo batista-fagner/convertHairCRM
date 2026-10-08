@@ -378,8 +378,8 @@ export default function Layout() {
             </button>
 
             {/* Avatar */}
-            <div className="w-8 h-8 rounded-full bg-violet-500 flex items-center justify-center text-white text-xs font-bold cursor-pointer">
-              F
+            <div className="w-8 h-8 rounded-full bg-violet-500 flex items-center justify-center text-white text-xs font-bold cursor-pointer" title={currentUser?.name}>
+              {(currentUser?.name || currentUser?.email || '?').trim().charAt(0).toUpperCase()}
             </div>
           </div>
         </header>
