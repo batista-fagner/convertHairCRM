@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, HttpException, HttpStatus, Param, Patch,
 import { ConfigService } from '@nestjs/config';
 import { InstagramAutomationService } from './instagram-automation.service';
 import type { IgConversationFilter } from './instagram-automation.service';
+import { Public } from '../auth/auth.decorators';
 
 @Controller('ig-auto')
 export class InstagramAutomationController {
@@ -62,6 +63,7 @@ export class InstagramAutomationController {
     return this.service.subscribeWebhook();
   }
 
+  @Public()
   @Get('webhook')
   verifyWebhook(@Query() query: any, @Res() res: any) {
     const verifyToken = this.config.get('IG_WEBHOOK_VERIFY_TOKEN');
@@ -71,6 +73,7 @@ export class InstagramAutomationController {
     return res.status(403).send('Forbidden');
   }
 
+  @Public()
   @Post('webhook')
   handleWebhook(@Body() body: any) {
     this.service.handleWebhookEvent(body).catch(() => {});

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { io } from 'socket.io-client'
+import { socketOptions } from '../lib/auth'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3001/api'
 const SOCKET_URL = API.replace(/\/api\/?$/, '') || 'http://localhost:3002'
@@ -17,7 +18,7 @@ export function useIgPostSocket(handlers) {
   })
 
   useEffect(() => {
-    const socket = io(SOCKET_URL, { transports: ['websocket', 'polling'] })
+    const socket = io(SOCKET_URL, socketOptions())
 
     socket.on('connect', () => setConnected(true))
     socket.on('disconnect', () => setConnected(false))

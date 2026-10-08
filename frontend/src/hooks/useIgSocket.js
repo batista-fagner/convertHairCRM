@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { io } from 'socket.io-client'
+import { socketOptions } from '../lib/auth'
 import { IG_SOCKET_URL } from '../lib/igInboxApi'
 
 /**
@@ -15,7 +16,7 @@ export function useIgSocket(handlers) {
   })
 
   useEffect(() => {
-    const socket = io(IG_SOCKET_URL, { transports: ['websocket', 'polling'] })
+    const socket = io(IG_SOCKET_URL, socketOptions())
 
     socket.on('connect', () => setConnected(true))
     socket.on('disconnect', () => setConnected(false))

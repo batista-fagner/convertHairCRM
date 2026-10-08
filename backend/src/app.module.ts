@@ -40,6 +40,8 @@ import { IgPostsModule } from './ig-posts/ig-posts.module';
 import { InstantFormsModule } from './instant-forms/instant-forms.module';
 import { QueueModule } from './queue/queue.module';
 import { QuizModule } from './quiz/quiz.module';
+import { AuthModule } from './auth/auth.module';
+import { User } from './auth/user.entity';
 import { CarouselModule } from './carousel/carousel.module';
 import { ProspectingModule } from './prospecting/prospecting.module';
 import { VideoEditModule } from './video-edit/video-edit.module';
@@ -62,12 +64,13 @@ import { ColdCallModule } from './coldcall/coldcall.module';
         // Supabase exige SSL; `DATABASE_SSL=false` permite apontar para um
         // Postgres local descartável ao testar sem tocar em produção.
         ssl: config.get('DATABASE_SSL') === 'false' ? false : { rejectUnauthorized: false },
-        entities: [Lead, KanbanCustomStage, Campaign, Form, InstagramAutomation, IgConversation, IgMessage, IgCommentEvent, Setting, FollowupRule, FollowupVideo, SmsContact, SmsMessage, IgPost, Quiz, QuizSubmission, QuizProgress, Carousel, Prospect, AudioAsset, VideoEditJob, ColdCallLead, ColdCallStage],
+        entities: [Lead, KanbanCustomStage, Campaign, Form, InstagramAutomation, IgConversation, IgMessage, IgCommentEvent, Setting, FollowupRule, FollowupVideo, SmsContact, SmsMessage, IgPost, Quiz, QuizSubmission, QuizProgress, Carousel, Prospect, AudioAsset, VideoEditJob, ColdCallLead, ColdCallStage, User],
         synchronize: true,
         logging: false,
         timezone: 'Z',
       }),
     }),
+    AuthModule,
     LeadsModule,
     EnrichmentModule,
     FormsModule,

@@ -2,6 +2,7 @@ import { Body, Controller, Get, Post, Query, Res } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Response } from 'express';
 import { InstantFormsService } from './instant-forms.service';
+import { Public } from '../auth/auth.decorators';
 
 /**
  * Webhook do Meta Lead Ads (Formulário Instantâneo) — separado do webhook de
@@ -9,6 +10,7 @@ import { InstantFormsService } from './instant-forms.service';
  * alguém completa o formulário "ConvertHair50" (ou outro que venha a existir),
  * não conversa via WhatsApp.
  */
+@Public()
 @Controller('webhooks/leadgen')
 export class InstantFormsController {
   constructor(

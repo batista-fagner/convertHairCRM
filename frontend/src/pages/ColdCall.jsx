@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { withToken } from '../lib/auth'
 import { DndContext, DragOverlay, useDraggable, useDroppable, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import {
   UserPlus, PhoneCall, Snowflake, CalendarClock, XCircle, Trophy,
@@ -385,7 +386,7 @@ function MeetingSection({ prospect, onSaved }) {
         </p>
         {google && !google.connected && (
           <a
-            href={`${API}/google-calendar/connect`}
+            href={withToken(`${API}/google-calendar/connect`)}
             target="_blank"
             rel="noopener noreferrer"
             className="text-[11px] font-medium text-white bg-sky-600 hover:bg-sky-700 px-2.5 py-1 rounded-lg"

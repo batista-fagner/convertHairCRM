@@ -1,24 +1,12 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Eye, EyeOff } from 'lucide-react'
+import { setSession } from '../lib/auth'
 
-const EXPECTED_USER = import.meta.env.VITE_APP_USER || 'admin'
-const EXPECTED_HASH = import.meta.env.VITE_APP_PASSWORD_HASH || ''
-
-// Login separado da SDR — só enxerga o Kanban (ver RoleGate em App.jsx e o
-// filtro de NAV_GROUPS em Layout.jsx). Mesma limitação do login do sócio: é
-// checado só no front, então não é uma trava real de API — só evita que ela
-// veja/mexa nas outras telas por engano.
-const SDR_USER = import.meta.env.VITE_SDR_USER || ''
-const SDR_HASH = import.meta.env.VITE_SDR_PASSWORD_HASH || ''
-
-async function sha256(text) {
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))
-  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('')
-}
+const API = import.meta.env.VITE_API_URL || 'http://localhost:3001/api'
 
 export default function Login() {
-  const [user, setUser] = useState('')
+  const [email, setEmail] = useState('')
   const [pass, setPass] = useState('')
   const [showPass, setShowPass] = useState(false)
   const [error, setError] = useState('')
@@ -30,17 +18,22 @@ export default function Login() {
     setLoading(true)
     setError('')
 
-    const hash = await sha256(pass)
-    if (user === EXPECTED_USER && hash === EXPECTED_HASH) {
-      sessionStorage.setItem('crm_auth', hash)
-      sessionStorage.setItem('crm_role', 'socio')
-      navigate('/', { replace: true })
-    } else if (SDR_USER && user === SDR_USER && hash === SDR_HASH) {
-      sessionStorage.setItem('crm_auth', hash)
-      sessionStorage.setItem('crm_role', 'sdr')
-      navigate('/kanban', { replace: true })
-    } else {
-      setError('Usuário ou senha incorretos.')
+    try {
+      const res = await fetch(`${API}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password: pass }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setError(res.status === 401 ? 'Email ou senha incorretos.' : (data.message || 'Não foi possível entrar. Tente novamente.'))
+      } else {
+        setSession(data.token, data.user)
+        // SDR só enxerga o Kanban (ver RequireRole em App.jsx).
+        navigate(data.user.role === 'sdr' ? '/kanban' : '/', { replace: true })
+      }
+    } catch {
+      setError('Sem conexão com o servidor.')
     }
     setLoading(false)
   }
@@ -55,11 +48,12 @@ export default function Login() {
 
         <form onSubmit={handleSubmit} className="bg-gray-900 rounded-2xl p-8 space-y-4 border border-gray-800">
           <div>
-            <label className="block text-sm text-gray-400 mb-1">Usuário</label>
+            <label className="block text-sm text-gray-400 mb-1">Email</label>
             <input
-              type="text"
-              value={user}
-              onChange={e => setUser(e.target.value)}
+              type="email"
+              autoComplete="email"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
               required
               autoFocus
               className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-purple-500"
@@ -71,6 +65,7 @@ export default function Login() {
             <div className="relative">
               <input
                 type={showPass ? 'text' : 'password'}
+                autoComplete="current-password"
                 value={pass}
                 onChange={e => setPass(e.target.value)}
                 required

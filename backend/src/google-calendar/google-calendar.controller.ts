@@ -1,6 +1,7 @@
 import { Controller, Get, Query, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import { GoogleCalendarService } from './google-calendar.service';
+import { Public } from '../auth/auth.decorators';
 
 const page = (title: string, text: string) => `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title></head>
 <body style="font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f8fafc;color:#0f172a">
@@ -16,6 +17,7 @@ export class GoogleCalendarController {
     res.redirect(this.calendar.getAuthUrl());
   }
 
+  @Public()
   @Get('callback')
   async callback(@Query('code') code: string, @Query('error') error: string, @Res() res: Response) {
     if (error || !code) {

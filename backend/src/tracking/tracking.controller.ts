@@ -1,6 +1,8 @@
 import { Controller, Post, Body } from '@nestjs/common';
 import { TrackingService } from './tracking.service';
+import { Public } from '../auth/auth.decorators';
 
+@Public()
 @Controller('track')
 export class TrackingController {
   constructor(private readonly trackingService: TrackingService) {}

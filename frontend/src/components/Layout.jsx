@@ -29,7 +29,9 @@ import {
   Music,
   Clapperboard,
   PhoneCall,
+  UserCog,
 } from 'lucide-react'
+import { getUser, clearSession, socketOptions } from '../lib/auth'
 
 const NAV_GROUPS = [
   {
@@ -88,6 +90,7 @@ const NAV_GROUPS = [
     label: 'Sistema',
     items: [
       { icon: Settings, label: 'Configurações', path: '/settings' },
+      { icon: UserCog, label: 'Usuários', path: '/usuarios' },
     ],
   },
 ]
@@ -124,6 +127,7 @@ const PAGE_TITLES = {
   '/prospeccao': 'Prospecção',
   '/cold-call': 'Cold Call',
   '/settings': 'Configurações',
+  '/usuarios': 'Usuários',
 }
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3001/api'
@@ -175,7 +179,7 @@ function useHeaderStats() {
     fetchSmsStats()
     fetchIgStats()
 
-    const socket = io(SOCKET_URL, { transports: ['websocket', 'polling'] })
+    const socket = io(SOCKET_URL, socketOptions())
     socket.on('lead:created', () => setLeadsHoje(n => (n ?? 0) + 1))
     socket.on('sms:contact:created', () => handlersRef.current.fetchSmsStats())
     socket.on('sms:contact:updated', () => handlersRef.current.fetchSmsStats())
@@ -193,13 +197,12 @@ export default function Layout() {
   const navigate = useNavigate()
   const { leadsHoje, smsUnread, igUnread } = useHeaderStats()
   const navBadges = { smsUnread, igUnread }
-  const role = sessionStorage.getItem('crm_role')
-  const isSdr = role === 'sdr'
+  const currentUser = getUser()
+  const isSdr = currentUser?.role === 'sdr'
   const navGroups = isSdr ? SDR_NAV_GROUPS : NAV_GROUPS
 
   function handleLogout() {
-    sessionStorage.removeItem('crm_auth')
-    sessionStorage.removeItem('crm_role')
+    clearSession()
     navigate('/login', { replace: true })
   }
 

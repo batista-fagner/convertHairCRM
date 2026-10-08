@@ -95,6 +95,20 @@ Faturamento 30k+ → MQL
 | `FB_LEADS_TOKEN` | ✅ configurado | Token de usuário de longa duração (~60 dias, gerado 2026-08-09, expira ~2026-10-08) com permissão `leads_retrieval` — busca os dados do Formulário Instantâneo. **Renovar antes de expirar** (ver seção abaixo) |
 | `FB_LEADS_FORM_ID` | ✅ `1947596935912490` | ID do formulário "ConvertHair50" |
 | `LEADGEN_WEBHOOK_VERIFY_TOKEN` | ✅ `converthair-leadgen-2026` | Verify token do webhook de Lead Ads — precisa bater com o cadastrado no App Dashboard (Meta) |
+| `JWT_SECRET` | ⚠️ obrigatório | Assina o login do CRM. **Sem ele o backend nem sobe** (AuthModule lança erro no boot) |
+| `JWT_EXPIRES_IN` | opcional | Duração da sessão, padrão `7d` |
+| `RESEND_API_KEY` | ⚠️ pendente | Mesma chave do fisio-secretary — envia os dados de acesso dos usuários |
+| `RESEND_FROM_EMAIL` | opcional | Padrão `Convert Hair <contato@converthair.com.br>` (domínio já verificado no Resend) |
+| `CRM_URL` | opcional | URL do front (sem `/login`) — vira o link "Entrar no CRM" no email de acesso |
+
+### 🔐 Login (JWT) — `backend/src/auth/`
+- Tabela `users` (email, nome, senha bcrypt, `role` = `socio` | `sdr`, `active`). Sócio gerencia usuários em **Sistema → Usuários** (`/usuarios`): cria (senha gerada e enviada por email via Resend; se o email falhar, a senha aparece na tela), reenvia acesso (gera senha nova), troca papel, desativa.
+- **Guard global**: toda rota da API exige `Authorization: Bearer <jwt>`. **Rota chamada de fora do CRM (webhook novo, página pública do ConvertHairPage) precisa de `@Public()`** (`auth/auth.decorators.ts`), senão passa a responder 401. GET também aceita `?token=` (links de download / conectar Google Calendar).
+- O guard confere no banco se o usuário segue ativo (cache 60s, invalidado ao editar) — desativar corta o acesso na hora.
+- Socket.IO (`RealtimeGateway`) recusa conexão sem JWT em `handshake.auth.token`.
+- Front: `frontend/src/lib/auth.js` intercepta o `fetch` global (anexa o token, 401 → volta pro login). Sessão em `localStorage`. Não há mais bypass de login em dev.
+- Primeiro sócio (a tela exige estar logado): `npm run create-user -- email@x.com "Nome" socio [senha]` no `backend/`.
+- Pendente: troca de senha pelo próprio usuário.
 
 ### Backend Local (.env)
 - Porta: `3002`

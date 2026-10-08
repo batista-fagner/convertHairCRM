@@ -1,6 +1,7 @@
 import { Body, Controller, ForbiddenException, Logger, Param, Post } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { GreennService } from './greenn.service';
+import { Public } from '../auth/auth.decorators';
 
 /**
  * Webhook da Greenn (checkout do quiz "5fornecedores") — venda paga dispara
@@ -10,6 +11,7 @@ import { GreennService } from './greenn.service';
  * mora no próprio path, comparado contra GREENN_WEBHOOK_SECRET. Sem esse env
  * configurado, o endpoint recusa tudo.
  */
+@Public()
 @Controller('webhooks/greenn')
 export class GreennController {
   private readonly logger = new Logger(GreennController.name);

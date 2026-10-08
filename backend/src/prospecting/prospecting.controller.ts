@@ -1,8 +1,12 @@
 import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards, HttpException, HttpStatus } from '@nestjs/common';
 import { ApiKeyGuard } from '../common/guards/api-key.guard';
+import { Public } from '../auth/auth.decorators';
 import { ProspectingService } from './prospecting.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 
+// @Public: fora do JWT porque a extensão ConvertIQ chama essas rotas — continuam
+// protegidas pela x-api-key (ApiKeyGuard), como antes do login.
+@Public()
 @Controller('prospecting')
 @UseGuards(ApiKeyGuard)
 export class ProspectingController {

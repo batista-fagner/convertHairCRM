@@ -27,6 +27,8 @@ import IgInbox from './pages/instagram-inbox/IgInbox'
 import Login from './pages/Login'
 import GroupWorkshop from './pages/GroupWorkshop'
 import Quizzes from './pages/Quizzes'
+import Users from './pages/Users'
+import { getToken, getUser } from './lib/auth'
 
 // Carregado sob demanda de propósito — remotion + @remotion/player somam
 // ~300-500KB gzipado, peso que ninguém que nunca abre o editor deveria pagar
@@ -40,21 +42,17 @@ const PageLoading = () => (
 )
 
 function RequireAuth({ children }) {
-  // Em dev (npm run dev / localhost) pula o login pra agilizar teste local —
-  // não afeta o build de produção (import.meta.env.DEV é false no build).
-  if (import.meta.env.DEV) return children
-  const auth = sessionStorage.getItem('crm_auth')
-  if (!auth) return <Navigate to="/login" replace />
+  // A validade real do token é checada pela API: qualquer 401 derruba a
+  // sessão e volta pro login (ver installFetchAuth em lib/auth.js).
+  if (!getToken() || !getUser()) return <Navigate to="/login" replace />
   return children
 }
 
 // Login da SDR só enxerga /kanban — qualquer outra rota (mesmo digitada direto
-// na URL) redireciona pra lá. Mesmo bypass de DEV do RequireAuth acima.
+// na URL) redireciona pra lá.
 function RequireRole({ children }) {
-  if (import.meta.env.DEV) return children
   const location = useLocation()
-  const role = sessionStorage.getItem('crm_role')
-  if (role === 'sdr' && location.pathname !== '/kanban') {
+  if (getUser()?.role === 'sdr' && location.pathname !== '/kanban') {
     return <Navigate to="/kanban" replace />
   }
   return children
@@ -90,6 +88,7 @@ export default function App() {
           <Route path="/video-edit" element={<Suspense fallback={<PageLoading />}><VideoEdit /></Suspense>} />
           <Route path="/instagram-posts" element={<InstagramPosts />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/usuarios" element={<Users />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

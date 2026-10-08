@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo, useSyncExternalStore } from 'react'
 import { DndContext, DragOverlay, useDraggable, useDroppable, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { io } from 'socket.io-client'
+import { socketOptions } from '../lib/auth'
 import { Flame, Snowflake, UserPlus, XCircle, Phone, Mail, UserCheck, Loader2, X, MessageCircle, PauseCircle, Bot, MoreVertical, Pencil, Trash2, Play, Eye, EyeOff, Handshake, Trophy, HeadphonesIcon, Paperclip, Send, FileText, Video, StickyNote, ChevronDown, ChevronUp, Plus, CheckCircle2, Megaphone, Search, Layers, Mic, Square, Check, CalendarClock, Zap } from 'lucide-react'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3002/api'
@@ -1736,7 +1737,7 @@ export default function KanbanLeads() {
   }, [campaignFilter])
 
   useEffect(() => {
-    const socket = io(SOCKET_URL, { transports: ['websocket', 'polling'] })
+    const socket = io(SOCKET_URL, socketOptions())
     socket.on('connect', () => setConnected(true))
     socket.on('disconnect', () => setConnected(false))
     // Só reflete no board eventos de leads que pertencem à campanha filtrada

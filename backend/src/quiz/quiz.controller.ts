@@ -4,6 +4,7 @@ import type { Request } from 'express';
 import { QuizService } from './quiz.service';
 import type { UploadedImageFile } from './quiz.service';
 import { Quiz } from '../common/entities/quiz.entity';
+import { Public } from '../auth/auth.decorators';
 
 @Controller('quiz')
 export class QuizController {
@@ -64,6 +65,7 @@ export class QuizController {
   }
 
   // --- Público (ConvertHairPage) ---
+  @Public()
   @Get(':slug')
   async findBySlug(@Param('slug') slug: string) {
     const quiz = await this.quizService.findBySlug(slug);
@@ -73,6 +75,7 @@ export class QuizController {
     return publicQuiz;
   }
 
+  @Public()
   @Post(':slug/submit')
   submit(@Param('slug') slug: string, @Body() dto: any, @Req() req: Request) {
     const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || '';
@@ -80,6 +83,7 @@ export class QuizController {
     return this.quizService.submit(slug, { ...dto, clientIp, userAgent });
   }
 
+  @Public()
   @Post(':slug/progress')
   trackProgress(@Param('slug') slug: string, @Body() dto: any, @Req() req: Request) {
     const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || '';

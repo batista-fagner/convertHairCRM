@@ -5,7 +5,9 @@ import { SMS_PROVIDER } from './providers/sms-provider.interface';
 import type { ISmsProvider, WebhookVerifyContext } from './providers/sms-provider.interface';
 import { SmsInboundService } from './sms-inbound.service';
 import { SmsService } from './sms.service';
+import { Public } from '../auth/auth.decorators';
 
+@Public()
 @Controller('webhooks/sms')
 export class SmsWebhookController {
   private readonly logger = new Logger(SmsWebhookController.name);

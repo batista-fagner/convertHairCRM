@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { io } from 'socket.io-client'
+import { socketOptions } from '../lib/auth'
 import { Radar, Loader2, Check, X, Sprout, MessageSquareText } from 'lucide-react'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3002/api'
@@ -72,7 +73,7 @@ export default function Prospeccao() {
   }
 
   useEffect(() => {
-    const socket = io(SOCKET_URL, { transports: ['websocket', 'polling'] })
+    const socket = io(SOCKET_URL, socketOptions())
     socket.on('prospect:created', () => load())
     socket.on('prospect:updated', () => load())
     socket.on('prospect:seed-changed', (payload) => setCurrentSeed(payload?.username || null))

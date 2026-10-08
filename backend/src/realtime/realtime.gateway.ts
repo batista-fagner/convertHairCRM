@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { WebSocketGateway, WebSocketServer, OnGatewayConnection, OnGatewayDisconnect } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
+import { JwtService } from '@nestjs/jwt';
 import { Lead } from '../common/entities/lead.entity';
 import { SmsContact } from '../sms/entities/sms-contact.entity';
 import { SmsMessage } from '../sms/entities/sms-message.entity';
@@ -22,7 +23,20 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   @WebSocketServer()
   server: Server;
 
-  handleConnection(client: Socket) {
+  constructor(private jwt: JwtService) {}
+
+  // Os eventos levam dados de leads — só aceita conexão com JWT válido
+  // (o front manda em `auth.token` no handshake do socket.io).
+  async handleConnection(client: Socket) {
+    const token = client.handshake.auth?.token;
+    try {
+      if (typeof token !== 'string' || !token) throw new Error('sem token');
+      await this.jwt.verifyAsync(token);
+    } catch {
+      this.logger.warn(`Conexão realtime recusada (sem login válido): ${client.id}`);
+      client.disconnect(true);
+      return;
+    }
     this.logger.log(`Cliente conectado ao realtime: ${client.id}`);
   }
 

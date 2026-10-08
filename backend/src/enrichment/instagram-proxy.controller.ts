@@ -1,7 +1,9 @@
 import { Controller, Post, Body } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
+import { Public } from '../auth/auth.decorators';
 
+@Public()
 @Controller('instagram')
 export class InstagramProxyController {
   private readonly rapidapiKey: string;

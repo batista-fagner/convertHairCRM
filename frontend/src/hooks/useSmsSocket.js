@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { io } from 'socket.io-client'
+import { socketOptions } from '../lib/auth'
 import { SOCKET_URL } from '../lib/smsApi'
 
 /**
@@ -17,7 +18,7 @@ export function useSmsSocket(handlers) {
   })
 
   useEffect(() => {
-    const socket = io(SOCKET_URL, { transports: ['websocket', 'polling'] })
+    const socket = io(SOCKET_URL, socketOptions())
 
     socket.on('connect', () => setConnected(true))
     socket.on('disconnect', () => setConnected(false))

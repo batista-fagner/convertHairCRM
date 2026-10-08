@@ -1,6 +1,7 @@
 import { Controller, Post, Param, Body, Req } from '@nestjs/common';
 import type { Request } from 'express';
 import { FormsService } from './forms.service';
+import { Public } from '../auth/auth.decorators';
 
 interface SubmitFormDto {
   name: string;
@@ -51,11 +52,13 @@ export class FormsController {
     return this.formsService.create(body);
   }
 
+  @Public()
   @Post(':id/submit')
   async submit(@Param('id') id: string, @Body() body: SubmitFormDto) {
     return this.formsService.submit(id, body);
   }
 
+  @Public()
   @Post('capture')
   async capture(@Body() body: CaptureDto, @Req() req: Request) {
     const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || '';

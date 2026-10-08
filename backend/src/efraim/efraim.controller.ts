@@ -8,6 +8,7 @@ import { LeadsService } from '../leads/leads.service';
 import { MessagingService } from '../messaging/messaging.service';
 import { FacebookService } from '../facebook/facebook.service';
 import { Lead, WaStage } from '../common/entities/lead.entity';
+import { Public } from '../auth/auth.decorators';
 
 const MQL_REVENUES = ['30k-100k', '100k-300k', 'acima-300k'];
 const REVENUE_KEYS = ['ate-10k', '10k-30k', '30k-100k', '100k-300k', 'acima-300k'];
@@ -19,6 +20,7 @@ const REVENUE_LABELS: Record<string, string> = {
   'acima-300k': 'Acima de R$ 300 mil',
 };
 
+@Public()
 @Controller('webhooks')
 export class EfraimController {
   private readonly logger = new Logger(EfraimController.name);

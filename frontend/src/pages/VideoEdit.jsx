@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { withToken } from '../lib/auth'
 import { Player } from '@remotion/player'
 import {
   Clapperboard, Upload, Loader2, Trash2, AlertCircle, X,
@@ -514,7 +515,7 @@ function RenderPanel({ job, onChanged }) {
         <video src={job.outputUrl} controls className="w-full rounded-lg bg-slate-900 max-h-48" />
         <div className="flex gap-2">
           <a
-            href={`${API}/video-edit/${job.id}/download`}
+            href={withToken(`${API}/video-edit/${job.id}/download`)}
             className="flex-1 flex items-center justify-center gap-1.5 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 px-4 py-2 rounded-lg transition"
           >
             <Download className="w-4 h-4" /> Baixar MP4

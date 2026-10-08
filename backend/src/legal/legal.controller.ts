@@ -1,5 +1,6 @@
 import { Controller, Get, Header } from '@nestjs/common';
 import { PRIVACY_TEXT, TERMS_TEXT } from './legal-texts';
+import { Public } from '../auth/auth.decorators';
 
 const escape = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
@@ -25,6 +26,7 @@ function render(text: string, fallbackTitle: string): string {
 </head><body><main><h1>${escape(title)}</h1>${body}</main></body></html>`;
 }
 
+@Public()
 @Controller()
 export class LegalController {
   @Get('privacidade')

@@ -12,6 +12,7 @@ import { AvatarStorageService } from './avatar-storage.service';
 import { Lead, WaStage } from '../common/entities/lead.entity';
 import { buildOpeningGreeting } from './name-gender.util';
 import { isAutoReply } from './auto-reply.util';
+import { Public } from '../auth/auth.decorators';
 
 export const SDR_NOTIFY_PHONES_KEY = 'sdr_notify_phones';
 
@@ -73,6 +74,7 @@ export function extractCtwaReferral(body: any): CtwaReferral {
  * Webhook do agente SDR — instância/número uazapi SEPARADO do Efraim.
  * Recebe mensagens de leads novos, qualifica via IA e move os cards do Kanban.
  */
+@Public()
 @Controller('webhooks')
 export class SdrController {
   private readonly logger = new Logger(SdrController.name);
