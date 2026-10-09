@@ -44,6 +44,13 @@ export default function Agenda() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [selected, setSelected] = useState(null)
+  const [customStages, setCustomStages] = useState({})
+
+  // Raias criadas no Kanban (ex.: prospeccao-sdr) → título legível.
+  useEffect(() => {
+    fetch(`${API}/leads/kanban-stages`).then((r) => r.json())
+      .then((list) => setCustomStages(Object.fromEntries(list.map((cs) => [cs.stageKey, cs.title])))).catch(() => {})
+  }, [])
 
   const days = useMemo(() => monthGrid(cursor.year, cursor.month), [cursor])
 
@@ -161,7 +168,7 @@ export default function Agenda() {
               <button onClick={() => setSelected(null)} aria-label="Fechar" className="p-1 text-slate-400 hover:text-slate-600"><X className="w-4 h-4" /></button>
             </div>
             <dl className="mt-3 text-sm grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
-              <dt className="text-slate-500">Raia</dt><dd className="text-slate-700">{STAGE_TITLES[selected.kanbanStage] || selected.kanbanStage || '—'}</dd>
+              <dt className="text-slate-500">Raia</dt><dd className="text-slate-700">{STAGE_TITLES[selected.kanbanStage] || customStages[selected.kanbanStage] || selected.kanbanStage || '—'}</dd>
               {selected.utmCampaign && <><dt className="text-slate-500">Campanha</dt><dd className="text-slate-700 truncate">{selected.utmCampaign}</dd></>}
               {selected.instagram && <><dt className="text-slate-500">Instagram</dt><dd className="text-slate-700 truncate">@{selected.instagram.replace(/^@/, '')}</dd></>}
             </dl>
