@@ -1737,6 +1737,14 @@ export default function KanbanLeads() {
     return () => { active = false }
   }, [campaignFilter])
 
+  // /kanban?lead=<id> (vindo da Agenda) abre direto o modal desse lead.
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get('lead')
+    if (!id) return
+    window.history.replaceState(null, '', window.location.pathname)
+    fetch(`${API}/leads/${id}`).then((r) => (r.ok ? r.json() : null)).then((lead) => lead && setSelected(lead)).catch(() => {})
+  }, [])
+
   useEffect(() => {
     const socket = io(SOCKET_URL, socketOptions())
     socket.on('connect', () => setConnected(true))

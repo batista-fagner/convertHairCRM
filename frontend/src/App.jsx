@@ -18,6 +18,7 @@ import Videos from './pages/Videos'
 import AudioLibrary from './pages/AudioLibrary'
 import InstagramPosts from './pages/InstagramPosts'
 import KanbanLeads from './pages/KanbanLeads'
+import Agenda from './pages/Agenda'
 import InstantFormLeads from './pages/InstantFormLeads'
 import Prospeccao from './pages/Prospeccao'
 import ColdCall from './pages/ColdCall'
@@ -48,11 +49,13 @@ function RequireAuth({ children }) {
   return children
 }
 
-// Login da SDR só enxerga /kanban — qualquer outra rota (mesmo digitada direto
+// Login da SDR só enxerga /kanban e /agenda — qualquer outra rota (mesmo digitada direto
 // na URL) redireciona pra lá.
+const SDR_PATHS = ['/kanban', '/agenda']
+
 function RequireRole({ children }) {
   const location = useLocation()
-  if (getUser()?.role === 'sdr' && location.pathname !== '/kanban') {
+  if (getUser()?.role === 'sdr' && !SDR_PATHS.includes(location.pathname)) {
     return <Navigate to="/kanban" replace />
   }
   return children
@@ -69,6 +72,7 @@ export default function App() {
           <Route path="/campaigns" element={<Campaigns />} />
           <Route path="/leads" element={<Leads />} />
           <Route path="/kanban" element={<KanbanLeads />} />
+          <Route path="/agenda" element={<Agenda />} />
           <Route path="/instant-form-leads" element={<InstantFormLeads />} />
           <Route path="/prospeccao" element={<Prospeccao />} />
           <Route path="/cold-call" element={<ColdCallGate><ColdCall /></ColdCallGate>} />

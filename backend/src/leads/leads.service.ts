@@ -1,6 +1,6 @@
 import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { IsNull, Repository } from 'typeorm';
+import { Between, IsNull, Not, Repository } from 'typeorm';
 import { Lead, LeadClassification, KanbanStage, KANBAN_STAGES } from '../common/entities/lead.entity';
 import { KanbanCustomStage } from '../common/entities/kanban-custom-stage.entity';
 
@@ -26,6 +26,16 @@ export class LeadsService {
     const saved = await this.leadsRepo.save(lead);
     this.logger.log(`Lead criado: ${saved.id} - ${saved.name} (${saved.phone})`);
     return saved;
+  }
+
+  // Agenda (página Calendário): leads com reunião marcada no intervalo.
+  // Só os campos que o calendário mostra — evita trazer o aiContext inteiro.
+  async findMeetings(from?: Date, to?: Date): Promise<Partial<Lead>[]> {
+    return this.leadsRepo.find({
+      where: { meetingAt: from && to ? Between(from, to) : Not(IsNull()) } as any,
+      select: ['id', 'name', 'phone', 'meetingAt', 'kanbanStage', 'utmCampaign', 'instagram'] as any,
+      order: { meetingAt: 'ASC' } as any,
+    });
   }
 
   async findById(id: string): Promise<Lead> {

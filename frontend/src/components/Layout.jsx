@@ -6,6 +6,7 @@ import {
   Megaphone,
   Users,
   KanbanSquare,
+  CalendarDays,
   FileText,
   BarChart3,
   Mail,
@@ -49,6 +50,7 @@ const NAV_GROUPS = [
       { icon: ListChecks, label: 'Quiz Builder', path: '/quiz-builder' },
       { icon: Users, label: 'Leads', path: '/leads' },
       { icon: KanbanSquare, label: 'Kanban', path: '/kanban' },
+      { icon: CalendarDays, label: 'Agenda', path: '/agenda' },
       { icon: FileSpreadsheet, label: 'Formulário Instantâneo', path: '/instant-form-leads' },
       { icon: Radar, label: 'Prospecção', path: '/prospeccao' },
       { icon: PhoneCall, label: 'Cold Call', path: '/cold-call' },
@@ -95,13 +97,14 @@ const NAV_GROUPS = [
   },
 ]
 
-// Menu da SDR (role='sdr', ver Login.jsx) — só o Kanban, onde ela move os
+// Menu da SDR (role='sdr') — Kanban e Agenda; no Kanban onde ela move os
 // cards pras raias "Atendimento pelo SDR" / "Agendamentos" e pausa a IA.
 const SDR_NAV_GROUPS = [
   {
     label: 'Funil',
     items: [
       { icon: KanbanSquare, label: 'Kanban', path: '/kanban' },
+      { icon: CalendarDays, label: 'Agenda', path: '/agenda' },
     ],
   },
 ]
@@ -124,6 +127,7 @@ const PAGE_TITLES = {
   '/video-edit': 'Editor de Vídeo',
   '/instagram-posts': 'Posts no Instagram',
   '/kanban': 'Kanban de Leads',
+  '/agenda': 'Agenda de Reuniões',
   '/prospeccao': 'Prospecção',
   '/cold-call': 'Cold Call',
   '/settings': 'Configurações',

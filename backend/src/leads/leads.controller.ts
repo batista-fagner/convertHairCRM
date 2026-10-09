@@ -187,6 +187,17 @@ export class LeadsController {
   // Raias do Kanban criadas pelo usuário (ex.: "Atendimento pelo SDR",
   // "Agendamentos") — complementam as fixas de KANBAN_STAGES. A IA nunca
   // move um lead pra elas sozinha, só drag-and-drop manual no Kanban.
+  // Calendário de reuniões — ?from=&to= (ISO). Antes de ':id' pra não colidir.
+  @Get('meetings')
+  async meetings(@Query('from') from?: string, @Query('to') to?: string) {
+    const f = from ? new Date(from) : undefined;
+    const t = to ? new Date(to) : undefined;
+    if ((f && isNaN(f.getTime())) || (t && isNaN(t.getTime()))) {
+      throw new HttpException('Intervalo de datas inválido', HttpStatus.BAD_REQUEST);
+    }
+    return this.leadsService.findMeetings(f, t);
+  }
+
   @Get('kanban-stages')
   async getKanbanStages() {
     return this.leadsService.getCustomStages();
