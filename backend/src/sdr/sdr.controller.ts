@@ -11,6 +11,7 @@ import { EnrichmentService } from '../enrichment/enrichment.service';
 import { AvatarStorageService } from './avatar-storage.service';
 import { Lead, WaStage } from '../common/entities/lead.entity';
 import { buildOpeningGreeting } from './name-gender.util';
+import { SDR_TRANSFER_MESSAGE } from './sdr.prompt';
 import { isAutoReply } from './auto-reply.util';
 import { Public } from '../auth/auth.decorators';
 
@@ -533,6 +534,17 @@ export class SdrController {
     const handoffNow = !lead.aiPaused && (transferSent || (readyForHandoff && investeAnuncio !== null));
     if (handoffNow) {
       updateData.aiPaused = true;
+    }
+    // Trava: o handoff pausa a IA, então a resposta deste turno é a última que o
+    // lead recebe. Se ela não traz a transferência (a IA refez a pergunta de
+    // tráfego já respondida, ou marcou "encerrado" mas mandou só a reação ao
+    // volume), o lead ficaria esperando — a transferência entra no lugar da
+    // pergunta, ou depois da reação como bolha separada.
+    if (handoffNow && !/\bCEO\b/i.test(ai.reply ?? '')) {
+      this.logger.warn(`[SDR] Handoff de ${phone} sem mensagem de transferência (IA: "${ai.reply}") — completando com a transferência`);
+      ai.reply = transferSent && ai.reply ? `${ai.reply}|||${SDR_TRANSFER_MESSAGE}` : SDR_TRANSFER_MESSAGE;
+      updateData.aiContext = this.sdrService.buildUpdatedContext(lead, text, ai.reply.replace(/\|\|\|/g, '\n'), incomingMedia);
+      updateData.waStage = 'encerrado';
     }
 
     // Só atualiza a raia se o operador NÃO travou o card manualmente

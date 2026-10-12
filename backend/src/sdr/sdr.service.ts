@@ -37,6 +37,11 @@ function buildLeadContext(lead?: Lead | null, openingGreeting?: string): string 
   if (lead?.aiInsight?.niche) lines.push(`- Nicho: ${lead.aiInsight.niche}`);
   if (lead?.instagram) lines.push(`- Instagram: @${lead.instagram}`);
   if (lead?.aiInsight?.selling_angle) lines.push(`- Gargalo identificado: ${lead.aiInsight.selling_angle}`);
+  // Tráfego pago já respondido num turno anterior: avisa explícito, senão a IA
+  // segue o roteiro e refaz a pergunta 2 depois do volume (visto em produção).
+  if (lead?.investeAnuncio === true || lead?.investeAnuncio === false) {
+    lines.push(`- Tráfego pago: JÁ RESPONDIDO (${lead.investeAnuncio ? 'faz tráfego hoje' : 'não faz hoje / quer começar'}) — NÃO pergunte de novo. Com volume de 10+ mensagens/dia, mande a mensagem de transferência.`);
+  }
   // Bolha 1 da abertura já vem PRONTA do código (nome/gênero calculados fora da
   // IA — ela já errou isso antes). A IA só copia, nunca monta essa parte sozinha.
   if (openingGreeting) lines.push(`- Saudação de abertura (bolha 1 da PRIMEIRA MENSAGEM): "${openingGreeting}"`);
