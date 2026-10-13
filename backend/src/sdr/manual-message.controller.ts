@@ -59,10 +59,11 @@ export class ManualMessageController {
 
     const phone = lead.phone.startsWith('55') ? lead.phone : `55${lead.phone}`;
 
-    await this.dispatchToUazapi(phone, body);
+    const waMessageId = await this.dispatchToUazapi(phone, body);
 
     const ctx = Array.isArray(lead.aiContext) ? lead.aiContext : [];
     const entry: Record<string, any> = { role: 'assistant', source: 'operator', timestamp: new Date().toISOString() };
+    if (waMessageId) entry.waMessageIds = [waMessageId];
 
     if (body.type === 'text') {
       entry.content = body.text || '';
@@ -163,6 +164,67 @@ export class ManualMessageController {
     return { ok: true, sent, deleted, total: messages.length };
   }
 
+  /**
+   * "Apagar para todos" de uma mensagem enviada (Sofia, operador ou follow-up).
+   * A mensagem é achada pela posição no ai_context + timestamp (confere que é a
+   * mesma que o operador viu — o histórico pode ter crescido desde então).
+   * Só apaga o que tem ID do WhatsApp guardado (mensagens antigas não têm). Uma
+   * resposta da Sofia em 2 bolhas é uma entrada só: apaga as duas.
+   */
+  @Post(':id/messages/delete')
+  async deleteMessageForAll(@Param('id') id: string, @Body() body: { index: number; timestamp: string }) {
+    const lead = await this.leadsRepo.findOne({ where: { id } });
+    if (!lead) throw new HttpException('Lead not found', HttpStatus.NOT_FOUND);
+    if (!this.uazapiToken) {
+      throw new HttpException('WhatsApp não configurado (SDR_UAZAPI_TOKEN ausente)', HttpStatus.SERVICE_UNAVAILABLE);
+    }
+
+    const ctx = Array.isArray(lead.aiContext) ? lead.aiContext : [];
+    const entry = Number.isInteger(body?.index) ? ctx[body.index] : undefined;
+    if (!entry || entry.timestamp !== body.timestamp) {
+      throw new HttpException('Mensagem não encontrada — recarregue a conversa', HttpStatus.NOT_FOUND);
+    }
+    if (entry.role !== 'assistant') {
+      throw new HttpException('Só dá pra apagar mensagens enviadas por nós', HttpStatus.BAD_REQUEST);
+    }
+    if (entry.whatsappDeleted) return { ok: true, alreadyDeleted: true };
+    const ids: string[] = Array.isArray(entry.waMessageIds) ? entry.waMessageIds : [];
+    if (ids.length === 0) {
+      throw new HttpException('Essa mensagem é anterior à função de apagar e não pode ser apagada pelo CRM', HttpStatus.BAD_REQUEST);
+    }
+
+    const phone = lead.phone.startsWith('55') ? lead.phone : `55${lead.phone}`;
+    const headers = { token: this.uazapiToken };
+    let deleted = 0;
+    for (const messageId of ids) {
+      try {
+        await firstValueFrom(
+          this.http.post(`${this.uazapiBaseUrl}/message/delete`, { number: phone, id: messageId }, { headers }),
+        );
+        deleted++;
+      } catch (err: any) {
+        this.logger.warn(`[Manual] Falha ao apagar mensagem ${messageId} de ${lead.phone}: ${err.response?.data?.error || err.message}`);
+      }
+    }
+    if (deleted === 0) {
+      throw new HttpException('O WhatsApp não aceitou apagar essa mensagem', HttpStatus.BAD_GATEWAY);
+    }
+
+    // Marca no lugar (jsonb_set na posição, conferindo o timestamp no WHERE) pra
+    // não sobrescrever mensagens que chegaram enquanto o delete rodava. O balão
+    // vira "Mensagem apagada" e a IA deixa de considerar essa mensagem.
+    await this.leadsRepo.query(
+      `UPDATE leads SET ai_context = jsonb_set(ai_context, ARRAY[$2::text, 'whatsappDeleted'], 'true'::jsonb)
+       WHERE id = $1 AND ai_context->($2::int)->>'timestamp' = $3`,
+      [id, String(body.index), body.timestamp],
+    );
+
+    const fresh = await this.leadsRepo.findOne({ where: { id } });
+    if (fresh) this.realtime.emitLeadUpdated(fresh);
+    this.logger.log(`[Manual] Mensagem apagada para todos em ${lead.phone} (${deleted}/${ids.length} bolhas)`);
+    return { ok: true, deleted, total: ids.length };
+  }
+
   @Post(':id/fetch-avatar')
   async fetchAvatar(@Param('id') id: string) {
     const lead = await this.leadsRepo.findOne({ where: { id } });
@@ -201,21 +263,23 @@ export class ManualMessageController {
     }
   }
 
-  private async dispatchToUazapi(phone: string, body: SendMessageDto) {
+  /** Envia pela uazapi e devolve o ID da mensagem no WhatsApp (usado pra apagar depois). */
+  private async dispatchToUazapi(phone: string, body: SendMessageDto): Promise<string | null> {
     const headers = { token: this.uazapiToken };
     const base = this.uazapiBaseUrl;
 
     try {
       if (body.type === 'text') {
-        await firstValueFrom(
+        const res = await firstValueFrom(
           this.http.post(`${base}/send/text`, { number: phone, text: body.text }, { headers }),
         );
+        return (res.data as any)?.messageid ?? null;
       } else {
         // uazapi expõe um único endpoint de mídia (/send/media) com "type"
         // indicando o formato. Áudio gravado pelo operador vai como "ptt"
         // pra se comportar como mensagem de voz nativa do WhatsApp.
         const mediaType = body.type === 'audio' ? 'ptt' : body.type;
-        await firstValueFrom(
+        const res = await firstValueFrom(
           this.http.post(
             `${base}/send/media`,
             {
@@ -229,6 +293,7 @@ export class ManualMessageController {
             { headers },
           ),
         );
+        return (res.data as any)?.messageid ?? null;
       }
     } catch (err: any) {
       this.logger.error(`[Manual] Falha ao enviar ${body.type} para ${phone}: ${err.message}`);

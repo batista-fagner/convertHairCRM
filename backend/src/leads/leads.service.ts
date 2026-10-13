@@ -96,6 +96,25 @@ export class LeadsService {
     return { data, total, page, totalPages };
   }
 
+  /**
+   * Anexa os IDs do WhatsApp (uazapi) a uma mensagem já gravada no ai_context,
+   * achada pelo timestamp. Atômico no Postgres: a Sofia grava o histórico antes
+   * de enviar e só depois sabe os IDs — um read-modify-write aqui poderia apagar
+   * uma mensagem do lead que chegasse nesse meio tempo.
+   */
+  async attachWaMessageIds(leadId: string, timestamp: string, ids: string[]): Promise<void> {
+    if (!ids.length) return;
+    await this.leadsRepo.query(
+      `UPDATE leads SET ai_context = (
+         SELECT jsonb_agg(CASE WHEN e->>'role' = 'assistant' AND e->>'timestamp' = $2
+                               THEN e || jsonb_build_object('waMessageIds', $3::jsonb)
+                               ELSE e END ORDER BY ord)
+         FROM jsonb_array_elements(ai_context) WITH ORDINALITY AS t(e, ord))
+       WHERE id = $1 AND jsonb_typeof(ai_context) = 'array'`,
+      [leadId, timestamp, JSON.stringify(ids)],
+    );
+  }
+
   async update(id: string, dto: Partial<Lead>): Promise<Lead> {
     await this.leadsRepo.update(id, dto);
     return this.findById(id);

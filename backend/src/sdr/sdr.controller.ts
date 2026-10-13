@@ -615,7 +615,17 @@ export class SdrController {
       );
     }
 
-    if (ai.reply) await this.sendReplyAsBubbles(phone, ai.reply);
+    if (ai.reply) {
+      const sentIds = await this.sendReplyAsBubbles(phone, ai.reply);
+      // Guarda os IDs do WhatsApp na mensagem do histórico — é o que permite
+      // "apagar para todos" pelo card depois (ManualMessageController).
+      const sentEntry = (updateData.aiContext as any[])[updateData.aiContext.length - 1];
+      if (sentEntry?.role === 'assistant' && sentEntry.timestamp) {
+        await this.leadsService
+          .attachWaMessageIds(lead.id, sentEntry.timestamp, sentIds)
+          .catch((err) => this.logger.warn(`[SDR] Falha ao guardar IDs da mensagem de ${phone}: ${err.message}`));
+      }
+    }
 
     // Handoff: avisa o operador e destaca o card. O MQL pro Meta já saiu antes,
     // assim que o volume qualificou (justQualified); o aviso espera a resposta
@@ -737,10 +747,11 @@ export class SdrController {
     );
   }
 
-  private async sendMessage(phone: string, text: string) {
+  /** Envia texto e devolve o ID da mensagem no WhatsApp (null se falhou). */
+  private async sendMessage(phone: string, text: string): Promise<string | null> {
     try {
       const normalizedPhone = phone.startsWith('55') ? phone : `55${phone}`;
-      await firstValueFrom(
+      const res = await firstValueFrom(
         this.http.post(
           `${this.uazapiBaseUrl}/send/text`,
           { number: normalizedPhone, text },
@@ -748,8 +759,10 @@ export class SdrController {
         ),
       );
       this.logger.log(`[SDR] respondeu para ${phone}`);
+      return (res.data as any)?.messageid ?? null;
     } catch (err: any) {
       this.logger.error(`[SDR] Erro ao enviar resposta para ${phone}: ${err.message}`);
+      return null;
     }
   }
 
@@ -776,14 +789,17 @@ export class SdrController {
   }
 
   /** Envia a resposta da IA em uma ou mais bolhas, cada uma com "digitando..." proporcional ao tamanho do texto. */
-  private async sendReplyAsBubbles(phone: string, reply: string) {
+  private async sendReplyAsBubbles(phone: string, reply: string): Promise<string[]> {
     const bubbles = this.splitBubbles(reply);
+    const ids: string[] = [];
     for (const bubble of bubbles) {
       const delay = this.typingDelayForText(bubble);
       await this.sendTyping(phone, delay);
       await new Promise((r) => setTimeout(r, delay));
-      await this.sendMessage(phone, bubble);
+      const id = await this.sendMessage(phone, bubble);
+      if (id) ids.push(id);
     }
+    return ids;
   }
 
   private async sendTyping(phone: string, durationMs: number) {

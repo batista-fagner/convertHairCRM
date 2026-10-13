@@ -911,13 +911,14 @@ ${tomBlock}`;
 
     try {
       const phone = lead.phone.startsWith('55') ? lead.phone : `55${lead.phone}`;
-      await firstValueFrom(
+      const res = await firstValueFrom(
         this.http.post(
           `${this.uazapiBaseUrl}/send/text`,
           { number: phone, text },
           { headers: { token: this.uazapiToken } },
         ),
       );
+      const waMessageId = (res.data as any)?.messageid;
 
       // Só marca como enviado se o WhatsApp aceitou. Registra a mensagem no
       // histórico para aparecer na conversa e a IA manter o contexto.
@@ -927,7 +928,7 @@ ${tomBlock}`;
         // Avança a cadência: nextAt null = era o último toque, o lead sai da
         // sequência (e da consulta do cron) até responder ou ser resetado.
         ...(cadence ? { followupStep: cadence.nextStep, followupNextAt: cadence.nextAt } : {}),
-        aiContext: [...ctx, { role: 'assistant', content: text, timestamp: new Date().toISOString() }],
+        aiContext: [...ctx, { role: 'assistant', content: text, timestamp: new Date().toISOString(), ...(waMessageId ? { waMessageIds: [waMessageId] } : {}) }],
         waLastMessageAt: new Date(),
       });
 

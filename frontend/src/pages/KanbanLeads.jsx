@@ -555,6 +555,10 @@ function ConversationModal({ lead, onClose, onTogglePause, onAssign, onNoteReque
   const [sendError, setSendError] = useState('')
   const [isRecording, setIsRecording] = useState(false)
   const [recordSeconds, setRecordSeconds] = useState(0)
+  // "Apagar para todos": índice da mensagem selecionada no ai_context
+  const [selectedMsg, setSelectedMsg] = useState(null)
+  const [deletingMsg, setDeletingMsg] = useState(false)
+  const [deleteMsgError, setDeleteMsgError] = useState('')
   const [curiosityLoading, setCuriosityLoading] = useState(false)
   const [curiosityResult, setCuriosityResult] = useState(null)
   const chatBottomRef = useRef(null)
@@ -725,6 +729,28 @@ function ConversationModal({ lead, onClose, onTogglePause, onAssign, onNoteReque
       setSendError(err.message || 'Falha ao enviar')
     } finally {
       setSending(false)
+    }
+  }
+
+  const handleDeleteForAll = async (index, m) => {
+    if (deletingMsg) return
+    setDeletingMsg(true)
+    setDeleteMsgError('')
+    try {
+      const res = await fetch(`${API}/leads/${lead.id}/messages/delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ index, timestamp: m.timestamp }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.message || `Erro ${res.status}`)
+      }
+      setSelectedMsg(null)
+    } catch (err) {
+      setDeleteMsgError(err.message || 'Falha ao apagar')
+    } finally {
+      setDeletingMsg(false)
     }
   }
 
@@ -947,10 +973,16 @@ function ConversationModal({ lead, onClose, onTogglePause, onAssign, onNoteReque
             }
             const isLead = m.role === 'user'
             const isOperator = m.role === 'assistant' && m.source === 'operator'
+            // Só mensagens enviadas por nós e com ID do WhatsApp guardado
+            // (as anteriores a essa função não têm) podem ser apagadas.
+            const canDelete = !isLead && Array.isArray(m.waMessageIds) && m.waMessageIds.length > 0
+            const isSelected = canDelete && selectedMsg === i
             return (
-              <div key={i} className={`flex ${isLead ? 'justify-start' : 'justify-end'}`}>
+              <div key={i} className={`flex flex-col ${isLead ? 'items-start' : 'items-end'}`}>
                 <div
-                  className={`max-w-[72%] px-3.5 py-2 rounded-2xl text-sm break-words ${
+                  onClick={canDelete ? () => { setDeleteMsgError(''); setSelectedMsg(isSelected ? null : i) } : undefined}
+                  title={canDelete ? 'Clique pra apagar para todos' : undefined}
+                  className={`max-w-[72%] px-3.5 py-2 rounded-2xl text-sm break-words ${canDelete ? 'cursor-pointer' : ''} ${isSelected ? 'ring-2 ring-red-400 ring-offset-1' : ''} ${
                     isLead
                       ? 'bg-white border border-slate-200 text-slate-700 rounded-tl-sm'
                       : isOperator
@@ -1002,6 +1034,28 @@ function ConversationModal({ lead, onClose, onTogglePause, onAssign, onNoteReque
                     )}
                   </div>
                 </div>
+                {isSelected && (
+                  <div className="mt-1 flex items-center gap-1.5">
+                    <button
+                      onClick={() => handleDeleteForAll(i, m)}
+                      disabled={deletingMsg}
+                      className="flex items-center gap-1 text-xs font-medium text-white bg-red-500 hover:bg-red-600 disabled:opacity-50 px-2.5 py-1 rounded-lg transition"
+                    >
+                      {deletingMsg ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+                      Apagar para todos
+                    </button>
+                    <button
+                      onClick={() => { setSelectedMsg(null); setDeleteMsgError('') }}
+                      disabled={deletingMsg}
+                      className="text-xs text-slate-500 hover:text-slate-700 px-2 py-1 rounded-lg transition"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                )}
+                {isSelected && deleteMsgError && (
+                  <p className="text-[11px] text-red-500 mt-1">{deleteMsgError}</p>
+                )}
               </div>
             )
           })}
