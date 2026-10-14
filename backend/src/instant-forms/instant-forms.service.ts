@@ -4,18 +4,22 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import axios from 'axios';
 import { Lead } from '../common/entities/lead.entity';
-import { FacebookService } from '../facebook/facebook.service';
-
-// Respostas da Q2 do formulário "ConvertHair50" que caracterizam alto volume
-// de mensagens no WhatsApp — desviam o fluxo pro caminho Q3→Q4 (em vez de Q5),
-// e são o único sinal que diferencia um lead "MQL+30" de um lead comum nesse
-// formulário (ambos chegam no mesmo Q6/telefone e página de confirmação).
-const MQL_30_ANSWERS = ['entre 30 e 40', 'acima de 50'];
-const CRM_EVENT_NAME = 'MQL+30';
 
 interface LeadgenFieldData {
   name: string;
   values: string[];
+}
+
+// Origem do lead no Meta (campanha/conjunto/anúncio) — vem junto com as respostas.
+interface LeadgenAdInfo {
+  ad_id?: string;
+  ad_name?: string;
+  adset_id?: string;
+  adset_name?: string;
+  campaign_id?: string;
+  campaign_name?: string;
+  platform?: string;
+  is_organic?: boolean;
 }
 
 @Injectable()
@@ -25,10 +29,9 @@ export class InstantFormsService {
   constructor(
     @InjectRepository(Lead) private readonly leadsRepo: Repository<Lead>,
     private readonly config: ConfigService,
-    private readonly facebookService: FacebookService,
   ) {}
 
-  /** Processa 1 evento de leadgen recebido no webhook: busca os dados completos, salva o lead e — se qualificado — avisa o Meta. */
+  /** Processa 1 evento de leadgen recebido no webhook: busca os dados completos, salva o lead no CRM. */
   async processLeadgenEvent(leadgenId: string): Promise<void> {
     const token = this.config.get('FB_LEADS_TOKEN');
     if (!token) {
@@ -37,11 +40,21 @@ export class InstantFormsService {
     }
 
     let fieldData: LeadgenFieldData[];
+    let ad: LeadgenAdInfo = {};
+    const url = `https://graph.facebook.com/v21.0/${leadgenId}`;
+    const baseFields = 'id,form_id,field_data,created_time';
+    const adFields = 'ad_id,ad_name,adset_id,adset_name,campaign_id,campaign_name,platform,is_organic';
     try {
-      const res = await axios.get(`https://graph.facebook.com/v21.0/${leadgenId}`, {
-        params: { access_token: token, fields: 'id,form_id,field_data,created_time' },
-      });
+      let res;
+      try {
+        res = await axios.get(url, { params: { access_token: token, fields: `${baseFields},${adFields}` } });
+      } catch (err: any) {
+        // Os campos de anúncio são um extra: se o Meta recusar, o lead não pode se perder.
+        this.logger.warn(`[InstantForms] Campos de anúncio indisponíveis (${err.response?.data?.error?.message || err.message}) — salvando sem campanha/anúncio`);
+        res = await axios.get(url, { params: { access_token: token, fields: baseFields } });
+      }
       fieldData = res.data.field_data || [];
+      ad = res.data;
     } catch (err: any) {
       this.logger.error(`Erro ao buscar dados do lead ${leadgenId}: ${err.response?.data?.error?.message || err.message}`);
       return;
@@ -59,15 +72,23 @@ export class InstantFormsService {
     const email = getAnswer((n) => n.includes('email'));
     const phoneRaw = getAnswer((n) => n.includes('número') || n.includes('numero') || n.includes('phone') || n.includes('telefone'));
     const phone = (phoneRaw || '').replace(/\D/g, '');
-    const volumeAnswer = getAnswer((n) => n.includes('mensagens') && n.includes('dia'));
 
     if (!phone) {
       this.logger.warn(`Lead ${leadgenId} sem telefone reconhecível nos campos: ${JSON.stringify(fieldData.map((f) => f.name))}`);
     }
 
-    const isMql30 = Boolean(volumeAnswer && MQL_30_ANSWERS.includes(volumeAnswer.trim().toLowerCase()));
-
     const answersSummary = fieldData.map((f) => `${f.name}: ${f.values?.[0] ?? ''}`).join('\n');
+
+    // Campanha → utm_campaign, conjunto → utm_term, anúncio → utm_content (mesmos campos do funil
+    // WhatsApp, pra comparar criativos no CRM). Os IDs ficam no notes pra cruzar com o Gerenciador.
+    const platform = ad.platform === 'ig' ? 'instagram' : ad.platform === 'fb' ? 'facebook' : ad.platform;
+    const tracking = {
+      utmMedium: ad.is_organic ? 'organico' : platform || undefined,
+      utmCampaign: ad.campaign_name || undefined,
+      utmTerm: ad.adset_name || undefined,
+      utmContent: ad.ad_name || undefined,
+    };
+    const adIds = ad.ad_id ? `\nanuncio_id: ${ad.ad_id} | conjunto_id: ${ad.adset_id} | campanha_id: ${ad.campaign_id}` : '';
 
     const existing = phone ? await this.leadsRepo.findOne({ where: { phone } }) : null;
     const lead = existing
@@ -76,8 +97,12 @@ export class InstantFormsService {
           name: fullName,
           email: email || existing.email,
           formAnswers: fieldData,
-          formMql30: isMql30,
-          notes: `[Formulário Instantâneo — ${leadgenId}]\n${answersSummary}`,
+          // lead que já veio por outro canal mantém a origem original; só preenche o que está vazio
+          utmMedium: existing.utmMedium || tracking.utmMedium,
+          utmCampaign: existing.utmCampaign || tracking.utmCampaign,
+          utmTerm: existing.utmTerm || tracking.utmTerm,
+          utmContent: existing.utmContent || tracking.utmContent,
+          notes: `[Formulário Instantâneo — ${leadgenId}]${adIds}\n${answersSummary}`,
         })
       : await this.leadsRepo.save(
           this.leadsRepo.create({
@@ -86,18 +111,12 @@ export class InstantFormsService {
             email: email || undefined,
             status: 'novo',
             utmSource: 'formulario-instantaneo',
+            ...tracking,
             formAnswers: fieldData,
-            formMql30: isMql30,
-            notes: `[Formulário Instantâneo — ${leadgenId}]\n${answersSummary}`,
+            notes: `[Formulário Instantâneo — ${leadgenId}]${adIds}\n${answersSummary}`,
           }),
         );
 
-    this.logger.log(`[InstantForms] Lead ${lead.id} (${phone || 'sem telefone'}) capturado do formulário — MQL+30: ${isMql30}`);
-
-    if (isMql30) {
-      await this.facebookService.sendCrmLeadEvent(leadgenId, phone, CRM_EVENT_NAME).catch((err) =>
-        this.logger.error(`[InstantForms] Erro ao enviar evento ${CRM_EVENT_NAME} ao Meta: ${err.message}`),
-      );
-    }
+    this.logger.log(`[InstantForms] Lead ${lead.id} (${phone || 'sem telefone'}) capturado do formulário${tracking.utmContent ? ` — anúncio: ${tracking.utmContent}` : ''}`);
   }
 }

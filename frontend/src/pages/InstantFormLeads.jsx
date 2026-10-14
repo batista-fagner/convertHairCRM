@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { FileSpreadsheet, Loader2, Star, X, Phone, Mail, Calendar } from 'lucide-react'
+import { FileSpreadsheet, Loader2, X, Phone, Mail, Calendar } from 'lucide-react'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3002/api'
 
@@ -71,27 +71,25 @@ function AnswersModal({ lead, onClose }) {
 
 export default function InstantFormLeads() {
   const [leads, setLeads] = useState([])
-  const [stats, setStats] = useState({ total: 0, mql30: 0, comum: 0 })
+  const [stats, setStats] = useState({ total: 0 })
   const [loading, setLoading] = useState(true)
-  const [filter, setFilter] = useState('all') // all | true | false
   const [selectedLead, setSelectedLead] = useState(null)
 
   const load = () => {
     setLoading(true)
-    const qs = filter === 'all' ? '' : `?mql30=${filter}`
     Promise.all([
-      fetch(`${API}/instant-form-leads${qs}`).then((r) => r.json()),
+      fetch(`${API}/instant-form-leads`).then((r) => r.json()),
       fetch(`${API}/instant-form-leads/stats`).then((r) => r.json()),
     ])
       .then(([leadsData, statsData]) => {
         setLeads(Array.isArray(leadsData) ? leadsData : [])
-        setStats(statsData || { total: 0, mql30: 0, comum: 0 })
+        setStats(statsData || { total: 0 })
       })
       .catch(() => {})
       .finally(() => setLoading(false))
   }
 
-  useEffect(() => { load() }, [filter])
+  useEffect(() => { load() }, [])
 
   return (
     <div className="p-6 overflow-y-auto">
@@ -101,44 +99,16 @@ export default function InstantFormLeads() {
         </div>
         <div>
           <h2 className="text-lg font-semibold text-slate-800">Formulário Instantâneo</h2>
-          <p className="text-sm text-slate-400 mt-0.5">Leads capturados do formulário "ConvertHair50" (Meta Lead Ads), com as respostas completas</p>
+          <p className="text-sm text-slate-400 mt-0.5">Leads capturados pelo formulário instantâneo (Meta Lead Ads), com as respostas completas</p>
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-4 mb-6">
-        <div className="bg-white rounded-xl border border-slate-200 p-4">
-          <p className="text-xs text-slate-400 uppercase tracking-wide">Total de leads</p>
-          <p className="text-2xl font-bold text-slate-800 mt-1">{stats.total}</p>
-        </div>
-        <div className="bg-white rounded-xl border border-amber-200 p-4">
-          <p className="text-xs text-amber-600 uppercase tracking-wide flex items-center gap-1"><Star className="w-3.5 h-3.5" /> MQL+30</p>
-          <p className="text-2xl font-bold text-amber-700 mt-1">{stats.mql30}</p>
-        </div>
-        <div className="bg-white rounded-xl border border-slate-200 p-4">
-          <p className="text-xs text-slate-400 uppercase tracking-wide">Volume comum</p>
-          <p className="text-2xl font-bold text-slate-800 mt-1">{stats.comum}</p>
-        </div>
+      <div className="bg-white rounded-xl border border-slate-200 p-4 mb-6 w-fit min-w-[200px]">
+        <p className="text-xs text-slate-400 uppercase tracking-wide">Total de leads</p>
+        <p className="text-2xl font-bold text-slate-800 mt-1">{stats.total}</p>
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <div className="flex items-center gap-2 px-5 py-3 border-b border-slate-100">
-          {[
-            { id: 'all', label: 'Todos' },
-            { id: 'true', label: 'MQL+30' },
-            { id: 'false', label: 'Comum' },
-          ].map((opt) => (
-            <button
-              key={opt.id}
-              onClick={() => setFilter(opt.id)}
-              className={`text-xs font-medium px-3 py-1.5 rounded-lg transition ${
-                filter === opt.id ? 'bg-violet-100 text-violet-700' : 'text-slate-500 hover:bg-slate-50'
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
-
         {loading ? (
           <div className="flex items-center justify-center gap-2 text-slate-400 text-sm py-12">
             <Loader2 className="w-4 h-4 animate-spin" /> Carregando leads...
@@ -153,7 +123,7 @@ export default function InstantFormLeads() {
                   <th className="px-5 py-2.5">Nome</th>
                   <th className="px-5 py-2.5">Telefone</th>
                   <th className="px-5 py-2.5">Status</th>
-                  <th className="px-5 py-2.5">Volume</th>
+                  <th className="px-5 py-2.5">Campanha / Anúncio</th>
                   <th className="px-5 py-2.5">Recebido em</th>
                   <th className="px-5 py-2.5"></th>
                 </tr>
@@ -168,13 +138,16 @@ export default function InstantFormLeads() {
                         {STATUS_LABEL[lead.status] || lead.status}
                       </span>
                     </td>
-                    <td className="px-5 py-3">
-                      {lead.formMql30 ? (
-                        <span className="flex items-center gap-1 text-xs font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full w-fit">
-                          <Star className="w-3 h-3" /> MQL+30
-                        </span>
+                    <td className="px-5 py-3 text-xs max-w-[260px]">
+                      {lead.campaign || lead.ad ? (
+                        <>
+                          <p className="text-slate-700 truncate" title={lead.campaign}>{lead.campaign || '—'}</p>
+                          <p className="text-slate-400 truncate" title={[lead.adset, lead.ad].filter(Boolean).join(' › ')}>
+                            {[lead.adset, lead.ad].filter(Boolean).join(' › ')}{lead.platform ? ` · ${lead.platform}` : ''}
+                          </p>
+                        </>
                       ) : (
-                        <span className="text-xs text-slate-400">Comum</span>
+                        <span className="text-slate-300">—</span>
                       )}
                     </td>
                     <td className="px-5 py-3 text-slate-400 text-xs">{fmtDate(lead.createdAt)}</td>
