@@ -30,6 +30,16 @@ export class QuizSubmission {
   @Column({ name: 'phone', type: 'varchar', nullable: true })
   phone?: string | null;
 
+  // Capturados pelas etapas 'contact' (template Clean), pela `key` do campo.
+  @Column({ name: 'name', type: 'varchar', nullable: true })
+  name?: string | null;
+
+  @Column({ name: 'email', type: 'varchar', nullable: true })
+  email?: string | null;
+
+  @Column({ name: 'instagram', type: 'varchar', nullable: true })
+  instagram?: string | null;
+
   @Column({ name: 'mql_events', type: 'jsonb', nullable: true })
   mqlEvents?: string[] | null;
 

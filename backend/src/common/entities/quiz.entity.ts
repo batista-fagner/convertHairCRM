@@ -9,10 +9,25 @@ export interface QuizOption {
   isMqlAnswer?: boolean;
 }
 
+// Campo de uma etapa 'contact' (template Clean). `key` diz o que o campo
+// captura — o submit usa pra preencher name/phone/email/instagram da
+// submissão; 'custom' só entra nas respostas.
+export type QuizContactFieldKey = 'name' | 'phone' | 'email' | 'instagram' | 'company' | 'custom';
+
+export interface QuizContactField {
+  id: string;
+  key: QuizContactFieldKey;
+  label?: string;
+  placeholder?: string;
+  required?: boolean;
+}
+
 export interface QuizQuestion {
   id: string;
   order: number;
   question: string;
+  // Texto de apoio abaixo da pergunta (usado pelo template Clean).
+  subtitle?: string;
   // "pergunta matadora" — quando true, cada opção marcada isMqlAnswer dispara
   // o evento mqlEventName ao ser escolhida.
   isMqlQuestion?: boolean;
@@ -21,7 +36,10 @@ export interface QuizQuestion {
   // 'phone' = campo de texto livre pra capturar WhatsApp/telefone do lead, em
   // vez de opções de múltipla escolha. Ausente/'choice' = comportamento atual.
   // `options` continua presente (vazio) nesse caso só pra não quebrar o tipo.
-  type?: 'choice' | 'phone';
+  // 'contact' = etapa com 1+ campos de texto (nome, telefone, instagram...),
+  // configuráveis em `fields` — só o template Clean renderiza esse tipo.
+  type?: 'choice' | 'phone' | 'contact';
+  fields?: QuizContactField[];
 }
 
 export interface QuizPresentation {
@@ -46,6 +64,8 @@ export interface QuizPresentation {
   // 900) que o resto do texto (que é normal, sem peso extra).
   bodyTextBold?: string;
   buttonLabel?: string;
+  // Template Clean: frase pequena no rodapé de cada etapa.
+  footerNote?: string;
   // segundos até redirecionar direto pro grupo se a pessoa não clicar no
   // botão da apresentação. null/0 = sem auto-redirect.
   autoRedirectSeconds?: number | null;
@@ -168,6 +188,13 @@ export class Quiz {
 
   @Column({ name: 'fb_access_token', type: 'varchar', nullable: true })
   fbAccessToken?: string | null;
+
+  // Visual da página pública: null/'classic' = layout original (fundo preto,
+  // apresentação + perguntas + tela final); 'clean' = fundo branco, cabeçalho
+  // fixo com passos numerados, etapas de contato com campos e redirect direto
+  // pro whatsappUrl ao terminar (ver ConvertHairPage/src/pages/CleanQuiz.tsx).
+  @Column({ name: 'template', type: 'varchar', nullable: true })
+  template?: 'classic' | 'clean' | null;
 
   @Column({ name: 'presentation', type: 'jsonb' })
   presentation: QuizPresentation;

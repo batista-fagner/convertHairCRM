@@ -92,6 +92,42 @@ function emptyPhoneQuestion() {
   }
 }
 
+// Etapa de dados de contato (template Clean): 1+ campos de texto. `key` diz o
+// que o campo captura — o backend usa pra salvar nome/telefone/instagram.
+const CONTACT_FIELD_KEYS = [
+  { key: 'name', label: 'Nome' },
+  { key: 'phone', label: 'Telefone / WhatsApp' },
+  { key: 'email', label: 'E-mail' },
+  { key: 'instagram', label: 'Instagram' },
+  { key: 'company', label: 'Empresa' },
+  { key: 'custom', label: 'Outro (texto livre)' },
+]
+
+function contactField(key) {
+  const preset = {
+    name: { label: 'Nome', placeholder: 'Seu nome completo' },
+    phone: { label: 'Telefone', placeholder: '(DD) 9 XXXX-XXXX' },
+    email: { label: 'E-mail', placeholder: 'voce@email.com' },
+    instagram: { label: 'Instagram', placeholder: 'seuperfil' },
+    company: { label: 'Empresa', placeholder: 'Nome do seu negócio' },
+    custom: { label: '', placeholder: '' },
+  }[key] || { label: '', placeholder: '' }
+  return { id: uid(), key, required: true, ...preset }
+}
+
+function emptyContactQuestion() {
+  return {
+    id: uid(),
+    question: 'Seus dados para contato',
+    subtitle: 'É por aqui que o nosso time vai falar com você.',
+    type: 'contact',
+    isMqlQuestion: false,
+    mqlEventName: '',
+    options: [],
+    fields: [contactField('name'), contactField('phone')],
+  }
+}
+
 // Página de venda pós-quiz — usada só por quizzes com checkoutUrl preenchido
 // (ver ConvertHairPage/src/pages/Oferta5Fornecedores.tsx). Layout/cores ficam
 // fixos no código da página; só o conteúdo abaixo é editável aqui.
@@ -860,6 +896,34 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
     onChange(prev => ({ ...prev, questions: [...prev.questions, emptyPhoneQuestion()] }))
   }
 
+  function addContactQuestion() {
+    if (quiz.questions.length >= MAX_QUESTIONS) return
+    onChange(prev => ({ ...prev, questions: [...prev.questions, emptyContactQuestion()] }))
+  }
+
+  function updateField(qId, fieldId, patch) {
+    onChange(prev => ({
+      ...prev,
+      questions: prev.questions.map(q => q.id === qId
+        ? { ...q, fields: (q.fields || []).map(f => f.id === fieldId ? { ...f, ...patch } : f) }
+        : q),
+    }))
+  }
+
+  function addField(qId) {
+    onChange(prev => ({
+      ...prev,
+      questions: prev.questions.map(q => q.id === qId ? { ...q, fields: [...(q.fields || []), contactField('custom')] } : q),
+    }))
+  }
+
+  function removeField(qId, fieldId) {
+    onChange(prev => ({
+      ...prev,
+      questions: prev.questions.map(q => q.id === qId ? { ...q, fields: (q.fields || []).filter(f => f.id !== fieldId) } : q),
+    }))
+  }
+
   function removeQuestion(id) {
     onChange(prev => ({ ...prev, questions: prev.questions.filter(q => q.id !== id) }))
   }
@@ -908,6 +972,7 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
   }
 
   const publicUrl = quiz.slug ? `${QUIZ_PUBLIC_BASE}/${quiz.slug}` : null
+  const isClean = quiz.template === 'clean'
 
   return (
     <div className="space-y-5 max-w-2xl">
@@ -936,6 +1001,46 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
               className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition font-mono"
             />
           </div>
+        </div>
+        <div>
+          <label className="text-sm text-slate-500">Visual da página pública</label>
+          <div className="flex gap-2 mt-1">
+            {[
+              { id: 'classic', label: 'Clássico', hint: 'fundo preto, apresentação + tela final' },
+              { id: 'clean', label: 'Clean', hint: 'fundo branco e dourado, passos numerados, campos de contato' },
+            ].map(t => {
+              const active = (quiz.template || 'classic') === t.id
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => set('template', t.id)}
+                  className={`flex-1 text-left rounded-lg border px-3 py-2 transition ${active ? 'border-violet-400 bg-violet-50' : 'border-slate-200 hover:bg-slate-50'}`}
+                >
+                  <p className={`text-sm font-semibold ${active ? 'text-violet-700' : 'text-slate-700'}`}>{t.label}</p>
+                  <p className="text-xs text-slate-400">{t.hint}</p>
+                </button>
+              )
+            })}
+          </div>
+          {isClean && (
+            <div className="mt-2 rounded-lg bg-slate-50 border border-slate-200 p-3 space-y-2">
+              <p className="text-sm text-slate-500">
+                No Clean não há tela de apresentação nem tela final: o cabeçalho usa o <b>título</b>, o <b>trecho em destaque</b> e
+                a <b>caixa de subtítulo</b> da Etapa 1; o botão da última etapa usa o <b>texto do botão</b> da Tela final; ao terminar,
+                vai direto pro link de destino abaixo. Foto, selo e botão da apresentação não aparecem.
+              </p>
+              <div>
+                <label className="text-sm text-slate-500">Frase do rodapé</label>
+                <input
+                  value={quiz.presentation.footerNote || ''}
+                  onChange={e => set('presentation.footerNote', e.target.value)}
+                  placeholder="Seus dados estão seguros e serão usados apenas para contato."
+                  className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
+                />
+              </div>
+            </div>
+          )}
         </div>
         <div>
           <label className="text-sm text-slate-500">Link do grupo do WhatsApp (destino final)</label>
@@ -1366,6 +1471,15 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
             </p>
           </div>
           <div className="flex items-center gap-3">
+            {isClean && (
+              <button
+                onClick={addContactQuestion}
+                disabled={quiz.questions.length >= MAX_QUESTIONS}
+                className="flex items-center gap-1.5 text-sm font-medium text-sky-600 hover:text-sky-700 disabled:opacity-30 disabled:cursor-not-allowed transition"
+              >
+                <Plus className="w-3.5 h-3.5" /> Adicionar dados de contato
+              </button>
+            )}
             <button
               onClick={addPhoneQuestion}
               disabled={quiz.questions.length >= MAX_QUESTIONS}
@@ -1391,7 +1505,7 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
 
         <div className="pl-7 space-y-3">
           {quiz.questions.map((q, qi) => (
-            <div key={q.id} className={`rounded-xl border p-3 space-y-2 ${q.type === 'phone' ? 'border-emerald-300 bg-emerald-50/40' : q.isMqlQuestion ? 'border-amber-300 bg-amber-50/40' : 'border-slate-200 bg-white'}`}>
+            <div key={q.id} className={`rounded-xl border p-3 space-y-2 ${q.type === 'contact' ? 'border-sky-300 bg-sky-50/40' : q.type === 'phone' ? 'border-emerald-300 bg-emerald-50/40' : q.isMqlQuestion ? 'border-amber-300 bg-amber-50/40' : 'border-slate-200 bg-white'}`}>
               <div className="flex items-center gap-2">
                 <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-500 text-sm font-semibold flex items-center justify-center shrink-0">{qi + 1}</span>
                 <input
@@ -1402,6 +1516,9 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
                 />
                 {q.type === 'phone' && (
                   <span className="text-sm font-medium text-emerald-700 bg-emerald-100 rounded-lg px-2 py-1 shrink-0">Campo de telefone</span>
+                )}
+                {q.type === 'contact' && (
+                  <span className="text-sm font-medium text-sky-700 bg-sky-100 rounded-lg px-2 py-1 shrink-0">Dados de contato</span>
                 )}
                 <button onClick={() => moveQuestion(q.id, -1)} disabled={qi === 0} className="p-1 text-slate-400 hover:text-slate-600 disabled:opacity-30 transition">
                   <ChevronUp className="w-4 h-4" />
@@ -1414,13 +1531,78 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
                 </button>
               </div>
 
+              {isClean && (
+                <div className="pl-7">
+                  <input
+                    value={q.subtitle || ''}
+                    onChange={e => updateQuestion(q.id, 'subtitle', e.target.value)}
+                    placeholder="Texto de apoio abaixo da pergunta (opcional)"
+                    className="w-full text-sm border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
+                  />
+                </div>
+              )}
+
               {q.type === 'phone' && (
                 <p className="pl-7 text-sm text-slate-400">
                   A pessoa digita o número livremente nessa etapa — sem opções de múltipla escolha.
                 </p>
               )}
 
-              {q.type !== 'phone' && (
+              {q.type === 'contact' && (
+                <div className="pl-7 space-y-2">
+                  {(q.fields || []).length === 1 && (
+                    <p className="text-sm text-slate-400">Com 1 campo só, a etapa mostra o input sozinho, sem rótulo (a pergunta vira o título).</p>
+                  )}
+                  {(q.fields || []).map(f => (
+                    <div key={f.id} className="flex flex-wrap items-center gap-2 bg-white border border-slate-200 rounded-lg p-2">
+                      <select
+                        value={f.key}
+                        onChange={e => {
+                          const preset = contactField(e.target.value)
+                          updateField(q.id, f.id, { key: e.target.value, label: preset.label, placeholder: preset.placeholder })
+                        }}
+                        className="text-sm border border-slate-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:ring-2 focus:ring-violet-400"
+                      >
+                        {CONTACT_FIELD_KEYS.map(k => <option key={k.key} value={k.key}>{k.label}</option>)}
+                      </select>
+                      <input
+                        value={f.label || ''}
+                        onChange={e => updateField(q.id, f.id, { label: e.target.value })}
+                        placeholder="Rótulo"
+                        className="w-32 text-sm border border-slate-200 rounded-lg px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-violet-400"
+                      />
+                      <input
+                        value={f.placeholder || ''}
+                        onChange={e => updateField(q.id, f.id, { placeholder: e.target.value })}
+                        placeholder="Texto dentro do campo"
+                        className="flex-1 min-w-[140px] text-sm border border-slate-200 rounded-lg px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-violet-400"
+                      />
+                      <label className="flex items-center gap-1 text-sm text-slate-500 select-none cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={f.required !== false}
+                          onChange={e => updateField(q.id, f.id, { required: e.target.checked })}
+                          className="accent-violet-500 w-3.5 h-3.5"
+                        />
+                        Obrigatório
+                      </label>
+                      <button
+                        onClick={() => removeField(q.id, f.id)}
+                        disabled={(q.fields || []).length <= 1}
+                        className="p-1 text-slate-300 hover:text-red-400 disabled:opacity-30 transition"
+                        title="Remover campo"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                  <button onClick={() => addField(q.id)} className="flex items-center gap-1 text-sm text-slate-400 hover:text-violet-600 transition">
+                    <Plus className="w-3.5 h-3.5" /> Adicionar campo
+                  </button>
+                </div>
+              )}
+
+              {q.type !== 'phone' && q.type !== 'contact' && (
               <>
               <div className="flex items-center gap-3 pl-7">
                 <label className="flex items-center gap-1.5 cursor-pointer select-none">

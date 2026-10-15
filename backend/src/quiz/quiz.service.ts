@@ -104,6 +104,8 @@ interface SubmitAnswer {
   // Usado só quando a pergunta é do tipo 'phone' — texto livre digitado pelo
   // lead, em vez de optionId (não há opções nesse tipo de pergunta).
   value?: string;
+  // Etapa 'contact': valor de cada campo, por id do campo (QuizContactField.id).
+  values?: Record<string, string>;
 }
 
 interface ProgressDto {
@@ -398,6 +400,7 @@ export class QuizService {
       active: dto.active ?? true,
       whatsappUrl: dto.whatsappUrl || null,
       checkoutUrl: dto.checkoutUrl || null,
+      template: dto.template || null,
       fbPixelId: dto.fbPixelId || null,
       fbAccessToken: dto.fbAccessToken || null,
       welcomeMessageTemplate: dto.welcomeMessageTemplate || null,
@@ -464,6 +467,7 @@ export class QuizService {
     const answeredResponses: { question: string; answer: string }[] = [];
     const mqlEvents = new Set<string>();
     let capturedPhone: string | undefined;
+    const captured: { name?: string; email?: string; instagram?: string } = {};
 
     for (const submitted of dto.answers || []) {
       const question = quiz.questions.find((q) => q.id === submitted.questionId);
@@ -474,6 +478,28 @@ export class QuizService {
         if (!phone) continue;
         capturedPhone = phone;
         answeredResponses.push({ question: question.question, answer: phone });
+        continue;
+      }
+
+      if (question.type === 'contact') {
+        for (const field of question.fields || []) {
+          const raw = (submitted.values?.[field.id] || '').trim();
+          if (!raw) continue;
+          let value = raw;
+          if (field.key === 'phone') {
+            const digits = raw.replace(/\D/g, '');
+            value = digits.length <= 11 ? `55${digits}` : digits;
+            capturedPhone = value;
+          } else if (field.key === 'instagram') {
+            value = raw.replace(/^@+/, '').replace(/^https?:\/\/(www\.)?instagram\.com\//i, '').replace(/\/.*$/, '');
+            captured.instagram = value;
+          } else if (field.key === 'name') {
+            captured.name = value;
+          } else if (field.key === 'email') {
+            captured.email = value.toLowerCase();
+          }
+          answeredResponses.push({ question: field.label || question.question, answer: value });
+        }
         continue;
       }
 
@@ -561,6 +587,9 @@ export class QuizService {
         quizName: quiz.name,
         answers: answeredResponses,
         phone: capturedPhone,
+        name: captured.name,
+        email: captured.email,
+        instagram: captured.instagram,
         mqlEvents: Array.from(mqlEvents),
         utmSource: dto.utmSource,
         utmMedium: dto.utmMedium,
