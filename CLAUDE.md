@@ -263,7 +263,7 @@ Anúncio (formulário instantâneo) → lead envia
 
 ### Tela no CRM
 
-O lead também aparece no **Kanban** (raia Novo, IA pausada; constante `KANBAN_ENTRY` em `instant-forms.service.ts` — pra ligar a Sofia nesse funil, tirar o `aiPaused`). A tela `/instant-form-leads` (menu "Formulário Instantâneo") continua como relatório com as respostas completas — total, tabela com nome/telefone/status/campanha›anúncio/data e modal "Ver respostas". **Não atualiza sozinha** (recarregar). Não é Kanban de propósito.
+O lead também aparece no **Kanban** (raia Novo, IA pausada, **tag "Form" + borda azul** no card — `KanbanLeads.jsx`, condição `utmSource === 'formulario-instantaneo'`, também no modal do lead; constante `KANBAN_ENTRY` em `instant-forms.service.ts` — pra ligar a Sofia nesse funil, tirar o `aiPaused`). A tela `/instant-form-leads` (menu "Formulário Instantâneo") continua como relatório com as respostas completas — total, tabela com nome/telefone/status/campanha›anúncio/data e modal "Ver respostas". **Não atualiza sozinha** (recarregar). Não é Kanban de propósito.
 
 ### Setup no Meta (refeito em 2026-10-14)
 
@@ -271,7 +271,8 @@ O lead também aparece no **Kanban** (raia Novo, IA pausada; constante `KANBAN_E
 - Permissões do app: `leads_retrieval`, `pages_manage_metadata`, `pages_show_list`, `pages_read_engagement`, `pages_manage_ads`, `business_management`. **App publicado** (sem isso só chegam leads de teste).
 - Webhook: App Dashboard → Casos de uso → Webhooks → objeto **Page** → URL `https://converthaircrm-production.up.railway.app/api/webhooks/leadgen`, verify token `LEADGEN_WEBHOOK_VERIFY_TOKEN`, campo `leadgen` assinado.
 - **Página ligada ao app:** `POST /{page_id}/subscribed_apps?subscribed_fields=leadgen` com token de Página (Página `Convert hair` = `1169787736220659`). Conferir com `GET /{page_id}/subscribed_apps` — se não listar o app, nenhum lead chega.
-- Teste: developers.facebook.com/tools/lead-ads-testing → "Ver prévia do formulário" (envio real com dados preenchidos; o botão "Criar lead" gera dados fictícios; só 1 lead por formulário, excluir antes de refazer).
+- Teste: developers.facebook.com/tools/lead-ads-testing → "Ver prévia do formulário" (envio real com dados preenchidos; o botão "Criar lead" gera dados fictícios, telefone "9", e vem como `is_organic`; só 1 lead por formulário, excluir antes de refazer). O status "Pending" da ferramenta é só atraso da tela — o que vale é o log `POST /api/webhooks/leadgen 201` + `[InstantForms] Lead … capturado` no Railway. Lead de teste apagado no Meta não pode mais ser buscado na Graph API ("does not exist"). Leads de teste no CRM: apagar à mão (banco).
+- Gotchas do setup: (1) o app antigo estava em portfólio diferente da Página — "Conectar um ID do app" no BM falhou com erro genérico, por isso o app novo; (2) sem a Página ligada ao app (`subscribed_apps`) e o app publicado, o webhook só funciona com payload de teste do App Dashboard; (3) depois de um deploy do front, a aba do CRM aberta continua com a versão antiga — Cmd+Shift+R.
 - `FB_LEADS_TOKEN`: token de usuário (~60 dias) com `leads_retrieval`, **expira 2026-12-13**. Renovar: Graph API Explorer → gerar token → depurador de token → "Estender token de acesso" (pede a senha do Facebook).
 
 ## 📊 Tracking
@@ -354,10 +355,12 @@ acompanhar ao vivo.
 - [ ] Testar end-to-end: lead entra → fluxo completo → MQL
 - [ ] Resolver bloqueio de IP da RapidAPI no Railway (ver memória `project_converthaircrm_rapidapi_ip_block`)
 - [ ] **Renovar `FB_LEADS_TOKEN`** antes de **2026-12-13** (token de 60 dias) — sem isso o webhook do Formulário Instantâneo para de buscar os dados dos leads
+- [ ] **Validar o tracking com o 1º lead real do anúncio**: conferir no Kanban/tela do formulário que campanha, conjunto e anúncio vieram preenchidos (só foi testado com lead de teste, que não traz esses campos). Se vier vazio, olhar o log `Campos de anúncio indisponíveis` no Railway
+- [ ] Teste de otimização da campanha direto pra Sofia (CTWA): duplicar o conjunto com meta "Maximizar leads por mensagens" (usa `LeadSubmitted`, dataset "Convert hair" `1749062199421538`) — iniciado em 2026-10-14, não mexer por 5–7 dias e depois comparar no CRM por conjunto (custo por lead, qualificados, agendados)
 - [ ] Definir a abordagem humana pós-captura do Formulário Instantâneo (WhatsApp exige template aprovado pra iniciar conversa, já que quem preenche o formulário não manda mensagem primeiro) — só depois definir se vale virar Kanban
 - [ ] Separar nos relatórios do Meta o `Purchase` simbólico do MQL (WhatsApp, value=1) da venda real (`Purchase` do botão "Converter Agora") — hoje só têm `event_id` diferentes (evita duplicata), mas aparecem juntos no Ads Manager. Ver opções A/B/C discutidas (Custom Conversion por valor, `content_name`, ou parar de mandar o simbólico). **Escolhida (2026-10-13, ainda não feita): B** — `custom_data.content_name` = `mql_whatsapp` no Purchase simbólico (`sendMqlEvent`) e `venda` no real (`sendPurchaseEvent`). Confirmar antes se o Gerenciador de Eventos aceita Conversão Personalizada sobre evento `business_messaging`; se não aceitar, alternativa é painel de ROAS real no CRM (gasto via API do Meta + vendas do banco). Não muda a otimização (ela segue no Purchase padrão, que soma MQL + venda)
 - [ ] **Migração Redis+BullMQ do sdr-followup: trocar scan de 5 em 5 min por job por lead (Opção A do plano)** — hoje (`QUEUE_ENGINE=bullmq`, ativado em 2026-08-22) o `SdrFollowupQueueService` só trocou quem aciona o scan (era `@Cron`, agora é `upsertJobScheduler` do BullMQ), mas o disparo continua sendo uma varredura completa a cada 5 min (`runFollowupScan()` em `sdr-followup.service.ts`), não orientado a evento. Ficou assim de propósito na migração (ver `sdr-followup-scan.processor.ts` e plano em `/Users/fagnerbatista/.claude/plans/spicy-humming-boole.md`, seção "Fase 3") por ser a área de maior risco do sistema (envia WhatsApp real, já causou duplicidade uma vez). Trocar para job por lead — agendado exatamente pro momento do próximo toque de cada lead, sem scan nenhum — elimina esse polling residual. Mexe em 5 pontos de mutação de estado (`sendFollowup`/`sendFollowupVideo`, reset em massa no `followup.controller.ts`, reset por resposta em `sdr.controller.ts`, `broadcastNow()`) — fazer isolado, com bastante teste antes de subir em produção.
 
 ---
 
-**Última atualização:** 2026-09-23
+**Última atualização:** 2026-10-14
