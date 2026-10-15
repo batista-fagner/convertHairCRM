@@ -1684,15 +1684,6 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
                       </label>
                     )}
                     {isClean && (
-                      <input
-                        value={opt.redirectUrl || ''}
-                        onChange={e => updateOption(q.id, opt.id, 'redirectUrl', e.target.value)}
-                        placeholder="↪ desviar pra (URL)"
-                        title="Opcional: quem escolher esta opção sai do quiz e vai pra esse link (sem pedir contato e sem evento MQL)"
-                        className={`w-44 shrink-0 text-sm border rounded-lg px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition ${opt.redirectUrl ? 'border-rose-300 bg-rose-50' : 'border-slate-200'}`}
-                      />
-                    )}
-                    {isClean && (
                       <label
                         className={`flex items-center gap-1 shrink-0 cursor-pointer select-none rounded-lg px-2 py-1 border ${opt.goesToLowTicket ? 'bg-rose-50 border-rose-200' : 'border-slate-200'}`}
                         title="Quem escolher esta opção sai do quiz e vai pra página de oferta low ticket (precisa estar ligada lá embaixo)"
