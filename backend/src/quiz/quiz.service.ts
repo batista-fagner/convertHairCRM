@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { randomUUID } from 'crypto';
 import sharp from 'sharp';
 import { Quiz, QuizQuestion } from '../common/entities/quiz.entity';
@@ -12,6 +13,8 @@ import { QuizSubmission } from '../common/entities/quiz-submission.entity';
 import { QuizProgress } from '../common/entities/quiz-progress.entity';
 import { FacebookService } from '../facebook/facebook.service';
 import { TrackingService } from '../tracking/tracking.service';
+import { Lead } from '../common/entities/lead.entity';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 
 export interface WhatsappGroupCheckResult {
   ok: boolean;
@@ -25,6 +28,10 @@ export interface WhatsappGroupCheckResult {
 const MAX_QUESTIONS = 7;
 const MAX_IMAGE_SIZE_MB = 10;
 const ALLOWED_IMAGE_MIMETYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const ALLOWED_VIDEO_EXT = new Set(['mp4', 'mov', 'm4v', 'webm']);
+// Origem dos leads capturados pelo quiz (etapa de contato) — vira a tag/borda
+// do card no Kanban (KanbanLeads.jsx).
+export const QUIZ_LEAD_TAG = 'quiz_contato';
 
 // Assinaturas de tráfego automatizado no User-Agent — pego "Chrome-Lighthouse"
 // poluindo o funil (PageSpeed Insights audita a página em mobile+desktop ao
@@ -154,6 +161,8 @@ export class QuizService {
     private trackingService: TrackingService,
     private config: ConfigService,
     private http: HttpService,
+    @InjectRepository(Lead) private leadsRepo: Repository<Lead>,
+    private realtime: RealtimeGateway,
   ) {
     // Mesmo bucket R2 já usado pelos posts do Instagram (ig-posts.service.ts)
     // — sem necessidade de bucket/credenciais separados só pra foto do quiz.
@@ -216,6 +225,23 @@ export class QuizService {
     this.logger.log(`Imagem do quiz comprimida: ${(file.size / 1024).toFixed(0)}KB → ${(optimized.length / 1024).toFixed(0)}KB`);
 
     return { url: `${this.publicUrlBase}/${storagePath}` };
+  }
+
+  // Vídeo da página pós-quiz: o navegador sobe direto pro R2 com URL assinada
+  // (mesmo padrão do VideoEdit) — vídeo grande não pode passar pelo backend,
+  // que também atende webhook da Meta e SSE do WhatsApp.
+  async createVideoUploadUrl(filename: string, contentType?: string): Promise<{ uploadUrl: string; url: string }> {
+    const ext = (filename?.split('.').pop() ?? '').toLowerCase();
+    if (!ALLOWED_VIDEO_EXT.has(ext)) throw new BadRequestException('Formato inválido — use MP4, MOV, M4V ou WEBM');
+    const storagePath = `quiz/video/${randomUUID()}.${ext}`;
+    const command = new PutObjectCommand({
+      Bucket: this.bucket,
+      Key: storagePath,
+      CacheControl: 'public, max-age=31536000, immutable',
+      ...(contentType ? { ContentType: contentType } : {}),
+    });
+    const uploadUrl = await getSignedUrl(this.s3, command, { expiresIn: 3600 });
+    return { uploadUrl, url: `${this.publicUrlBase}/${storagePath}` };
   }
 
   findAll(): Promise<Quiz[]> {
@@ -409,6 +435,8 @@ export class QuizService {
       questions: dto.questions || [],
       finalStep: dto.finalStep || {},
       salesPage: dto.salesPage || null,
+      thankYouPage: dto.thankYouPage || null,
+      lowTicketPage: dto.lowTicketPage || null,
     });
     return this.repo.save(quiz);
   }
@@ -456,20 +484,14 @@ export class QuizService {
    * marcada) e empurra as respostas + UTM pra fila que o GroupJoinService
    * consome quando a pessoa efetivamente entra no grupo do WhatsApp.
    */
-  async submit(slug: string, dto: SubmitDto): Promise<{ ok: true; redirectUrl: string; mqlEvents: string[] }> {
-    const quiz = await this.findBySlug(slug);
-    // Bug corrigido em 2026-08-30: antes mandava só `https://${slug}` (não é
-    // uma URL real) — sem isso, uma regra de Conversão Personalizada no Meta
-    // baseada em "URL contém" nunca bateria com nada de verdade.
-    const quizPublicBase = (this.config.get<string>('QUIZ_PUBLIC_BASE_URL') || 'https://convert-hair-page.vercel.app/q').replace(/\/$/, '');
-    const eventSourceUrl = `${quizPublicBase}/${slug}`;
-
+  /** Converte as respostas enviadas pela página em texto legível + extrai MQL e dados de contato. */
+  private parseAnswers(quiz: Quiz, answers: SubmitAnswer[] = []) {
     const answeredResponses: { question: string; answer: string }[] = [];
     const mqlEvents = new Set<string>();
     let capturedPhone: string | undefined;
     const captured: { name?: string; email?: string; instagram?: string } = {};
 
-    for (const submitted of dto.answers || []) {
+    for (const submitted of answers || []) {
       const question = quiz.questions.find((q) => q.id === submitted.questionId);
       if (!question) continue;
 
@@ -512,6 +534,97 @@ export class QuizService {
         mqlEvents.add(question.mqlEventName);
       }
     }
+    return { answeredResponses, mqlEvents, capturedPhone, captured };
+  }
+
+  /**
+   * Lead parcial: chamado pela página assim que a pessoa passa da etapa com
+   * telefone, mesmo que não termine o quiz. Cria (ou atualiza) o lead no CRM
+   * com as respostas dadas até ali — card na raia Novo do Kanban com a IA
+   * pausada (abordagem humana). Não dispara evento nenhum pro Meta (os
+   * eventos continuam só no submit final).
+   */
+  async captureLead(slug: string, dto: SubmitDto): Promise<{ ok: true; leadId?: string }> {
+    const quiz = await this.findBySlug(slug);
+    const parsed = this.parseAnswers(quiz, dto.answers);
+    if (!parsed.capturedPhone) return { ok: true };
+    const lead = await this.upsertQuizLead(quiz, parsed, dto);
+    return { ok: true, leadId: lead?.id };
+  }
+
+  private async upsertQuizLead(
+    quiz: Quiz,
+    parsed: { answeredResponses: { question: string; answer: string }[]; mqlEvents: Set<string>; capturedPhone?: string; captured: { name?: string; email?: string; instagram?: string } },
+    dto: SubmitDto,
+  ): Promise<Lead | null> {
+    const phone = (parsed.capturedPhone || '').replace(/\D/g, '');
+    if (phone.length < 12) return null;
+    try {
+      const existing = await this.leadsRepo.findOne({ where: { phone } });
+      const notes = `[Quiz ${quiz.name}]\n${parsed.answeredResponses.map((a) => `${a.question}: ${a.answer}`).join('\n')}`;
+      const tags = Array.from(new Set([...(existing?.tags || []), QUIZ_LEAD_TAG]));
+      const mqlEvents = Array.from(parsed.mqlEvents);
+      let saved: Lead;
+      if (existing) {
+        // Lead que já existia por outro canal mantém origem, raia e IA como estão;
+        // só soma as respostas e preenche o que faltava.
+        saved = await this.leadsRepo.save({
+          ...existing,
+          name: existing.name && !/^Lead \d{4}$/.test(existing.name) ? existing.name : parsed.captured.name || existing.name,
+          email: existing.email || parsed.captured.email,
+          instagram: existing.instagram || parsed.captured.instagram,
+          tags,
+          quizSlug: quiz.slug,
+          quizResponses: parsed.answeredResponses,
+          quizMqlEvents: mqlEvents.length ? mqlEvents : existing.quizMqlEvents,
+          ...(existing.agentMode === 'sdr' ? {} : { agentMode: 'sdr' as const, kanbanStage: 'novo' as const, aiPaused: true }),
+          notes: existing.utmSource === 'quiz' ? notes : existing.notes,
+        });
+        this.realtime.emitLeadUpdated(saved);
+      } else {
+        saved = await this.leadsRepo.save(
+          this.leadsRepo.create({
+            name: parsed.captured.name || `Lead ${phone.slice(-4)}`,
+            phone,
+            email: parsed.captured.email,
+            instagram: parsed.captured.instagram,
+            status: 'novo',
+            agentMode: 'sdr',
+            kanbanStage: 'novo',
+            aiPaused: true,
+            tags,
+            utmSource: 'quiz',
+            utmMedium: dto.utmMedium || quiz.slug,
+            utmCampaign: dto.utmCampaign,
+            utmContent: dto.utmContent,
+            utmTerm: dto.utmTerm,
+            fbclid: dto.fbclid,
+            quizSlug: quiz.slug,
+            quizResponses: parsed.answeredResponses,
+            quizMqlEvents: mqlEvents,
+            notes,
+          }),
+        );
+        this.realtime.emitLeadCreated(saved);
+      }
+      this.logger.log(`[Quiz] Lead ${saved.id} (${phone.slice(0, 4)}…${phone.slice(-3)}) ${existing ? 'atualizado' : 'criado'} pelo quiz "${quiz.slug}"`);
+      return saved;
+    } catch (err: any) {
+      // Falha aqui nunca pode travar o quiz de quem está respondendo.
+      this.logger.error(`[Quiz] Erro ao salvar lead do quiz "${quiz.slug}": ${err.message}`);
+      return null;
+    }
+  }
+
+  async submit(slug: string, dto: SubmitDto): Promise<{ ok: true; redirectUrl: string; mqlEvents: string[] }> {
+    const quiz = await this.findBySlug(slug);
+    // Bug corrigido em 2026-08-30: antes mandava só `https://${slug}` (não é
+    // uma URL real) — sem isso, uma regra de Conversão Personalizada no Meta
+    // baseada em "URL contém" nunca bateria com nada de verdade.
+    const quizPublicBase = (this.config.get<string>('QUIZ_PUBLIC_BASE_URL') || 'https://convert-hair-page.vercel.app/q').replace(/\/$/, '');
+    const eventSourceUrl = `${quizPublicBase}/${slug}`;
+
+    const { answeredResponses, mqlEvents, capturedPhone, captured } = this.parseAnswers(quiz, dto.answers);
 
     const eventPayload = {
       fbclid: dto.fbclid,
@@ -623,6 +736,10 @@ export class QuizService {
       progress.completed = true;
       progress.furthestQuestionIndex = quiz.questions.length - 1;
       await this.progressRepo.save(progress);
+    }
+
+    if (capturedPhone) {
+      await this.upsertQuizLead(quiz, { answeredResponses, mqlEvents, capturedPhone, captured }, dto);
     }
 
     this.logger.log(`Quiz "${slug}" respondido — ${answeredResponses.length} pergunta(s), MQL events: ${Array.from(mqlEvents).join(', ') || 'nenhum'}`);

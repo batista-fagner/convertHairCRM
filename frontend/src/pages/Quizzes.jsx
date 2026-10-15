@@ -17,6 +17,19 @@ function uid() {
   return Math.random().toString(36).slice(2, 8)
 }
 
+// Upload direto pro R2 com URL assinada (mesmo helper do VideoEdit.jsx).
+const putWithProgress = (url, file, onProgress) => new Promise((resolve, reject) => {
+  const xhr = new XMLHttpRequest()
+  xhr.open('PUT', url)
+  if (file.type) xhr.setRequestHeader('Content-Type', file.type)
+  xhr.upload.onprogress = (e) => {
+    if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100))
+  }
+  xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`Upload falhou (HTTP ${xhr.status})`)))
+  xhr.onerror = () => reject(new Error('Upload falhou — verifique sua conexão'))
+  xhr.send(file)
+})
+
 function slugify(text) {
   return (text || '')
     .toLowerCase()
@@ -834,6 +847,32 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
   const [checkingGroup, setCheckingGroup] = useState(false)
   const [salesPageOpen, setSalesPageOpen] = useState(Boolean(quiz.checkoutUrl))
   const [uploadingFornecedorIdx, setUploadingFornecedorIdx] = useState(null)
+  const [videoProgress, setVideoProgress] = useState(null)
+
+  // Páginas depois do quiz (template Clean): quiz.thankYouPage / quiz.lowTicketPage.
+  function setPage(pageKey, field, value) {
+    onChange(prev => ({ ...prev, [pageKey]: { ...(prev[pageKey] || {}), [field]: value } }))
+  }
+
+  async function uploadThankYouVideo(file) {
+    if (!file) return
+    setVideoProgress(0)
+    try {
+      const presign = await fetch(`${API}/quiz/video-upload-url`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: file.name, contentType: file.type }),
+      })
+      if (!presign.ok) throw new Error((await presign.json().catch(() => ({}))).message || 'Não foi possível iniciar o upload')
+      const { uploadUrl, url } = await presign.json()
+      await putWithProgress(uploadUrl, file, setVideoProgress)
+      setPage('thankYouPage', 'videoUrl', url)
+    } catch (err) {
+      alert(err.message || 'Erro no upload do vídeo')
+    } finally {
+      setVideoProgress(null)
+    }
+  }
 
   async function checkWhatsappGroup() {
     if (!quiz.whatsappUrl) return
@@ -1644,6 +1683,29 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
                         <span className="text-sm text-amber-700 font-medium">MQL?</span>
                       </label>
                     )}
+                    {isClean && (
+                      <input
+                        value={opt.redirectUrl || ''}
+                        onChange={e => updateOption(q.id, opt.id, 'redirectUrl', e.target.value)}
+                        placeholder="↪ desviar pra (URL)"
+                        title="Opcional: quem escolher esta opção sai do quiz e vai pra esse link (sem pedir contato e sem evento MQL)"
+                        className={`w-44 shrink-0 text-sm border rounded-lg px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition ${opt.redirectUrl ? 'border-rose-300 bg-rose-50' : 'border-slate-200'}`}
+                      />
+                    )}
+                    {isClean && (
+                      <label
+                        className={`flex items-center gap-1 shrink-0 cursor-pointer select-none rounded-lg px-2 py-1 border ${opt.goesToLowTicket ? 'bg-rose-50 border-rose-200' : 'border-slate-200'}`}
+                        title="Quem escolher esta opção sai do quiz e vai pra página de oferta low ticket (precisa estar ligada lá embaixo)"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={!!opt.goesToLowTicket}
+                          onChange={e => updateOption(q.id, opt.id, 'goesToLowTicket', e.target.checked)}
+                          className="accent-rose-500 w-3.5 h-3.5"
+                        />
+                        <span className={`text-sm font-medium ${opt.goesToLowTicket ? 'text-rose-700' : 'text-slate-500'}`}>↪ Oferta</span>
+                      </label>
+                    )}
                     <button
                       onClick={() => removeOption(q.id, opt.id)}
                       disabled={q.options.length <= 2}
@@ -1725,6 +1787,93 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
           </div>
         </div>
       </div>
+
+      {isClean && (
+        <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-4">
+          <p className="text-sm font-semibold text-slate-500 uppercase tracking-wide">Páginas depois do quiz</p>
+
+          {/* Página do vídeo (pós-quiz) */}
+          <div className={`rounded-xl border p-3 space-y-3 ${quiz.thankYouPage?.enabled ? 'border-emerald-300 bg-emerald-50/30' : 'border-slate-200'}`}>
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-base font-semibold text-slate-700">Página do vídeo (mini VSL)</p>
+                <p className="text-sm text-slate-400">Desligada: quem termina vai direto pro link de destino. Ligada: passa por esta página antes.</p>
+              </div>
+              <label className="flex items-center gap-2 shrink-0 cursor-pointer select-none">
+                <input type="checkbox" checked={!!quiz.thankYouPage?.enabled} onChange={e => setPage('thankYouPage', 'enabled', e.target.checked)} className="accent-emerald-500 w-4 h-4" />
+                <span className="text-sm font-medium text-slate-600">{quiz.thankYouPage?.enabled ? 'Ligada' : 'Desligada'}</span>
+              </label>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><label className="text-sm text-slate-500">Selo</label><input value={quiz.thankYouPage?.badge ?? ''} onChange={e => setPage('thankYouPage', 'badge', e.target.value)} placeholder="Cadastro confirmado" className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition" /></div>
+              <div><label className="text-sm text-slate-500">Texto do botão</label><input value={quiz.thankYouPage?.buttonLabel ?? ''} onChange={e => setPage('thankYouPage', 'buttonLabel', e.target.value)} placeholder="Agendar minha conversa agora" className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition" /></div>
+              <div><label className="text-sm text-slate-500">Título</label><input value={quiz.thankYouPage?.title ?? ''} onChange={e => setPage('thankYouPage', 'title', e.target.value)} placeholder="Assista ao vídeo antes de agendar a sua conversa" className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition" /></div>
+              <div><label className="text-sm text-slate-500">Trecho em dourado</label><input value={quiz.thankYouPage?.titleHighlight ?? ''} onChange={e => setPage('thankYouPage', 'titleHighlight', e.target.value)} placeholder="antes de agendar" className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition" /></div>
+            </div>
+            <div><label className="text-sm text-slate-500">Subtítulo</label><input value={quiz.thankYouPage?.subtitle ?? ''} onChange={e => setPage('thankYouPage', 'subtitle', e.target.value)} placeholder="Em 2 minutos você entende exatamente o que acontece a partir de agora." className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition" /></div>
+            <div className="space-y-2">
+              <label className="text-sm text-slate-500">Vídeo — suba o arquivo OU cole um link (YouTube, Vimeo, Panda). Se tiver os dois, vale o arquivo.</label>
+              <div className="flex flex-wrap items-center gap-2">
+                <label className={`flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition cursor-pointer ${videoProgress !== null ? 'opacity-60 pointer-events-none' : ''}`}>
+                  {videoProgress !== null ? <Loader2 size={14} className="animate-spin" /> : <UploadCloud size={14} />}
+                  {videoProgress !== null ? `Enviando… ${videoProgress}%` : 'Subir vídeo (MP4)'}
+                  <input type="file" accept="video/mp4,video/quicktime,video/webm,.m4v" className="hidden" onChange={e => { uploadThankYouVideo(e.target.files?.[0]); e.target.value = '' }} />
+                </label>
+                {quiz.thankYouPage?.videoUrl && (
+                  <>
+                    <a href={quiz.thankYouPage.videoUrl} target="_blank" rel="noreferrer" className="text-sm text-violet-600 hover:underline flex items-center gap-1"><ExternalLink size={13} /> ver arquivo</a>
+                    <button type="button" onClick={() => setPage('thankYouPage', 'videoUrl', '')} className="text-sm text-slate-400 hover:text-red-500 flex items-center gap-1"><Trash2 size={13} /> remover</button>
+                  </>
+                )}
+              </div>
+              <input value={quiz.thankYouPage?.videoEmbedUrl ?? ''} onChange={e => setPage('thankYouPage', 'videoEmbedUrl', e.target.value)} placeholder="https://www.youtube.com/watch?v=... ou link de embed do Panda" className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition" />
+              <label className="flex items-center gap-1.5 text-sm text-slate-500 select-none cursor-pointer">
+                <input type="checkbox" checked={!!quiz.thankYouPage?.autoRedirectOnEnd} onChange={e => setPage('thankYouPage', 'autoRedirectOnEnd', e.target.checked)} className="accent-violet-500 w-3.5 h-3.5" />
+                Ao terminar o vídeo, levar sozinho pro destino (só com vídeo enviado em arquivo)
+              </label>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><label className="text-sm text-slate-500">Destino do botão</label><input value={quiz.thankYouPage?.buttonUrl ?? ''} onChange={e => setPage('thankYouPage', 'buttonUrl', e.target.value)} placeholder="vazio = link de destino do quiz (Calendly)" className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition" /></div>
+              <div><label className="text-sm text-slate-500">Texto abaixo do botão</label><input value={quiz.thankYouPage?.footerText ?? ''} onChange={e => setPage('thankYouPage', 'footerText', e.target.value)} placeholder="opcional" className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition" /></div>
+            </div>
+            {quiz.slug && (
+              <a href={`${QUIZ_PUBLIC_BASE}/${quiz.slug}/obrigado`} target="_blank" rel="noreferrer" className="text-sm text-violet-600 hover:underline inline-flex items-center gap-1"><Eye size={13} /> Ver página (salve antes)</a>
+            )}
+          </div>
+
+          {/* Oferta low ticket (desvio) */}
+          <div className={`rounded-xl border p-3 space-y-3 ${quiz.lowTicketPage?.enabled ? 'border-rose-300 bg-rose-50/30' : 'border-slate-200'}`}>
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-base font-semibold text-slate-700">Oferta low ticket (desvio)</p>
+                <p className="text-sm text-slate-400">Quem escolher uma opção marcada com <b>↪ Oferta</b> nas perguntas sai do quiz e vem pra cá. Desligada: o quiz segue normal.</p>
+              </div>
+              <label className="flex items-center gap-2 shrink-0 cursor-pointer select-none">
+                <input type="checkbox" checked={!!quiz.lowTicketPage?.enabled} onChange={e => setPage('lowTicketPage', 'enabled', e.target.checked)} className="accent-rose-500 w-4 h-4" />
+                <span className="text-sm font-medium text-slate-600">{quiz.lowTicketPage?.enabled ? 'Ligada' : 'Desligada'}</span>
+              </label>
+            </div>
+            <div><label className="text-sm text-slate-500">Link de checkout (Greenn)</label><input value={quiz.lowTicketPage?.checkoutUrl ?? ''} onChange={e => setPage('lowTicketPage', 'checkoutUrl', e.target.value)} placeholder="https://payfast.greenn.com.br/..." className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition" /></div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><label className="text-sm text-slate-500">Título</label><input value={quiz.lowTicketPage?.title ?? ''} onChange={e => setPage('lowTicketPage', 'title', e.target.value)} placeholder="vazio = texto do rascunho" className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition" /></div>
+              <div><label className="text-sm text-slate-500">Trecho em dourado</label><input value={quiz.lowTicketPage?.titleHighlight ?? ''} onChange={e => setPage('lowTicketPage', 'titleHighlight', e.target.value)} className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition" /></div>
+              <div><label className="text-sm text-slate-500">Preço "de"</label><input value={quiz.lowTicketPage?.priceFrom ?? ''} onChange={e => setPage('lowTicketPage', 'priceFrom', e.target.value)} placeholder="R$ 97" className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition" /></div>
+              <div><label className="text-sm text-slate-500">Preço "por"</label><input value={quiz.lowTicketPage?.priceTo ?? ''} onChange={e => setPage('lowTicketPage', 'priceTo', e.target.value)} placeholder="R$ 27" className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition" /></div>
+              <div><label className="text-sm text-slate-500">Texto do botão</label><input value={quiz.lowTicketPage?.buttonLabel ?? ''} onChange={e => setPage('lowTicketPage', 'buttonLabel', e.target.value)} placeholder="Quero a aula por R$ 27" className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition" /></div>
+              <div><label className="text-sm text-slate-500">Garantia</label><input value={quiz.lowTicketPage?.guarantee ?? ''} onChange={e => setPage('lowTicketPage', 'guarantee', e.target.value)} placeholder="Garantia de 7 dias..." className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition" /></div>
+            </div>
+            <div><label className="text-sm text-slate-500">Subtítulo</label><textarea rows={2} value={quiz.lowTicketPage?.subtitle ?? ''} onChange={e => setPage('lowTicketPage', 'subtitle', e.target.value)} className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition resize-none" /></div>
+            <div>
+              <label className="text-sm text-slate-500">Benefícios (um por linha)</label>
+              <textarea rows={4} value={(quiz.lowTicketPage?.bullets || []).join('\n')} onChange={e => setPage('lowTicketPage', 'bullets', e.target.value.split('\n'))} placeholder="vazio = benefícios do rascunho" className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition resize-none" />
+            </div>
+            <p className="text-sm text-slate-400">Rascunho — o layout final vai seguir o desenho que você mandar.</p>
+            {quiz.slug && (
+              <a href={`${QUIZ_PUBLIC_BASE}/${quiz.slug}/oferta`} target="_blank" rel="noreferrer" className="text-sm text-violet-600 hover:underline inline-flex items-center gap-1"><Eye size={13} /> Ver página (salve antes)</a>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Etapa 4: Página de venda — só usada se checkoutUrl estiver preenchido */}
       <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">

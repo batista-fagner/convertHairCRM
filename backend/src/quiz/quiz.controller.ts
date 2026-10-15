@@ -17,6 +17,11 @@ export class QuizController {
     return this.quizService.uploadImage(file);
   }
 
+  @Post('video-upload-url')
+  videoUploadUrl(@Body() body: { filename: string; contentType?: string }) {
+    return this.quizService.createVideoUploadUrl(body?.filename, body?.contentType);
+  }
+
   @Get()
   findAll() {
     return this.quizService.findAll();
@@ -81,6 +86,14 @@ export class QuizController {
     const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || '';
     const userAgent = req.headers['user-agent'] as string | undefined;
     return this.quizService.submit(slug, { ...dto, clientIp, userAgent });
+  }
+
+  // Lead parcial — a página chama assim que a pessoa passa da etapa com
+  // telefone, mesmo sem terminar o quiz (ver QuizService.captureLead).
+  @Public()
+  @Post(':slug/lead')
+  captureLead(@Param('slug') slug: string, @Body() dto: any) {
+    return this.quizService.captureLead(slug, dto);
   }
 
   @Public()

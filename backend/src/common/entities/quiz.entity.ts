@@ -7,6 +7,10 @@ export interface QuizOption {
   // pergunta (isMqlQuestion + mqlEventName). Independente por opção — a mesma
   // pergunta pode ter respostas que qualificam e outras que não.
   isMqlAnswer?: boolean;
+  // Template Clean: quem escolhe esta opção sai do quiz e vai pra página de
+  // oferta low ticket (lowTicketPage), sem passar pelas etapas de contato.
+  // Só vale se lowTicketPage.enabled — senão o quiz segue normal.
+  goesToLowTicket?: boolean;
 }
 
 // Campo de uma etapa 'contact' (template Clean). `key` diz o que o campo
@@ -136,6 +140,43 @@ export interface SalesPage {
   faq?: SalesPageFaq[];
 }
 
+// Página pós-quiz com mini VSL (ConvertHairPage /q/:slug/obrigado). Desligada
+// = ao terminar o quiz vai direto pro whatsappUrl (comportamento padrão).
+export interface QuizThankYouPage {
+  enabled?: boolean;
+  badge?: string;
+  title?: string;
+  titleHighlight?: string;
+  subtitle?: string;
+  // MP4 enviado pelo builder (R2) — tem prioridade sobre o link.
+  videoUrl?: string;
+  // Link de YouTube/Vimeo/Panda (embed) — usado quando não há upload.
+  videoEmbedUrl?: string;
+  buttonLabel?: string;
+  // Destino do botão; vazio = whatsappUrl do quiz (hoje o Calendly).
+  buttonUrl?: string;
+  footerText?: string;
+  // Só funciona com vídeo enviado (MP4): ao terminar, redireciona sozinho.
+  autoRedirectOnEnd?: boolean;
+}
+
+// Página de oferta low ticket pra quem marca uma opção goesToLowTicket
+// (ConvertHairPage /q/:slug/oferta). Botão de compra → checkout da Greenn.
+export interface QuizLowTicketPage {
+  enabled?: boolean;
+  badge?: string;
+  title?: string;
+  titleHighlight?: string;
+  subtitle?: string;
+  bullets?: string[];
+  priceFrom?: string;
+  priceTo?: string;
+  priceNote?: string;
+  buttonLabel?: string;
+  checkoutUrl?: string;
+  guarantee?: string;
+}
+
 export interface QuizFinalStep {
   title?: string;
   titleHighlight?: string;
@@ -204,6 +245,12 @@ export class Quiz {
 
   @Column({ name: 'final_step', type: 'jsonb' })
   finalStep: QuizFinalStep;
+
+  @Column({ name: 'thank_you_page', type: 'jsonb', nullable: true })
+  thankYouPage?: QuizThankYouPage | null;
+
+  @Column({ name: 'low_ticket_page', type: 'jsonb', nullable: true })
+  lowTicketPage?: QuizLowTicketPage | null;
 
   @Column({ name: 'sales_page', type: 'jsonb', nullable: true })
   salesPage?: SalesPage | null;

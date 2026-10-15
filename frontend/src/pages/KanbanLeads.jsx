@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo, useSyncExternalStore
 import { DndContext, DragOverlay, useDraggable, useDroppable, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { io } from 'socket.io-client'
 import { socketOptions, getUser } from '../lib/auth'
-import { ClipboardList, Flame, Snowflake, UserPlus, XCircle, Phone, Mail, UserCheck, Loader2, X, MessageCircle, PauseCircle, Bot, MoreVertical, Pencil, Trash2, Play, Eye, EyeOff, Handshake, Trophy, HeadphonesIcon, Paperclip, Send, FileText, Video, StickyNote, ChevronDown, ChevronUp, Plus, CheckCircle2, Megaphone, Search, Layers, Mic, Square, Check, CalendarClock, Zap } from 'lucide-react'
+import { ClipboardList, ListChecks, Flame, Snowflake, UserPlus, XCircle, Phone, Mail, UserCheck, Loader2, X, MessageCircle, PauseCircle, Bot, MoreVertical, Pencil, Trash2, Play, Eye, EyeOff, Handshake, Trophy, HeadphonesIcon, Paperclip, Send, FileText, Video, StickyNote, ChevronDown, ChevronUp, Plus, CheckCircle2, Megaphone, Search, Layers, Mic, Square, Check, CalendarClock, Zap } from 'lucide-react'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3002/api'
 const SOCKET_URL = API.replace(/\/api\/?$/, '') || 'http://localhost:3002'
@@ -240,7 +240,7 @@ function CardContent({ lead, overlay = false }) {
   const demoMode = useDemoMode()
   return (
     <div
-      className={`bg-white rounded-xl ${lead.utmSource === 'formulario-instantaneo' ? 'border-2 border-blue-500' : 'border border-slate-200'} p-3 select-none ${
+      className={`bg-white rounded-xl ${lead.utmSource === 'formulario-instantaneo' ? 'border-2 border-blue-500' : lead.tags?.includes('quiz_contato') ? 'border-2 border-amber-500' : 'border border-slate-200'} p-3 select-none ${
         overlay ? 'shadow-xl rotate-2 cursor-grabbing' : 'shadow-sm hover:shadow-md'
       } ${lead._handoff ? 'ring-2 ring-rose-400' : ''}`}
     >
@@ -263,6 +263,14 @@ function CardContent({ lead, overlay = false }) {
       {msg && <p className="text-[11px] text-slate-500 mt-2 line-clamp-2 italic">"{msg}"</p>}
 
       <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+        {lead.tags?.includes('quiz_contato') && (
+          <span
+            className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-medium flex items-center gap-0.5"
+            title={`Deixou o contato no quiz${lead.quizSlug ? ` "${lead.quizSlug}"` : ''}`}
+          >
+            <ListChecks className="w-3 h-3 shrink-0" /> Quiz
+          </span>
+        )}
         {lead.utmSource === 'formulario-instantaneo' && (
           <span
             className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700 font-medium flex items-center gap-0.5"
@@ -324,7 +332,7 @@ function LeadCard({ lead, onOpen, onEdit, onDelete }) {
       {...listeners}
       {...attributes}
       onClick={onOpen}
-      className={`bg-white rounded-xl ${lead.utmSource === 'formulario-instantaneo' ? 'border-2 border-blue-500' : 'border border-slate-200'} p-3 shadow-sm hover:shadow-md cursor-pointer select-none transition ${isDragging ? 'opacity-30' : ''} ${lead._handoff ? 'ring-2 ring-rose-400' : ''}`}
+      className={`bg-white rounded-xl ${lead.utmSource === 'formulario-instantaneo' ? 'border-2 border-blue-500' : lead.tags?.includes('quiz_contato') ? 'border-2 border-amber-500' : 'border border-slate-200'} p-3 shadow-sm hover:shadow-md cursor-pointer select-none transition ${isDragging ? 'opacity-30' : ''} ${lead._handoff ? 'ring-2 ring-rose-400' : ''}`}
     >
       <div className="flex items-start gap-2.5">
         <Avatar lead={lead} size="w-8 h-8 text-xs" />
@@ -374,6 +382,14 @@ function LeadCard({ lead, onOpen, onEdit, onDelete }) {
       {msg && <p className="text-[11px] text-slate-500 mt-2 line-clamp-2 italic">"{msg}"</p>}
 
       <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+        {lead.tags?.includes('quiz_contato') && (
+          <span
+            className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-medium flex items-center gap-0.5"
+            title={`Deixou o contato no quiz${lead.quizSlug ? ` "${lead.quizSlug}"` : ''}`}
+          >
+            <ListChecks className="w-3 h-3 shrink-0" /> Quiz
+          </span>
+        )}
         {lead.utmSource === 'formulario-instantaneo' && (
           <span
             className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700 font-medium flex items-center gap-0.5"
@@ -835,6 +851,11 @@ function ConversationModal({ lead, onClose, onTogglePause, onAssign, onNoteReque
             )}
           </div>
           <div className="flex items-center gap-1.5">
+            {lead.tags?.includes('quiz_contato') && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-medium flex items-center gap-1">
+                <ListChecks className="w-3 h-3" /> Quiz{lead.quizSlug ? ` · ${lead.quizSlug}` : ''}
+              </span>
+            )}
             {lead.utmSource === 'formulario-instantaneo' && (
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 font-medium flex items-center gap-1">
                 <ClipboardList className="w-3 h-3" /> Formulário Instantâneo
