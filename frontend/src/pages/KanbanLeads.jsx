@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo, useSyncExternalStore
 import { DndContext, DragOverlay, useDraggable, useDroppable, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { io } from 'socket.io-client'
 import { socketOptions, getUser } from '../lib/auth'
-import { Flame, Snowflake, UserPlus, XCircle, Phone, Mail, UserCheck, Loader2, X, MessageCircle, PauseCircle, Bot, MoreVertical, Pencil, Trash2, Play, Eye, EyeOff, Handshake, Trophy, HeadphonesIcon, Paperclip, Send, FileText, Video, StickyNote, ChevronDown, ChevronUp, Plus, CheckCircle2, Megaphone, Search, Layers, Mic, Square, Check, CalendarClock, Zap } from 'lucide-react'
+import { ClipboardList, Flame, Snowflake, UserPlus, XCircle, Phone, Mail, UserCheck, Loader2, X, MessageCircle, PauseCircle, Bot, MoreVertical, Pencil, Trash2, Play, Eye, EyeOff, Handshake, Trophy, HeadphonesIcon, Paperclip, Send, FileText, Video, StickyNote, ChevronDown, ChevronUp, Plus, CheckCircle2, Megaphone, Search, Layers, Mic, Square, Check, CalendarClock, Zap } from 'lucide-react'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3002/api'
 const SOCKET_URL = API.replace(/\/api\/?$/, '') || 'http://localhost:3002'
@@ -263,6 +263,14 @@ function CardContent({ lead, overlay = false }) {
       {msg && <p className="text-[11px] text-slate-500 mt-2 line-clamp-2 italic">"{msg}"</p>}
 
       <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+        {lead.utmSource === 'formulario-instantaneo' && (
+          <span
+            className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700 font-medium flex items-center gap-0.5"
+            title="Veio do Formulário Instantâneo (Meta Lead Ads)"
+          >
+            <ClipboardList className="w-3 h-3 shrink-0" /> Form
+          </span>
+        )}
         {lead.isMql && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-medium">🎯 MQL</span>}
         {lead.tags?.includes('mql_premium') && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">⭐ Premium</span>}
         {lead.tags?.includes('entrou_no_grupo') && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700 font-medium">🎟️ No grupo</span>}
@@ -366,6 +374,14 @@ function LeadCard({ lead, onOpen, onEdit, onDelete }) {
       {msg && <p className="text-[11px] text-slate-500 mt-2 line-clamp-2 italic">"{msg}"</p>}
 
       <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+        {lead.utmSource === 'formulario-instantaneo' && (
+          <span
+            className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700 font-medium flex items-center gap-0.5"
+            title="Veio do Formulário Instantâneo (Meta Lead Ads)"
+          >
+            <ClipboardList className="w-3 h-3 shrink-0" /> Form
+          </span>
+        )}
         {lead.isMql && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-medium">🎯 MQL</span>}
         {lead.tags?.includes('mql_premium') && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">⭐ Premium</span>}
         {lead.tags?.includes('entrou_no_grupo') && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700 font-medium">🎟️ No grupo</span>}
@@ -819,6 +835,11 @@ function ConversationModal({ lead, onClose, onTogglePause, onAssign, onNoteReque
             )}
           </div>
           <div className="flex items-center gap-1.5">
+            {lead.utmSource === 'formulario-instantaneo' && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 font-medium flex items-center gap-1">
+                <ClipboardList className="w-3 h-3" /> Formulário Instantâneo
+              </span>
+            )}
             {lead.isMql && <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-medium">🎯 MQL</span>}
             {TEMP_BADGE[lead.temperature] && (
               <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${TEMP_BADGE[lead.temperature].className}`}>
