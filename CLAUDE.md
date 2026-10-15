@@ -247,7 +247,8 @@ Segundo funil, **separado** do WhatsApp/Sofia — usa Meta Lead Ads (formulário
 Anúncio (formulário instantâneo) → lead envia
   → Meta chama POST /api/webhooks/leadgen (Page webhook do app "ConvertHair Leads")
   → backend busca os dados completos (Graph API + FB_LEADS_TOKEN): respostas + campanha/conjunto/anúncio/plataforma
-  → salva no CRM (utm_source=formulario-instantaneo)
+  → salva no CRM (utm_source=formulario-instantaneo) e cria o card na raia "Novo" do Kanban
+     com a Sofia PAUSADA (agentMode='sdr', aiPaused=true) — abordagem pessoal (SDR/closer liga)
 ```
 
 **Rastreamento do anúncio:** campanha → `utm_campaign`, conjunto → `utm_term`, anúncio → `utm_content`, plataforma (instagram/facebook) → `utm_medium`; os IDs (`anuncio_id | conjunto_id | campanha_id`) ficam no início do `notes`. Se o lead já existia (mesmo telefone, outro canal), mantém a origem original e só preenche o que estava vazio. Se o Meta recusar os campos de anúncio, o backend repete só com os básicos (o lead não se perde). Leads de teste do Meta não trazem campanha/anúncio.
@@ -262,7 +263,7 @@ Anúncio (formulário instantâneo) → lead envia
 
 ### Tela no CRM
 
-`/instant-form-leads` (menu "Formulário Instantâneo") — total, tabela com nome/telefone/status/campanha›anúncio/data e modal "Ver respostas". **Não atualiza sozinha** (recarregar). Não é Kanban de propósito.
+O lead também aparece no **Kanban** (raia Novo, IA pausada; constante `KANBAN_ENTRY` em `instant-forms.service.ts` — pra ligar a Sofia nesse funil, tirar o `aiPaused`). A tela `/instant-form-leads` (menu "Formulário Instantâneo") continua como relatório com as respostas completas — total, tabela com nome/telefone/status/campanha›anúncio/data e modal "Ver respostas". **Não atualiza sozinha** (recarregar). Não é Kanban de propósito.
 
 ### Setup no Meta (refeito em 2026-10-14)
 

@@ -4,11 +4,17 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import axios from 'axios';
 import { Lead } from '../common/entities/lead.entity';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 
 interface LeadgenFieldData {
   name: string;
   values: string[];
 }
+
+// Lead do formulário aparece como card "Novo" no Kanban, com a Sofia pausada: o contato é pessoal
+// (SDR/closer liga), o lead nem iniciou conversa no WhatsApp e já respondeu as perguntas no
+// formulário. Quando a IA entrar nesse funil, basta tirar o aiPaused daqui.
+const KANBAN_ENTRY = { agentMode: 'sdr' as const, kanbanStage: 'novo' as const, aiPaused: true };
 
 // Origem do lead no Meta (campanha/conjunto/anúncio) — vem junto com as respostas.
 interface LeadgenAdInfo {
@@ -29,6 +35,7 @@ export class InstantFormsService {
   constructor(
     @InjectRepository(Lead) private readonly leadsRepo: Repository<Lead>,
     private readonly config: ConfigService,
+    private readonly realtime: RealtimeGateway,
   ) {}
 
   /** Processa 1 evento de leadgen recebido no webhook: busca os dados completos, salva o lead no CRM. */
@@ -97,7 +104,9 @@ export class InstantFormsService {
           name: fullName,
           email: email || existing.email,
           formAnswers: fieldData,
-          // lead que já veio por outro canal mantém a origem original; só preenche o que está vazio
+          // lead que já veio por outro canal mantém a origem original; só preenche o que está vazio.
+          // Se ainda não estava no Kanban (ex.: lead antigo só do formulário), entra na raia Novo.
+          ...(existing.agentMode === 'sdr' ? {} : KANBAN_ENTRY),
           utmMedium: existing.utmMedium || tracking.utmMedium,
           utmCampaign: existing.utmCampaign || tracking.utmCampaign,
           utmTerm: existing.utmTerm || tracking.utmTerm,
@@ -111,11 +120,15 @@ export class InstantFormsService {
             email: email || undefined,
             status: 'novo',
             utmSource: 'formulario-instantaneo',
+            ...KANBAN_ENTRY,
             ...tracking,
             formAnswers: fieldData,
             notes: `[Formulário Instantâneo — ${leadgenId}]${adIds}\n${answersSummary}`,
           }),
         );
+
+    if (existing) this.realtime.emitLeadUpdated(lead as Lead);
+    else this.realtime.emitLeadCreated(lead as Lead);
 
     this.logger.log(`[InstantForms] Lead ${lead.id} (${phone || 'sem telefone'}) capturado do formulário${tracking.utmContent ? ` — anúncio: ${tracking.utmContent}` : ''}`);
   }
