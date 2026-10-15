@@ -7,9 +7,12 @@ export interface QuizOption {
   // pergunta (isMqlQuestion + mqlEventName). Independente por opção — a mesma
   // pergunta pode ter respostas que qualificam e outras que não.
   isMqlAnswer?: boolean;
-  // Template Clean: quem escolhe esta opção sai do quiz e vai pra página de
-  // oferta low ticket (lowTicketPage), sem passar pelas etapas de contato.
-  // Só vale se lowTicketPage.enabled — senão o quiz segue normal.
+  // Template Clean — o que acontece ao escolher esta opção:
+  //  'continue' (padrão) segue o quiz; 'lowTicket' sai pra oferta low ticket
+  //  (precisa lowTicketPage.enabled); 'end' encerra com a página de agradecimento
+  //  (closePage). Em 'lowTicket' e 'end' a pessoa não deixa contato nem dispara evento.
+  action?: 'continue' | 'lowTicket' | 'end';
+  // Legado (antes do `action`): true = 'lowTicket'.
   goesToLowTicket?: boolean;
 }
 
@@ -177,6 +180,18 @@ export interface QuizLowTicketPage {
   guarantee?: string;
 }
 
+// Página de agradecimento de quem escolhe uma opção com action 'end'
+// (ConvertHairPage /q/:slug/agradecimento). Sempre disponível — só aparece pra
+// quem marcar uma opção que encerra.
+export interface QuizClosePage {
+  badge?: string;
+  title?: string;
+  titleHighlight?: string;
+  message?: string;
+  buttonLabel?: string;
+  buttonUrl?: string;
+}
+
 export interface QuizFinalStep {
   title?: string;
   titleHighlight?: string;
@@ -251,6 +266,9 @@ export class Quiz {
 
   @Column({ name: 'low_ticket_page', type: 'jsonb', nullable: true })
   lowTicketPage?: QuizLowTicketPage | null;
+
+  @Column({ name: 'close_page', type: 'jsonb', nullable: true })
+  closePage?: QuizClosePage | null;
 
   @Column({ name: 'sales_page', type: 'jsonb', nullable: true })
   salesPage?: SalesPage | null;

@@ -1683,20 +1683,31 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
                         <span className="text-sm text-amber-700 font-medium">MQL?</span>
                       </label>
                     )}
-                    {isClean && (
-                      <label
-                        className={`flex items-center gap-1 shrink-0 cursor-pointer select-none rounded-lg px-2 py-1 border ${opt.goesToLowTicket ? 'bg-rose-50 border-rose-200' : 'border-slate-200'}`}
-                        title="Quem escolher esta opção sai do quiz e vai pra página de oferta low ticket (precisa estar ligada lá embaixo)"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={!!opt.goesToLowTicket}
-                          onChange={e => updateOption(q.id, opt.id, 'goesToLowTicket', e.target.checked)}
-                          className="accent-rose-500 w-3.5 h-3.5"
-                        />
-                        <span className={`text-sm font-medium ${opt.goesToLowTicket ? 'text-rose-700' : 'text-slate-500'}`}>↪ Oferta</span>
-                      </label>
-                    )}
+                    {isClean && (() => {
+                      const action = opt.action || (opt.goesToLowTicket ? 'lowTicket' : 'continue')
+                      const tone = action === 'end' ? 'border-slate-400 bg-slate-100 text-slate-700' : action === 'lowTicket' ? 'border-rose-300 bg-rose-50 text-rose-700' : 'border-slate-200 text-slate-500'
+                      return (
+                        <select
+                          value={action}
+                          onChange={e => onChange(prev => ({
+                            ...prev,
+                            questions: prev.questions.map(qq => qq.id === q.id
+                              ? { ...qq, options: qq.options.map(o => {
+                                  if (o.id !== opt.id) return o
+                                  const { goesToLowTicket, ...rest } = o
+                                  return { ...rest, action: e.target.value }
+                                }) }
+                              : qq),
+                          }))}
+                          title="O que acontece quando a pessoa escolhe esta opção"
+                          className={`shrink-0 text-sm rounded-lg border px-2 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 ${tone}`}
+                        >
+                          <option value="continue">Seguir o quiz</option>
+                          <option value="lowTicket">↪ Desviar pra oferta</option>
+                          <option value="end">✕ Encerrar e agradecer</option>
+                        </select>
+                      )
+                    })()}
                     <button
                       onClick={() => removeOption(q.id, opt.id)}
                       disabled={q.options.length <= 2}
@@ -1837,7 +1848,7 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-base font-semibold text-slate-700">Oferta low ticket (desvio)</p>
-                <p className="text-sm text-slate-400">Quem escolher uma opção marcada com <b>↪ Oferta</b> nas perguntas sai do quiz e vem pra cá. Desligada: o quiz segue normal.</p>
+                <p className="text-sm text-slate-400">Quem escolher uma opção marcada com <b>↪ Desviar pra oferta</b> nas perguntas sai do quiz e vem pra cá. Desligada: o quiz segue normal.</p>
               </div>
               <label className="flex items-center gap-2 shrink-0 cursor-pointer select-none">
                 <input type="checkbox" checked={!!quiz.lowTicketPage?.enabled} onChange={e => setPage('lowTicketPage', 'enabled', e.target.checked)} className="accent-rose-500 w-4 h-4" />
@@ -1861,6 +1872,24 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
             <p className="text-sm text-slate-400">Rascunho — o layout final vai seguir o desenho que você mandar.</p>
             {quiz.slug && (
               <a href={`${QUIZ_PUBLIC_BASE}/${quiz.slug}/oferta`} target="_blank" rel="noreferrer" className="text-sm text-violet-600 hover:underline inline-flex items-center gap-1"><Eye size={13} /> Ver página (salve antes)</a>
+            )}
+          </div>
+
+          {/* Página de agradecimento (encerra o quiz) */}
+          <div className="rounded-xl border border-slate-300 bg-slate-50/50 p-3 space-y-3">
+            <div>
+              <p className="text-base font-semibold text-slate-700">Página de agradecimento (encerra o quiz)</p>
+              <p className="text-sm text-slate-400">Quem escolher uma opção marcada com <b>✕ Encerrar e agradecer</b> vê só esta página — não passa pelas outras perguntas nem deixa contato.</p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><label className="text-sm text-slate-500">Título</label><input value={quiz.closePage?.title ?? ''} onChange={e => setPage('closePage', 'title', e.target.value)} placeholder="Obrigado pelo seu interesse!" className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition" /></div>
+              <div><label className="text-sm text-slate-500">Trecho em dourado</label><input value={quiz.closePage?.titleHighlight ?? ''} onChange={e => setPage('closePage', 'titleHighlight', e.target.value)} placeholder="seu interesse" className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition" /></div>
+              <div><label className="text-sm text-slate-500">Texto do botão</label><input value={quiz.closePage?.buttonLabel ?? ''} onChange={e => setPage('closePage', 'buttonLabel', e.target.value)} placeholder="Seguir a ConvertHair no Instagram" className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition" /></div>
+              <div><label className="text-sm text-slate-500">Link do botão (Instagram)</label><input value={quiz.closePage?.buttonUrl ?? ''} onChange={e => setPage('closePage', 'buttonUrl', e.target.value)} placeholder="https://www.instagram.com/..." className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition" /></div>
+            </div>
+            <div><label className="text-sm text-slate-500">Mensagem</label><textarea rows={3} value={quiz.closePage?.message ?? ''} onChange={e => setPage('closePage', 'message', e.target.value)} className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition resize-none" /></div>
+            {quiz.slug && (
+              <a href={`${QUIZ_PUBLIC_BASE}/${quiz.slug}/agradecimento`} target="_blank" rel="noreferrer" className="text-sm text-violet-600 hover:underline inline-flex items-center gap-1"><Eye size={13} /> Ver página (salve antes)</a>
             )}
           </div>
         </div>

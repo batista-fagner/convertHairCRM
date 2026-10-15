@@ -437,6 +437,7 @@ export class QuizService {
       salesPage: dto.salesPage || null,
       thankYouPage: dto.thankYouPage || null,
       lowTicketPage: dto.lowTicketPage || null,
+      closePage: dto.closePage || null,
     });
     return this.repo.save(quiz);
   }
