@@ -240,7 +240,7 @@ function CardContent({ lead, overlay = false }) {
   const demoMode = useDemoMode()
   return (
     <div
-      className={`bg-white rounded-xl border border-slate-200 p-3 select-none ${
+      className={`bg-white rounded-xl ${lead.utmSource === 'formulario-instantaneo' ? 'border-2 border-fuchsia-400' : 'border border-slate-200'} p-3 select-none ${
         overlay ? 'shadow-xl rotate-2 cursor-grabbing' : 'shadow-sm hover:shadow-md'
       } ${lead._handoff ? 'ring-2 ring-rose-400' : ''}`}
     >
@@ -324,7 +324,7 @@ function LeadCard({ lead, onOpen, onEdit, onDelete }) {
       {...listeners}
       {...attributes}
       onClick={onOpen}
-      className={`bg-white rounded-xl border border-slate-200 p-3 shadow-sm hover:shadow-md cursor-pointer select-none transition ${isDragging ? 'opacity-30' : ''} ${lead._handoff ? 'ring-2 ring-rose-400' : ''}`}
+      className={`bg-white rounded-xl ${lead.utmSource === 'formulario-instantaneo' ? 'border-2 border-fuchsia-400' : 'border border-slate-200'} p-3 shadow-sm hover:shadow-md cursor-pointer select-none transition ${isDragging ? 'opacity-30' : ''} ${lead._handoff ? 'ring-2 ring-rose-400' : ''}`}
     >
       <div className="flex items-start gap-2.5">
         <Avatar lead={lead} size="w-8 h-8 text-xs" />
