@@ -275,6 +275,14 @@ O lead também aparece no **Kanban** (raia Novo, IA pausada, **tag "Form" + bord
 - Gotchas do setup: (1) o app antigo estava em portfólio diferente da Página — "Conectar um ID do app" no BM falhou com erro genérico, por isso o app novo; (2) sem a Página ligada ao app (`subscribed_apps`) e o app publicado, o webhook só funciona com payload de teste do App Dashboard; (3) depois de um deploy do front, a aba do CRM aberta continua com a versão antiga — Cmd+Shift+R.
 - `FB_LEADS_TOKEN`: token de usuário (~60 dias) com `leads_retrieval`, **expira 2026-12-13**. Renovar: Graph API Explorer → gerar token → depurador de token → "Estender token de acesso" (pede a senha do Facebook).
 
+## 🧩 Quiz — template Clean, páginas pós-quiz e lead parcial (2026-10-15)
+
+- Builder: Quizzes → editar → **Visual da página pública** (Clássico | Clean). Clean = fundo branco/dourado, passos numerados, etapas `type: 'contact'` com campos configuráveis (nome, telefone, e-mail, instagram, empresa, outro). Página: `ConvertHairPage/src/pages/CleanQuiz.tsx` (Clássico continua em `Quiz.tsx`).
+- **Lead parcial:** ao passar da etapa com telefone a página chama `POST /api/quiz/:slug/lead` (`@Public`, `QuizService.captureLead`) → cria/atualiza o lead (mesmo telefone) na raia Novo, IA pausada, `utm_source='quiz'`, tag `quiz_contato` (card com tag "Quiz" + borda dourada no Kanban). O submit final atualiza o mesmo lead. Não manda evento pro Meta (eventos só no submit).
+- **Página do vídeo (mini VSL)** `/q/:slug/obrigado` (`QuizThankYou.tsx`, visual escuro): `quiz.thankYouPage` — liga/desliga no builder; desligada = vai direto pro `whatsappUrl` (hoje Calendly). Vídeo por upload (URL assinada R2, `POST /quiz/video-upload-url`) ou link YouTube/Vimeo/Panda; "ao terminar o vídeo, redireciona" só com arquivo.
+- **Oferta low ticket** `/q/:slug/oferta` (`QuizLowTicket.tsx`, RASCUNHO até o desenho final): `quiz.lowTicketPage` + checkbox "↪ Oferta" por opção (`goesToLowTicket`). Desligada = o quiz segue normal. Botão → `checkoutUrl` (Greenn).
+- Quiz `trafego-pago`: pixel Convert hair, MQL `mql-form-trafego` (perguntas 2/3/4), as duas páginas **desligadas** com rascunho, opção "Infelizmente não é o meu momento" já marcada pra oferta.
+
 ## 📊 Tracking
 
 - UTMs capturados na `ConvertHairPage` (click no botão)
