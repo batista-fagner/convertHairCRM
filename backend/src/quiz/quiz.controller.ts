@@ -92,8 +92,10 @@ export class QuizController {
   // telefone, mesmo sem terminar o quiz (ver QuizService.captureLead).
   @Public()
   @Post(':slug/lead')
-  captureLead(@Param('slug') slug: string, @Body() dto: any) {
-    return this.quizService.captureLead(slug, dto);
+  captureLead(@Param('slug') slug: string, @Body() dto: any, @Req() req: Request) {
+    const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || '';
+    const userAgent = req.headers['user-agent'] as string | undefined;
+    return this.quizService.captureLead(slug, { ...dto, clientIp, userAgent });
   }
 
   @Public()

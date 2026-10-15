@@ -14,9 +14,38 @@ export class FacebookService {
     return createHash('sha256').update(value.trim().toLowerCase()).digest('hex');
   }
 
+  // Telefone no formato que o Meta espera antes do hash: só dígitos, com DDI.
+  // Os leads já são salvos com 55 na frente (CTWA/quiz) — antes o código somava
+  // outro 55 e mandava "5555…", e o Meta nunca casava o telefone.
+  private normalizePhone(phone: string): string | null {
+    const digits = (phone || '').replace(/\D/g, '');
+    if (digits.length < 10) return null;
+    if (digits.startsWith('55') && digits.length >= 12) return digits;
+    return digits.length <= 11 ? `55${digits}` : digits;
+  }
+
   private buildFbc(fbclid: string): string {
     const timestamp = Math.floor(Date.now() / 1000);
     return `fb.1.${timestamp}.${fbclid}`;
+  }
+
+  /** Dados pessoais hasheados (em, ph, fn, ln, country) — o que mais pesa na qualidade de correspondência do pixel. */
+  private buildContactMatch(contact: { email?: string; phone?: string; name?: string }): Record<string, string> {
+    const out: Record<string, string> = {};
+    if (contact.email?.includes('@')) out['em'] = this.sha256(contact.email);
+    const phone = this.normalizePhone(contact.phone || '');
+    if (phone) {
+      out['ph'] = this.sha256(phone);
+      if (phone.startsWith('55')) out['country'] = this.sha256('br');
+    }
+    // Nome genérico ("Lead 1234", placeholder) não é nome de verdade — não manda.
+    const name = (contact.name || '').trim();
+    if (name && !/^lead( \d+)?$/i.test(name) && !/^<test lead/i.test(name)) {
+      const parts = name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').split(/\s+/);
+      out['fn'] = this.sha256(parts[0]);
+      if (parts.length > 1) out['ln'] = this.sha256(parts[parts.length - 1]);
+    }
+    return out;
   }
 
   private buildUserData(lead: Lead): Record<string, string> {
@@ -25,6 +54,8 @@ export class FacebookService {
       phone: lead.phone,
       name: lead.name,
       fbclid: lead.fbclid,
+      fbc: lead.fbc,
+      fbp: lead.fbp,
       ctwaClid: lead.ctwaClid,
       externalId: lead.id,
     });
@@ -39,14 +70,15 @@ export class FacebookService {
     phone?: string;
     name?: string;
     fbclid?: string;
+    fbc?: string;
+    fbp?: string;
     ctwaClid?: string;
     externalId?: string;
   }): Record<string, string> {
-    const userData: Record<string, string> = {};
-    if (contact.email) userData['em'] = this.sha256(contact.email);
-    if (contact.phone) userData['ph'] = this.sha256(`55${contact.phone.replace(/\D/g, '')}`);
-    if (contact.name) userData['fn'] = this.sha256(contact.name.split(' ')[0]);
-    if (contact.fbclid) userData['fbc'] = this.buildFbc(contact.fbclid);
+    const userData: Record<string, string> = { ...this.buildContactMatch(contact) };
+    if (contact.fbc) userData['fbc'] = contact.fbc;
+    else if (contact.fbclid) userData['fbc'] = this.buildFbc(contact.fbclid);
+    if (contact.fbp) userData['fbp'] = contact.fbp;
     // ctwa_clid: atribuição de lead vindo de anúncio Click-to-WhatsApp. Vai em
     // texto puro (NÃO hasheado) no user_data, conforme o CAPI espera pra CTWA.
     // O Meta também exige page_id nesse caso (validado via teste direto na API
@@ -378,26 +410,32 @@ export class FacebookService {
    * Evento genérico de site (action_source: website), sem depender de um Lead
    * já existente no banco — usado pelo QuizService pra disparar o evento MQL
    * (ou o de conclusão) no exato momento da resposta, antes da pessoa entrar
-   * no grupo (e possivelmente antes dela existir como Lead). Match fica por
-   * conta de fbc/fbp/IP/user-agent (sem PII de nome/telefone/email).
+   * no grupo (e possivelmente antes dela existir como Lead). Match por
+   * fbc/fbp/IP/user-agent e, quando a pessoa já deixou contato no quiz,
+   * telefone/nome/e-mail hasheados.
    */
   async sendCustomEvent(
     eventName: string,
-    data: { fbclid?: string; fbc?: string; fbp?: string; clientIp?: string; userAgent?: string; externalId?: string },
+    data: {
+      fbclid?: string; fbc?: string; fbp?: string; clientIp?: string; userAgent?: string; externalId?: string;
+      // Contato deixado no quiz (etapa de dados) — hasheado antes de sair.
+      phone?: string; email?: string; name?: string;
+    },
     eventSourceUrl?: string,
     eventId?: string,
     // pixel/token próprios de campanha (ex: quiz com pixel dedicado) — cai pro
     // par global se não passado (ver sendEvent).
     pixelOverride?: { pixelId?: string; accessToken?: string },
+    customData?: Record<string, any>,
   ): Promise<void> {
-    const userData: Record<string, string> = {};
+    const userData: Record<string, string> = this.buildContactMatch(data);
     if (data.fbc) userData['fbc'] = data.fbc;
     else if (data.fbclid) userData['fbc'] = this.buildFbc(data.fbclid);
     if (data.fbp) userData['fbp'] = data.fbp;
     if (data.clientIp) userData['client_ip_address'] = data.clientIp;
     if (data.userAgent) userData['client_user_agent'] = data.userAgent;
     if (data.externalId) userData['external_id'] = data.externalId;
-    await this.sendEvent(eventName, userData, undefined, eventSourceUrl, { eventId, ...pixelOverride });
+    await this.sendEvent(eventName, userData, customData, eventSourceUrl, { eventId, ...pixelOverride });
   }
 
   /**
@@ -426,7 +464,7 @@ export class FacebookService {
           event_id: `crm-${eventName}-${leadgenId}`,
           user_data: {
             lead_id: leadgenId,
-            ph: phone ? [this.sha256(`55${phone.replace(/\D/g, '')}`)] : undefined,
+            ph: this.normalizePhone(phone) ? [this.sha256(this.normalizePhone(phone)!)] : undefined,
           },
         },
       ],

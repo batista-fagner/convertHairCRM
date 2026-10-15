@@ -550,6 +550,30 @@ export class QuizService {
     const parsed = this.parseAnswers(quiz, dto.answers);
     if (!parsed.capturedPhone) return { ok: true };
     const lead = await this.upsertQuizLead(quiz, parsed, dto);
+
+    // Evento padrão "Lead" no momento em que a pessoa deixa o contato (mesmo que
+    // não termine o quiz), já com telefone/nome hasheados + fbc/fbp/IP/UA. event_id
+    // por clickId: se a pessoa voltar e reenviar, o Meta deduplica.
+    if (quiz.questions.length > 0) {
+      const quizPublicBase = (this.config.get<string>('QUIZ_PUBLIC_BASE_URL') || 'https://convert-hair-page.vercel.app/q').replace(/\/$/, '');
+      const pixelOverride = quiz.fbPixelId || quiz.fbAccessToken
+        ? { pixelId: quiz.fbPixelId ?? undefined, accessToken: quiz.fbAccessToken ?? undefined }
+        : undefined;
+      this.facebookService
+        .sendCustomEvent(
+          'Lead',
+          {
+            fbclid: dto.fbclid, fbc: dto.fbc, fbp: dto.fbp, externalId: dto.clickId,
+            clientIp: dto.clientIp, userAgent: dto.userAgent,
+            phone: parsed.capturedPhone, name: parsed.captured.name, email: parsed.captured.email,
+          },
+          `${quizPublicBase}/${slug}`,
+          `quiz-lead-${dto.clickId || lead?.id || randomUUID()}`,
+          pixelOverride,
+        )
+        .catch((err) => this.logger.error(`Erro ao enviar Lead do quiz: ${err.message}`));
+    }
+
     return { ok: true, leadId: lead?.id };
   }
 
@@ -574,6 +598,9 @@ export class QuizService {
           name: existing.name && !/^Lead \d{4}$/.test(existing.name) ? existing.name : parsed.captured.name || existing.name,
           email: existing.email || parsed.captured.email,
           instagram: existing.instagram || parsed.captured.instagram,
+          fbclid: existing.fbclid || dto.fbclid,
+          fbc: existing.fbc || dto.fbc,
+          fbp: existing.fbp || dto.fbp,
           tags,
           quizSlug: quiz.slug,
           quizResponses: parsed.answeredResponses,
@@ -600,6 +627,8 @@ export class QuizService {
             utmContent: dto.utmContent,
             utmTerm: dto.utmTerm,
             fbclid: dto.fbclid,
+            fbc: dto.fbc,
+            fbp: dto.fbp,
             quizSlug: quiz.slug,
             quizResponses: parsed.answeredResponses,
             quizMqlEvents: mqlEvents,
@@ -637,6 +666,11 @@ export class QuizService {
       externalId: dto.clickId,
       clientIp: dto.clientIp,
       userAgent: dto.userAgent,
+      // Contato deixado no quiz — vai hasheado (ph/fn/ln/em) e é o que mais
+      // aumenta a qualidade de correspondência do pixel.
+      phone: capturedPhone,
+      name: captured.name,
+      email: captured.email,
     };
 
     // Pixel/token próprios da campanha, se configurados — cai pro par global
