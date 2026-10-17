@@ -18,6 +18,7 @@ const KANBAN_ENTRY = { agentMode: 'sdr' as const, kanbanStage: 'novo' as const, 
 
 // Origem do lead no Meta (campanha/conjunto/anúncio) — vem junto com as respostas.
 interface LeadgenAdInfo {
+  form_id?: string;
   ad_id?: string;
   ad_name?: string;
   adset_id?: string;
@@ -37,6 +38,30 @@ export class InstantFormsService {
     private readonly config: ConfigService,
     private readonly realtime: RealtimeGateway,
   ) {}
+
+  /**
+   * O Meta devolve a CHAVE interna da opção (ex.: "perco_a_maioria_"), que pode estar diferente do
+   * rótulo que a pessoa viu ("Entre 20k e 30k mês"). Busca as perguntas do formulário e troca
+   * pergunta/resposta pelo texto exibido. Se der erro, mantém os dados crus (o lead não se perde).
+   */
+  private async humanizeAnswers(formId: string | undefined, fieldData: LeadgenFieldData[], token: string): Promise<LeadgenFieldData[]> {
+    if (!formId) return fieldData;
+    try {
+      const res = await axios.get(`https://graph.facebook.com/v21.0/${formId}`, {
+        params: { access_token: token, fields: 'questions' },
+      });
+      const questions: { key: string; label?: string; options?: { key: string; value: string }[] }[] = res.data.questions || [];
+      return fieldData.map((f) => {
+        const q = questions.find((x) => x.key === f.name);
+        if (!q) return f;
+        const options = new Map((q.options || []).map((o) => [o.key, o.value]));
+        return { name: q.label || f.name, values: (f.values || []).map((v) => options.get(v) ?? v) };
+      });
+    } catch (err: any) {
+      this.logger.warn(`[InstantForms] Não consegui buscar as perguntas do formulário ${formId}: ${err.response?.data?.error?.message || err.message}`);
+      return fieldData;
+    }
+  }
 
   /** Processa 1 evento de leadgen recebido no webhook: busca os dados completos, salva o lead no CRM. */
   async processLeadgenEvent(leadgenId: string): Promise<void> {
@@ -83,6 +108,9 @@ export class InstantFormsService {
     if (!phone) {
       this.logger.warn(`Lead ${leadgenId} sem telefone reconhecível nos campos: ${JSON.stringify(fieldData.map((f) => f.name))}`);
     }
+
+    // Só depois de extrair nome/telefone/e-mail (o match acima usa as chaves cruas do Meta).
+    fieldData = await this.humanizeAnswers(ad.form_id, fieldData, token);
 
     const answersSummary = fieldData.map((f) => `${f.name}: ${f.values?.[0] ?? ''}`).join('\n');
 
