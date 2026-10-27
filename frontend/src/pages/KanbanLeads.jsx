@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo, useSyncExternalStore
 import { DndContext, DragOverlay, useDraggable, useDroppable, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { io } from 'socket.io-client'
 import { socketOptions, getUser } from '../lib/auth'
-import { ClipboardList, ListChecks, Flame, Snowflake, UserPlus, XCircle, Phone, Mail, UserCheck, Loader2, X, MessageCircle, PauseCircle, Bot, MoreVertical, Pencil, Trash2, Play, Eye, EyeOff, Handshake, Trophy, HeadphonesIcon, Paperclip, Send, FileText, Video, StickyNote, ChevronDown, ChevronUp, Plus, CheckCircle2, Megaphone, Search, Layers, Mic, Square, Check, CalendarClock, Zap } from 'lucide-react'
+import { ClipboardList, ListChecks, Flame, Snowflake, UserPlus, XCircle, Phone, Mail, UserCheck, Loader2, X, MessageCircle, PauseCircle, Bot, MoreVertical, Pencil, Trash2, Play, Eye, EyeOff, Handshake, Trophy, HeadphonesIcon, Paperclip, Send, FileText, Video, StickyNote, ChevronDown, ChevronUp, Plus, CheckCircle2, Megaphone, Search, Layers, Mic, Square, Check, CalendarClock, Zap, RefreshCw } from 'lucide-react'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3002/api'
 const SOCKET_URL = API.replace(/\/api\/?$/, '') || 'http://localhost:3002'
@@ -1574,6 +1574,8 @@ export default function KanbanLeads() {
   columnsRef.current = columns
   const [loading, setLoading] = useState(true)
   const [connected, setConnected] = useState(false)
+  const [reloadTick, setReloadTick] = useState(0) // botão Atualizar: refaz o fetch do board sem trocar o board por spinner
+  const [refreshing, setRefreshing] = useState(false)
   const [activeId, setActiveId] = useState(null)
   const [selected, setSelected] = useState(null)
   const [editing, setEditing] = useState(null)
@@ -1590,6 +1592,7 @@ export default function KanbanLeads() {
   const campaignFilterRef = useRef(campaignFilter)
   campaignFilterRef.current = campaignFilter
   const lastDragEnd = useRef(0)
+  const lastFetchedFilter = useRef(null)
 
   // Um lead "pertence" ao filtro atual de campanha? Usado tanto no fetch inicial
   // (via query param) quanto pra decidir se um evento realtime deve entrar no
@@ -1817,7 +1820,8 @@ export default function KanbanLeads() {
 
   useEffect(() => {
     let active = true
-    setLoading(true)
+    if (reloadTick === 0 || campaignFilterRef.current !== lastFetchedFilter.current) setLoading(true)
+    lastFetchedFilter.current = campaignFilter
     const qs = campaignFilter === ALL_CAMPAIGNS ? '' : `?campaign=${encodeURIComponent(campaignFilter)}`
     fetch(`${API}/leads/kanban${qs}`)
       .then((r) => r.json())
@@ -1829,9 +1833,9 @@ export default function KanbanLeads() {
         setBoard(data || {})
       })
       .catch((e) => console.error('Erro ao carregar Kanban', e))
-      .finally(() => active && setLoading(false))
+      .finally(() => { if (active) { setLoading(false); setRefreshing(false) } })
     return () => { active = false }
-  }, [campaignFilter])
+  }, [campaignFilter, reloadTick])
 
   // /kanban?lead=<id> (vindo da Agenda) abre direto o modal desse lead.
   useEffect(() => {
@@ -1953,6 +1957,15 @@ export default function KanbanLeads() {
               </button>
             )}
           </div>
+          <button
+            onClick={() => { setRefreshing(true); setReloadTick((t) => t + 1); reloadCustomStages() }}
+            disabled={refreshing}
+            title="Recarregar o Kanban"
+            className="flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-100 transition disabled:opacity-60"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+            Atualizar
+          </button>
           <div className="flex items-center gap-1.5 text-xs">
             <span className={`w-2 h-2 rounded-full ${connected ? 'bg-emerald-500' : 'bg-slate-300'}`} />
             <span className="text-slate-500">{connected ? 'Tempo real' : 'Offline'}</span>
