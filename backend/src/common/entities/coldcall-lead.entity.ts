@@ -87,6 +87,10 @@ export class ColdCallLead {
   @Column({ name: 'priority', type: 'varchar', nullable: true })
   priority?: string | null;
 
+  // Tags livres digitadas no card/modal (ex.: "dono atende", "ligar de manhã").
+  @Column({ name: 'tags', type: 'jsonb', nullable: true })
+  tags?: string[] | null;
+
   // Reunião agendada pelo card — espelhada num evento do Google Agenda.
   @Column({ name: 'meeting_at', type: 'timestamptz', nullable: true })
   meetingAt?: Date | null;

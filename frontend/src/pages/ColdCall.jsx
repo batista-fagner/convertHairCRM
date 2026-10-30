@@ -20,6 +20,23 @@ const PRIORITY_STYLES = {
   C: 'bg-slate-100 text-slate-600',
 }
 
+// Tags livres — cor fixa por texto (a mesma tag sempre na mesma cor).
+const TAG_COLORS = [
+  'bg-indigo-100 text-indigo-700', 'bg-pink-100 text-pink-700', 'bg-teal-100 text-teal-700',
+  'bg-orange-100 text-orange-700', 'bg-lime-100 text-lime-800', 'bg-fuchsia-100 text-fuchsia-700',
+  'bg-cyan-100 text-cyan-700', 'bg-rose-100 text-rose-700',
+]
+const tagColor = (tag) => {
+  let h = 0
+  for (const c of tag.toLowerCase()) h = (h * 31 + c.charCodeAt(0)) >>> 0
+  return TAG_COLORS[h % TAG_COLORS.length]
+}
+const addTag = (tags, value) => {
+  const tag = value.trim().slice(0, 40)
+  if (!tag || (tags || []).some((t) => t.toLowerCase() === tag.toLowerCase())) return null
+  return [...(tags || []), tag]
+}
+
 const igHandle = (ig) => String(ig).replace(/^@/, '').replace(/^https?:\/\/(www\.)?instagram\.com\//, '').replace(/\/$/, '')
 const igLink = (ig) => `https://instagram.com/${igHandle(ig)}`
 const formatCount = (n) => Number(n).toLocaleString('pt-BR')
@@ -98,9 +115,60 @@ function toDatetimeLocalValue(value) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
-function ProspectCard({ prospect, onOpen, showList }) {
+// Campo de digitar tag (Enter adiciona, Esc cancela) — usado no card e no modal.
+function TagInput({ id, onAdd, onDone, className }) {
+  const [value, setValue] = useState('')
+  const submit = () => {
+    if (value.trim()) onAdd(value)
+    setValue('')
+  }
+  return (
+    <input
+      id={id}
+      autoFocus={!!onDone}
+      value={value}
+      list="coldcall-tag-suggestions"
+      onChange={(e) => setValue(e.target.value)}
+      onKeyDown={(e) => {
+        e.stopPropagation()
+        if (e.key === 'Enter') { e.preventDefault(); submit(); onDone?.() }
+        if (e.key === 'Escape') { setValue(''); onDone?.() }
+      }}
+      onBlur={() => { submit(); onDone?.() }}
+      onClick={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
+      maxLength={40}
+      placeholder="Digite a tag e Enter"
+      className={className}
+    />
+  )
+}
+
+function TagChip({ tag, onRemove, size = 'sm' }) {
+  return (
+    <span className={`group inline-flex items-center gap-0.5 rounded-full font-medium ${tagColor(tag)} ${size === 'sm' ? 'text-[10px] px-1.5 py-0.5' : 'text-xs px-2 py-1'}`}>
+      {tag}
+      {onRemove && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onRemove() }}
+          onPointerDown={(e) => e.stopPropagation()}
+          title="Remover tag"
+          aria-label={`Remover tag ${tag}`}
+          className={`opacity-50 hover:opacity-100 ${size === 'sm' ? 'hidden group-hover:inline' : ''}`}
+        >
+          <X className={size === 'sm' ? 'w-2.5 h-2.5' : 'w-3 h-3'} />
+        </button>
+      )}
+    </span>
+  )
+}
+
+function ProspectCard({ prospect, onOpen, showList, onTagsChange }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: prospect.id })
   const stop = (e) => e.stopPropagation()
+  const [addingTag, setAddingTag] = useState(false)
+  const tags = prospect.tags || []
 
   return (
     <div
@@ -218,12 +286,37 @@ function ProspectCard({ prospect, onOpen, showList }) {
             <StickyNote className="w-3 h-3" /> Nota
           </span>
         )}
+        {tags.map((tag) => (
+          <TagChip
+            key={tag}
+            tag={tag}
+            onRemove={onTagsChange ? () => onTagsChange(prospect, tags.filter((t) => t !== tag)) : undefined}
+          />
+        ))}
+        {onTagsChange && (addingTag ? (
+          <TagInput
+            id={`coldcall-card-tag-${prospect.id}`}
+            onAdd={(v) => { const next = addTag(tags, v); if (next) onTagsChange(prospect, next) }}
+            onDone={() => setAddingTag(false)}
+            className="text-[10px] w-28 border border-violet-300 rounded-full px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-violet-300"
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setAddingTag(true) }}
+            onPointerDown={stop}
+            title="Adicionar tag"
+            className="text-[10px] px-1.5 py-0.5 rounded-full border border-dashed border-slate-300 text-slate-400 hover:border-violet-300 hover:text-violet-500 flex items-center gap-0.5 transition"
+          >
+            <Plus className="w-2.5 h-2.5" /> tag
+          </button>
+        ))}
       </div>
     </div>
   )
 }
 
-function Column({ column, prospects, onOpen, showList, isFirst, isLast, onRenameStage, onDeleteStage, onMoveStage }) {
+function Column({ column, prospects, onOpen, showList, isFirst, isLast, onRenameStage, onDeleteStage, onMoveStage, onTagsChange }) {
   const { setNodeRef, isOver } = useDroppable({ id: column.id })
   const Icon = column.icon
   const [renaming, setRenaming] = useState(false)
@@ -293,7 +386,7 @@ function Column({ column, prospects, onOpen, showList, isFirst, isLast, onRename
           isOver ? 'ring-2 ring-violet-300' : ''
         }`}
       >
-        {prospects.map((p) => <ProspectCard key={p.id} prospect={p} showList={showList} onOpen={() => onOpen(p)} />)}
+        {prospects.map((p) => <ProspectCard key={p.id} prospect={p} showList={showList} onOpen={() => onOpen(p)} onTagsChange={onTagsChange} />)}
         {prospects.length === 0 && <p className="text-[11px] text-slate-400 text-center py-6">Vazio</p>}
       </div>
     </div>
@@ -543,7 +636,7 @@ function ProfileSection({ prospect }) {
   )
 }
 
-function ProspectModal({ prospect, onClose, onSave, onDelete, onMeetingSaved }) {
+function ProspectModal({ prospect, onClose, onSave, onDelete, onMeetingSaved, onTagsChange }) {
   if (!prospect) return null
   const [assignedTo, setAssignedTo] = useState(prospect.assignedTo || '')
   const [nextContactAt, setNextContactAt] = useState(toDatetimeLocalValue(prospect.nextContactAt))
@@ -657,6 +750,20 @@ function ProspectModal({ prospect, onClose, onSave, onDelete, onMeetingSaved }) 
           </div>
 
           <ProfileSection prospect={prospect} />
+
+          <div>
+            <label htmlFor="coldcall-modal-tag" className="block text-xs font-medium text-slate-500 mb-1">Tags <span className="text-slate-400 font-normal">(salvam na hora)</span></label>
+            <div className="flex flex-wrap items-center gap-1.5 border border-slate-200 rounded-lg px-2 py-1.5 focus-within:ring-2 focus-within:ring-violet-300">
+              {(prospect.tags || []).map((tag) => (
+                <TagChip key={tag} tag={tag} size="md" onRemove={() => onTagsChange(prospect, prospect.tags.filter((t) => t !== tag))} />
+              ))}
+              <TagInput
+                id="coldcall-modal-tag"
+                onAdd={(v) => { const next = addTag(prospect.tags, v); if (next) onTagsChange(prospect, next) }}
+                className="flex-1 min-w-[140px] text-sm py-0.5 focus:outline-none"
+              />
+            </div>
+          </div>
 
           <div>
             <label className="block text-xs font-medium text-slate-500 mb-1">Responsável</label>
@@ -832,6 +939,23 @@ export default function ColdCall() {
     })
   }
 
+  // Tags salvam na hora (card ou modal) — atualiza a tela antes da resposta.
+  const updateTags = (prospect, tags) => {
+    applyProspect({ ...prospect, tags: tags.length ? tags : null })
+    fetch(`${API}/coldcall/${prospect.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tags }),
+    }).catch((e) => console.error('Erro ao salvar tags', e))
+  }
+
+  // Sugestões no campo de tag: todas as tags já usadas no board.
+  const allTags = useMemo(() => {
+    const set = new Map()
+    for (const list of Object.values(board)) for (const p of list || []) for (const t of p.tags || []) set.set(t.toLowerCase(), t)
+    return [...set.values()].sort((a, b) => a.localeCompare(b, 'pt-BR'))
+  }, [board])
+
   const deleteProspect = async (id) => {
     setBoard((prev) => {
       const next = {}
@@ -989,6 +1113,7 @@ export default function ColdCall() {
                 onRenameStage={renameStage}
                 onDeleteStage={deleteStage}
                 onMoveStage={moveStage}
+                onTagsChange={updateTags}
               />
             ))}
             <NewStageColumn onCreate={createStage} />
@@ -1043,7 +1168,11 @@ export default function ColdCall() {
         onSave={saveProspect}
         onDelete={deleteProspect}
         onMeetingSaved={applyProspect}
+        onTagsChange={updateTags}
       />
+      <datalist id="coldcall-tag-suggestions">
+        {allTags.map((t) => <option key={t} value={t} />)}
+      </datalist>
     </div>
   )
 }

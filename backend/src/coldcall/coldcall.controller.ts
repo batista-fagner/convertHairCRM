@@ -34,13 +34,21 @@ export class ColdCallController {
   @Patch(':id')
   async update(
     @Param('id') id: string,
-    @Body() body: { kanbanStage?: string; assignedTo?: string | null; nextContactAt?: string | null; notes?: string | null },
+    @Body() body: { kanbanStage?: string; assignedTo?: string | null; nextContactAt?: string | null; notes?: string | null; tags?: string[] | null },
   ) {
-    const data: { kanbanStage?: string; assignedTo?: string | null; nextContactAt?: Date | null; notes?: string | null } = {};
+    const data: { kanbanStage?: string; assignedTo?: string | null; nextContactAt?: Date | null; notes?: string | null; tags?: string[] | null } = {};
     if ('kanbanStage' in body && body.kanbanStage) data.kanbanStage = body.kanbanStage;
     if ('assignedTo' in body) data.assignedTo = body.assignedTo?.trim() || null;
     if ('nextContactAt' in body) data.nextContactAt = body.nextContactAt ? new Date(body.nextContactAt) : null;
     if ('notes' in body) data.notes = body.notes ?? null;
+    if ('tags' in body) {
+      // Texto livre: corta espaços, limita tamanho e tira repetidas (sem diferenciar maiúscula).
+      const seen = new Set<string>();
+      const tags = (Array.isArray(body.tags) ? body.tags : [])
+        .map((t) => String(t ?? '').trim().slice(0, 40))
+        .filter((t) => t && !seen.has(t.toLowerCase()) && seen.add(t.toLowerCase()));
+      data.tags = tags.length ? tags : null;
+    }
     return this.coldCallService.update(id, data);
   }
 
