@@ -55,6 +55,38 @@ export class ColdCallLead {
   @Column({ name: 'neighborhood', type: 'varchar', nullable: true })
   neighborhood?: string | null;
 
+  // Levantamento de porte (lista de integradoras solares, 2026-10-28) — base
+  // pra mensagem personalizada. Tudo opcional; listas antigas não têm.
+  @Column({ name: 'instagram', type: 'varchar', nullable: true })
+  instagram?: string | null;
+
+  @Column({ name: 'instagram_followers', type: 'int', nullable: true })
+  instagramFollowers?: number | null;
+
+  @Column({ name: 'meta_active_ads', type: 'int', nullable: true })
+  metaActiveAds?: number | null;
+
+  // "Forte" | "Indício" — força do sinal de que existe equipe comercial.
+  @Column({ name: 'sales_team', type: 'varchar', nullable: true })
+  salesTeam?: string | null;
+
+  @Column({ name: 'sales_team_signal', type: 'text', nullable: true })
+  salesTeamSignal?: string | null;
+
+  @Column({ name: 'size_signals', type: 'text', nullable: true })
+  sizeSignals?: string | null;
+
+  // Frase de abertura sugerida pra ligação/mensagem.
+  @Column({ name: 'call_hook', type: 'text', nullable: true })
+  callHook?: string | null;
+
+  @Column({ name: 'score', type: 'real', nullable: true })
+  score?: number | null;
+
+  // "A" | "B" | "C", derivada do score no levantamento.
+  @Column({ name: 'priority', type: 'varchar', nullable: true })
+  priority?: string | null;
+
   // Reunião agendada pelo card — espelhada num evento do Google Agenda.
   @Column({ name: 'meeting_at', type: 'timestamptz', nullable: true })
   meetingAt?: Date | null;

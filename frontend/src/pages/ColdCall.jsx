@@ -5,13 +5,24 @@ import {
   UserPlus, PhoneCall, Snowflake, CalendarClock, XCircle, Trophy,
   Phone, Mail, Globe, Loader2, X, Plus, Check, Pencil, Trash2, Upload,
   StickyNote, Building2, MapPin, Layers, Link2, FileText, Sparkles,
-  ChevronLeft, ChevronRight, MessageCircle, Star,
+  ChevronLeft, ChevronRight, MessageCircle, Star, AtSign, Megaphone, Users, Quote,
 } from 'lucide-react'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3002/api'
 
 // Link wa.me — só dígitos (o CSV traz phone_e164 com "+55...").
 const formatRating = (n) => Number(n).toFixed(1).replace('.', ',')
+
+// Prioridade do levantamento de porte (A = maior porte) — selo no card e no modal.
+const PRIORITY_STYLES = {
+  A: 'bg-emerald-100 text-emerald-800',
+  B: 'bg-amber-100 text-amber-800',
+  C: 'bg-slate-100 text-slate-600',
+}
+
+const igHandle = (ig) => String(ig).replace(/^@/, '').replace(/^https?:\/\/(www\.)?instagram\.com\//, '').replace(/\/$/, '')
+const igLink = (ig) => `https://instagram.com/${igHandle(ig)}`
+const formatCount = (n) => Number(n).toLocaleString('pt-BR')
 
 const waLink = (phone) => `https://wa.me/${String(phone).replace(/\D/g, '')}`
 
@@ -104,7 +115,14 @@ function ProspectCard({ prospect, onOpen, showList }) {
           <Building2 className="w-4 h-4 text-slate-400" />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="font-semibold text-slate-800 text-sm truncate">{prospect.companyName}</p>
+          <div className="flex items-center gap-1.5 min-w-0">
+            <p className="font-semibold text-slate-800 text-sm truncate">{prospect.companyName}</p>
+            {prospect.priority && (
+              <span title={prospect.score != null ? `Score ${formatRating(prospect.score)}` : undefined} className={`text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 ${PRIORITY_STYLES[prospect.priority] || PRIORITY_STYLES.C}`}>
+                {prospect.priority}
+              </span>
+            )}
+          </div>
           {(prospect.neighborhood || prospect.city || prospect.state) && (
             <p className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5 truncate">
               <MapPin className="w-3 h-3 shrink-0" /> {[prospect.neighborhood, prospect.city, prospect.state].filter(Boolean).join(' - ')}
@@ -116,6 +134,20 @@ function ProspectCard({ prospect, onOpen, showList }) {
               <span className="font-semibold">{formatRating(prospect.googleRating)}</span>
               {prospect.googleReviews != null && <span className="text-slate-400">({prospect.googleReviews} avaliações)</span>}
             </p>
+          )}
+          {prospect.instagram && (
+            <a
+              href={igLink(prospect.instagram)}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={stop}
+              onPointerDown={stop}
+              className="text-[11px] text-pink-700 hover:underline flex items-center gap-1 mt-0.5 truncate"
+            >
+              <AtSign className="w-3 h-3 shrink-0" /> @{igHandle(prospect.instagram)}
+              {prospect.instagramFollowers != null && <span className="text-slate-400">· {formatCount(prospect.instagramFollowers)}</span>}
+              {prospect.metaActiveAds != null && <span className="text-slate-400">· {prospect.metaActiveAds} anúncios</span>}
+            </a>
           )}
           {prospect.website && (
             <a
@@ -451,6 +483,66 @@ function MeetingSection({ prospect, onSaved }) {
   )
 }
 
+// Levantamento de porte (instagram, anúncios, equipe comercial, gancho) — só
+// aparece pra listas que trouxeram esses dados (ex.: integradoras solares).
+function ProfileSection({ prospect }) {
+  const has = ['instagram', 'instagramFollowers', 'metaActiveAds', 'salesTeam', 'salesTeamSignal', 'sizeSignals', 'callHook', 'priority']
+    .some((k) => prospect[k] != null && prospect[k] !== '')
+  if (!has) return null
+  return (
+    <div className="rounded-xl border border-slate-200 p-4 space-y-2.5">
+      <div className="flex items-center justify-between">
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Levantamento de porte</p>
+        {prospect.priority && (
+          <span className={`text-xs font-bold px-2 py-0.5 rounded ${PRIORITY_STYLES[prospect.priority] || PRIORITY_STYLES.C}`}>
+            Prioridade {prospect.priority}{prospect.score != null && <span className="font-medium"> · score {formatRating(prospect.score)}</span>}
+          </span>
+        )}
+      </div>
+
+      {prospect.callHook && (
+        <div className="flex items-start gap-2 text-sm bg-violet-50 text-violet-900 rounded-lg px-3 py-2">
+          <Quote className="w-4 h-4 shrink-0 mt-0.5 text-violet-400" />
+          <span><span className="font-semibold">Gancho: </span>{prospect.callHook}</span>
+        </div>
+      )}
+
+      {prospect.instagram && (
+        <div className="flex items-center gap-2 text-sm min-w-0">
+          <AtSign className="w-4 h-4 text-slate-400 shrink-0" />
+          <a href={igLink(prospect.instagram)} target="_blank" rel="noreferrer" className="font-medium text-pink-700 hover:underline truncate">@{igHandle(prospect.instagram)}</a>
+          {prospect.instagramFollowers != null && <span className="text-slate-500">· {formatCount(prospect.instagramFollowers)} seguidores</span>}
+        </div>
+      )}
+
+      {prospect.metaActiveAds != null && (
+        <div className="flex items-center gap-2 text-sm">
+          <Megaphone className="w-4 h-4 text-slate-400 shrink-0" />
+          <span className="font-medium text-slate-700">{prospect.metaActiveAds} anúncios ativos no Meta</span>
+          <span className="text-slate-400 text-xs">(no levantamento)</span>
+        </div>
+      )}
+
+      {(prospect.salesTeam || prospect.salesTeamSignal) && (
+        <div className="flex items-start gap-2 text-sm">
+          <Users className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
+          <span className="text-slate-700">
+            {prospect.salesTeam && <span className="font-medium">Equipe comercial: {prospect.salesTeam}</span>}
+            {prospect.salesTeamSignal && <span className="text-slate-500">{prospect.salesTeam ? ' — ' : ''}{prospect.salesTeamSignal}</span>}
+          </span>
+        </div>
+      )}
+
+      {prospect.sizeSignals && (
+        <div className="flex items-start gap-2 text-sm">
+          <Sparkles className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
+          <span className="text-slate-700">{prospect.sizeSignals}</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function ProspectModal({ prospect, onClose, onSave, onDelete, onMeetingSaved }) {
   if (!prospect) return null
   const [assignedTo, setAssignedTo] = useState(prospect.assignedTo || '')
@@ -563,6 +655,8 @@ function ProspectModal({ prospect, onClose, onSave, onDelete, onMeetingSaved }) 
               </div>
             )}
           </div>
+
+          <ProfileSection prospect={prospect} />
 
           <div>
             <label className="block text-xs font-medium text-slate-500 mb-1">Responsável</label>

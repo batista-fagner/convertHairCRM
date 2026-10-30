@@ -10,7 +10,10 @@ const KANBAN_PER_STAGE_LIMIT = 200;
 
 // Colunas esperadas no CSV (ver lote_03_dedetizadoras_b2b_50.csv): company_name,
 // city, state, phone_e164, email, website, source_url, b2b_evidence.
-// Opcionais de enriquecimento: nota_google, avaliacoes_google, bairro.
+// Opcionais de enriquecimento: nota_google, avaliacoes_google, bairro, e o
+// levantamento de porte (ver PROFILE_FIELDS): instagram, seguidores_ig,
+// anuncios_meta, equipe_comercial, sinal_equipe_comercial, outros_sinais_porte,
+// gancho_ligacao, score, prioridade.
 const CSV_COLUMNS = ['company_name', 'city', 'state', 'phone_e164', 'email', 'website', 'source_url', 'b2b_evidence'] as const;
 
 // Nomes alternativos (em português) aceitos no cabeçalho → nome canônico.
@@ -24,6 +27,33 @@ const HEADER_ALIASES: Record<string, string> = {
   neighborhood: 'bairro',
   site: 'website',
 };
+
+// Coluna do CSV → campo do levantamento de porte. 'int'/'num' viram número.
+const PROFILE_FIELDS: { col: string; field: keyof ColdCallLead; type: 'text' | 'int' | 'num' }[] = [
+  { col: 'instagram', field: 'instagram', type: 'text' },
+  { col: 'seguidores_ig', field: 'instagramFollowers', type: 'int' },
+  { col: 'anuncios_meta', field: 'metaActiveAds', type: 'int' },
+  { col: 'equipe_comercial', field: 'salesTeam', type: 'text' },
+  { col: 'sinal_equipe_comercial', field: 'salesTeamSignal', type: 'text' },
+  { col: 'outros_sinais_porte', field: 'sizeSignals', type: 'text' },
+  { col: 'gancho_ligacao', field: 'callHook', type: 'text' },
+  { col: 'score', field: 'score', type: 'num' },
+  { col: 'prioridade', field: 'priority', type: 'text' },
+];
+
+function parseProfile(row: Record<string, string>): Partial<ColdCallLead> {
+  const out: Record<string, unknown> = {};
+  for (const { col, field, type } of PROFILE_FIELDS) {
+    const raw = row[col]?.trim();
+    if (!raw || raw === '—' || raw === '-') continue;
+    if (type === 'text') out[field] = raw;
+    else {
+      const n = parseNumber(raw);
+      if (n != null) out[field] = type === 'int' ? Math.round(n) : n;
+    }
+  }
+  return out as Partial<ColdCallLead>;
+}
 
 /** "5,0" / "4.8" → número; vazio ou inválido → null. */
 function parseNumber(value?: string): number | null {
@@ -97,7 +127,7 @@ export class ColdCallService {
     const rows = parseCsv(fileContent);
     const list = listName?.trim() || null;
     const existingByPhone = new Map(
-      (await this.repo.find({ select: ['id', 'phone', 'googleRating', 'googleReviews', 'neighborhood'] }))
+      (await this.repo.find({ select: ['id', 'phone', 'website', 'googleRating', 'googleReviews', 'neighborhood', ...PROFILE_FIELDS.map((f) => f.field)] }))
         .filter((l) => !!l.phone)
         .map((l) => [l.phone as string, l]),
     );
@@ -120,6 +150,7 @@ export class ColdCallService {
         googleReviews: parseNumber(row['avaliacoes_google']),
         neighborhood: row['bairro']?.trim() || null,
       };
+      const profile = parseProfile(row);
 
       // Já existe: não duplica, mas completa o enriquecimento que estiver vazio
       // (reimportar uma lista com nota/avaliações/bairro atualiza os cards).
@@ -131,6 +162,9 @@ export class ColdCallService {
         if (!existing.neighborhood && enrichment.neighborhood) patch.neighborhood = enrichment.neighborhood;
         const website = row['website']?.trim();
         if (!existing.website && website) patch.website = website;
+        for (const [field, value] of Object.entries(profile)) {
+          if ((existing as any)[field] == null) (patch as any)[field] = value;
+        }
         if (Object.keys(patch).length > 0) {
           await this.repo.update(existing.id, patch);
           enriched++;
@@ -156,6 +190,7 @@ export class ColdCallService {
         googleRating: enrichment.googleRating,
         googleReviews: enrichment.googleReviews != null ? Math.round(enrichment.googleReviews) : null,
         neighborhood: enrichment.neighborhood,
+        ...profile,
         kanbanStage: 'novo',
         listName: list,
       });
