@@ -26,6 +26,7 @@ import { SettingsModule } from '../settings/settings.module';
 import { EnrichmentModule } from '../enrichment/enrichment.module';
 import { TrackingModule } from '../tracking/tracking.module';
 import { QuizModule } from '../quiz/quiz.module';
+import { AgendaModule } from '../agenda/agenda.module';
 import { SDR_FOLLOWUP_QUEUE_NAME } from '../queue/queue.constants';
 import { queueEngineEnabled } from '../queue/queue.enabled';
 
@@ -45,6 +46,7 @@ const queueProviders = queueEngineEnabled ? [SdrFollowupScanProcessor] : [];
     EnrichmentModule,
     TrackingModule,
     QuizModule,
+    AgendaModule,
     ...queueParts,
   ],
   controllers: [SdrController, FollowupController, ManualMessageController, GroupWorkshopController, EfraimQuizController],

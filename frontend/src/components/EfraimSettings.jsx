@@ -18,6 +18,7 @@ function EfraimSimulator() {
   const [sample, setSample] = useState({ name: '', quizResponses: [] })
   const [messages, setMessages] = useState([])
   const [slots, setSlots] = useState(null)
+  const [agendaSummary, setAgendaSummary] = useState('')
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [stage, setStage] = useState('abertura')
@@ -44,6 +45,7 @@ function EfraimSimulator() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.message || 'Erro ao chamar a IA')
       setSlots(data.slots)
+      if (data.agendaSummary !== undefined) setAgendaSummary(data.agendaSummary)
       setStage(data.stage)
       return data
     } catch (e) {
@@ -114,6 +116,11 @@ function EfraimSimulator() {
           <p className="leading-relaxed">
             <span className="font-medium text-slate-600">Quiz:</span>{' '}
             {answers.map((a) => a.answer).join(' · ')}
+          </p>
+        )}
+        {agendaSummary && (
+          <p className="mt-1 text-[11px] text-slate-400 leading-relaxed">
+            <span className="font-medium text-slate-500">Agenda:</span> {agendaSummary}
           </p>
         )}
       </div>

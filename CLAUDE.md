@@ -291,9 +291,25 @@ Agente separado da Sofia, pra quem termina o quiz (hoje `trafego-pago`). **Fala 
 - **Fluxo:** submit do quiz → `QuizService` marca `leads.efraim_opening_at` (+3 min) → cron de 1 em 1 min (`EfraimQuizService.sendDueOpenings`, só 8h–21h BRT, reserva atômica por `efraim_opening_sent_at`) gera a abertura (3 bolhas: saudação calculada no código | apresentação + faturamento do quiz | duas opções de horário **afirmando** ou confirmação se `meeting_at` já existe) → `ai_agent='efraim'`, `ai_paused=false`.
 - **Respostas:** `SdrController.processMessage` desvia pra `EfraimQuizService.handleReply` quando `ai_agent='efraim'`. Ignora resposta automática / IA de atendimento da loja (`botDoLead`). `agendado` → grava `meeting_at`, pausa a IA e avisa os números de "Aviso de Reunião Agendada". `humano`/`sem_interesse` → pausa e avisa os números do SDR.
 - **Não chama:** quem respondeu "Quero comprar cabelo" ou "não é o meu momento", quem já tem conversa, card fora de "Novo", abertura pendente há mais de 14h.
-- **Horários oferecidos são sorteados** (próximo dia útil, par 10/11/14/15/16/17h) até existir a agenda interna — **próximo passo**: agenda própria pra o Efraim consultar. Calendly não avisa o CRM (sem webhook).
+- **Horários oferecidos vêm da agenda interna** (`/agenda`, ver seção abaixo); só caem no sorteio se nenhum dia estiver cadastrado lá. Calendly não avisa o CRM (sem webhook).
 - Follow-up da Sofia exclui `ai_agent='efraim'`. O Efraim ainda **não tem follow-up** pra quem não responde a abertura.
 - Existe um `efraim/` antigo (live "funil com IA", rota `webhooks/uazapi`) — sem uso, não tem relação com este.
+
+## 📅 Agenda interna (2026-11-02)
+
+Substitui o Calendly como fonte dos horários: o sócio cadastra a disponibilidade no CRM e o Efraim oferece **só** o que está lá.
+
+- **Tela:** `/agenda` → aba **"Minha disponibilidade"** (`frontend/src/components/AgendaAvailability.jsx`). A aba "Calendário" é a agenda de reuniões que já existia.
+- **Tabelas** (criadas pelo `synchronize: true` — ⚠️ as entidades novas precisam entrar também na lista `entities` do `TypeOrmModule.forRootAsync` em `app.module.ts`, `forFeature` sozinho não cria a tabela):
+  - `agenda_availability` — 1 linha por dia da semana, `hours` jsonb (`[10,11,14,15]`). Vazio = não atende nesse dia.
+  - `agenda_blocks` — exceção por data (`date` varchar `YYYY-MM-DD`, não timestamp, pra não sofrer fuso); `hours` null = dia inteiro.
+- **Settings:** `agenda_min_notice_hours` (padrão 3) e `agenda_max_days_ahead` (padrão 14).
+- **`AgendaService`** (`backend/src/agenda/agenda.service.ts`): `availableDays()` expande a semana no horizonte, descontando antecedência mínima, bloqueios e **reuniões já marcadas** (`leads.meeting_at`, inclusive as que a SDR marcou à mão). `nextSlots(2)` = o que o Efraim afirma; `agendaSummary()` = o resumo que vai pro prompt; `checkSlot()` valida um horário.
+- **Rotas:** `GET/PUT /agenda/availability`, `GET/POST/DELETE /agenda/blocks`, `GET /agenda/slots` (prévia do que o Efraim vai oferecer).
+- **Efraim:** `offeredSlots()` lê a agenda; **sem nenhum dia cadastrado cai no sorteio antigo** (`computeSlots`). O contexto do lead ganhou a linha "AGENDA (únicos horários que existem)" e o prompt proíbe inventar horário — recusou? ele oferece os dias mais próximos da lista; a agenda acabou? `stage: humano`.
+- Reunião marcada fora da agenda (a pessoa já combinou na conversa) **não é cancelada**: entra no log e no aviso do closer com ⚠️.
+- Helpers de data de Brasília ficam em `backend/src/common/brt.util.ts` (o Efraim importa de lá; a agenda não pode importar do Efraim, é ele que importa a agenda).
+- **Não trata ainda:** dois leads em conversa ao mesmo tempo podem receber o mesmo horário (só reunião **já gravada** sai da agenda); não há duração configurável (slot = 1h cheia) nem lembrete antes da reunião.
 
 ## 📊 Tracking
 

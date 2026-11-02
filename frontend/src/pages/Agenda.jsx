@@ -2,7 +2,8 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { io } from 'socket.io-client'
 import { socketOptions } from '../lib/auth'
-import { ChevronLeft, ChevronRight, CalendarClock, Phone, MessageCircle, KanbanSquare, Loader2, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, CalendarClock, Phone, MessageCircle, KanbanSquare, Loader2, X, Clock } from 'lucide-react'
+import AgendaAvailability from '../components/AgendaAvailability'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3002/api'
 const SOCKET_URL = API.replace(/\/api\/?$/, '') || 'http://localhost:3002'
@@ -45,6 +46,7 @@ export default function Agenda() {
   const [error, setError] = useState('')
   const [selected, setSelected] = useState(null)
   const [customStages, setCustomStages] = useState({})
+  const [tab, setTab] = useState('calendario')
 
   // Raias criadas no Kanban (ex.: prospeccao-sdr) → título legível.
   useEffect(() => {
@@ -102,8 +104,25 @@ export default function Agenda() {
     return y === cursor.year && mo === cursor.month + 1
   }).length
 
+  const tabs = [
+    { key: 'calendario', label: 'Calendário', icon: CalendarClock },
+    { key: 'disponibilidade', label: 'Minha disponibilidade', icon: Clock },
+  ]
+
   return (
-    <div className="p-4 md:p-6 flex flex-col lg:flex-row gap-6">
+    <div className="p-4 md:p-6 flex flex-col gap-4">
+      <div className="flex gap-1 border-b border-slate-200">
+        {tabs.map((t) => (
+          <button key={t.key} onClick={() => setTab(t.key)}
+            className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 -mb-px transition ${
+              tab === t.key ? 'border-violet-600 text-violet-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+            <t.icon className="w-4 h-4" /> {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'disponibilidade' ? <AgendaAvailability /> : (
+    <div className="flex flex-col lg:flex-row gap-6">
       <section className="flex-1 min-w-0 bg-white rounded-xl border border-slate-200">
         <header className="flex flex-wrap items-center gap-3 px-4 py-3 border-b border-slate-200">
           <h2 className="text-lg font-semibold text-slate-800 capitalize">{monthLabel}</h2>
@@ -206,6 +225,8 @@ export default function Agenda() {
           )}
         </div>
       </aside>
+    </div>
+      )}
     </div>
   )
 }

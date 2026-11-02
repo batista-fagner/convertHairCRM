@@ -19,14 +19,18 @@ import {
   EFRAIM_PROMPT_KEY,
   EFRAIM_QUIZ_SLUGS_KEY,
 } from './efraim-quiz.prompt';
+import { AgendaService } from '../agenda/agenda.service';
+import { WEEKDAYS, addDays, brt, brtAt, formatSlotHuman, formatSlotPairHuman } from '../common/brt.util';
 import { isAutoReply } from './auto-reply.util';
 import { extractCandidateFirstName } from './name-gender.util';
+
+// Reexportado porque o controller e os testes pegam daqui.
+export { formatSlotHuman };
 
 // Mesma chave de SDR_NOTIFY_PHONES_KEY (sdr.controller.ts) — repetida aqui pra
 // não criar import circular controller ↔ service.
 const SDR_NOTIFY_PHONES_KEY = 'sdr_notify_phones';
 
-const TZ = 'America/Sao_Paulo';
 /** Janela de envio da abertura (horário de Brasília). Fora dela, espera a próxima abertura da janela. */
 const SEND_FROM_HOUR = 8;
 const SEND_UNTIL_HOUR = 21;
@@ -37,7 +41,6 @@ const SLOT_START_HOURS = [10, 11, 14, 15, 16, 17];
 /** Respostas do quiz que tiram o lead do Efraim (não é perfil pra reunião). */
 const SKIP_ANSWERS = [/quero comprar cabelo/i, /n[aã]o [eé] o meu momento/i];
 
-const WEEKDAYS = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
 
 export type EfraimStage = 'conversando' | 'agendado' | 'sem_interesse' | 'humano';
 
@@ -49,38 +52,11 @@ export interface EfraimAiResult {
   success: boolean;
 }
 
-/** Partes de data/hora no fuso de Brasília. */
-function brt(d: Date) {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23', weekday: 'short',
-  }).formatToParts(d);
-  const get = (t: string) => parts.find((p) => p.type === t)?.value || '';
-  const weekdayIdx = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(get('weekday'));
-  return { ymd: `${get('year')}-${get('month')}-${get('day')}`, day: get('day'), month: get('month'), hour: Number(get('hour')), minute: Number(get('minute')), weekday: weekdayIdx };
-}
-
-/** Data com hora cheia em Brasília (o Brasil não tem mais horário de verão: -03:00 fixo). */
-function brtAt(ymd: string, hour: number): Date {
-  return new Date(`${ymd}T${String(hour).padStart(2, '0')}:00:00-03:00`);
-}
-
-function addDays(d: Date, days: number): Date {
-  return new Date(d.getTime() + days * 86_400_000);
-}
-
-/** "amanhã (terça, 03/11) às 15h" / "quarta (04/11) às 15h". */
-export function formatSlotHuman(slot: Date, now: Date): string {
-  const s = brt(slot);
-  const today = brt(now).ymd;
-  const tomorrow = brt(addDays(now, 1)).ymd;
-  const hour = s.minute ? `${s.hour}h${String(s.minute).padStart(2, '0')}` : `${s.hour}h`;
-  const date = `${s.day}/${s.month}`;
-  if (s.ymd === today) return `hoje (${date}) às ${hour}`;
-  if (s.ymd === tomorrow) return `amanhã (${WEEKDAYS[s.weekday]}, ${date}) às ${hour}`;
-  return `${WEEKDAYS[s.weekday]} (${date}) às ${hour}`;
-}
-
-/** Próximo dia útil (seg–sex) depois de hoje, com 2 horários seguidos sorteados. */
+/**
+ * Reserva: próximo dia útil (seg–sex) com 2 horários seguidos sorteados. Só
+ * roda quando a agenda interna (/agenda) ainda não tem nenhum dia cadastrado —
+ * aí é melhor oferecer um horário plausível que não oferecer nenhum.
+ */
 export function computeSlots(now: Date): Date[] {
   let day = addDays(now, 1);
   while ([0, 6].includes(brt(day).weekday)) day = addDays(day, 1);
@@ -126,6 +102,8 @@ export interface EfraimLeadSnapshot {
   quizResponses?: { question: string; answer: string }[] | null;
   meetingAt?: Date | string | null;
   efraimSlots?: string[] | null;
+  /** Horários livres da agenda interna, já em texto ("amanhã (terça, 03/11): 10h, 11h · …"). */
+  agendaSummary?: string | null;
 }
 
 /** "Abaixo de 20k mês" → "até 20 mil"; "Entre 30k e 50k mês" → "entre 30 e 50 mil"; "Acima de 100k" → "mais de 100 mil". */
@@ -154,7 +132,13 @@ function buildLeadContext(lead: EfraimLeadSnapshot, now: Date, greeting?: string
   if (lead.meetingAt) {
     lines.push(`- Reunião JÁ AGENDADA pela própria pessoa: ${formatSlotHuman(new Date(lead.meetingAt), now)}. Na bolha 3 CONFIRME exatamente esse dia e horário (ela já agendou) — NÃO ofereça opções de horário.`);
   } else if (lead.efraimSlots?.length) {
-    lines.push(`- Horários sugeridos: ${lead.efraimSlots.map((s) => formatSlotHuman(new Date(s), now)).join(' ou ')}`);
+    lines.push(`- Horários sugeridos (afirme exatamente assim na bolha 3): "${formatSlotPairHuman(lead.efraimSlots.map((s) => new Date(s)), now)}"`);
+  }
+  if (lead.agendaSummary) {
+    lines.push(
+      `- AGENDA (únicos horários que existem): ${lead.agendaSummary}`,
+      '- Se a pessoa recusar os sugeridos ou pedir outro dia, ofereça SÓ horários desta agenda, começando pelos dias mais próximos. Nunca invente um horário que não esteja aqui. Se nada serve, diga que vai ver outras opções e passe pra equipe (stage "humano").',
+    );
   }
   if (greeting) lines.push(`- Saudação de abertura (bolha 1 da PRIMEIRA MENSAGEM): "${greeting}"`);
   lines.push(calendarContext(now));
@@ -182,6 +166,7 @@ export class EfraimQuizService {
     private readonly realtime: RealtimeGateway,
     private readonly settings: SettingsService,
     private readonly http: HttpService,
+    private readonly agenda: AgendaService,
     config: ConfigService,
   ) {
     this.openai = new OpenAI({ apiKey: config.get('OPENAI_API_KEY') });
@@ -203,6 +188,32 @@ export class EfraimQuizService {
       enabled: enabled === 'true',
       quizSlugs: (slugs ?? EFRAIM_DEFAULT_QUIZ_SLUGS).split(',').map((s) => s.trim()).filter(Boolean),
     };
+  }
+
+  // ─── Agenda interna ──────────────────────────────────────────────────────
+
+  /**
+   * Os dois horários que o Efraim afirma na abertura. Vêm da agenda interna
+   * (/agenda); sem nenhum dia cadastrado lá, cai no sorteio antigo pra não
+   * deixar o lead sem proposta de horário.
+   */
+  private async offeredSlots(now: Date): Promise<string[]> {
+    try {
+      const slots = await this.agenda.nextSlots(2, now);
+      if (slots.length) return slots.map((d) => d.toISOString());
+      this.logger.warn('[Efraim] Agenda interna sem horário livre — usando horários sorteados');
+    } catch (err: any) {
+      this.logger.error(`[Efraim] Erro lendo a agenda: ${err.message} — usando horários sorteados`);
+    }
+    return computeSlots(now).map((d) => d.toISOString());
+  }
+
+  private async agendaSummary(now: Date): Promise<string> {
+    try {
+      return await this.agenda.agendaSummary(now);
+    } catch {
+      return '';
+    }
   }
 
   // ─── IA ──────────────────────────────────────────────────────────────────
@@ -302,8 +313,9 @@ export class EfraimQuizService {
     const now = new Date();
     const history = (body.history || []).filter((m) => m?.content);
     const isOpening = history.length === 0 && !(body.message || '').trim();
-    const slots = body.slots?.length ? body.slots : computeSlots(now).map((d) => d.toISOString());
-    const snapshot: EfraimLeadSnapshot = { name: body.name, quizResponses: body.quizResponses, efraimSlots: slots };
+    const slots = body.slots?.length ? body.slots : await this.offeredSlots(now);
+    const agendaSummary = await this.agendaSummary(now);
+    const snapshot: EfraimLeadSnapshot = { name: body.name, quizResponses: body.quizResponses, efraimSlots: slots, agendaSummary };
     const greeting = isOpening ? buildEfraimGreeting(body.name, now) : undefined;
     const ai = await this.callAi(snapshot, history, isOpening ? OPENING_TRIGGER : (body.message || '').trim(), now, greeting);
     if (!ai.success) throw new Error('A IA não respondeu — tente de novo');
@@ -315,6 +327,7 @@ export class EfraimQuizService {
       reuniaoHuman: this.parseMeeting(ai.reuniao) ? formatSlotHuman(new Date(ai.reuniao!), now) : null,
       botDoLead: ai.botDoLead,
       slots,
+      agendaSummary,
     };
   }
 
@@ -377,9 +390,15 @@ export class EfraimQuizService {
     }
 
     const now = new Date();
-    const slots = lead.meetingAt ? [] : computeSlots(now).map((d) => d.toISOString());
+    const slots = lead.meetingAt ? [] : await this.offeredSlots(now);
     const greeting = buildEfraimGreeting(lead.name, now);
-    const snapshot: EfraimLeadSnapshot = { name: lead.name, quizResponses: lead.quizResponses, meetingAt: lead.meetingAt, efraimSlots: slots };
+    const snapshot: EfraimLeadSnapshot = {
+      name: lead.name,
+      quizResponses: lead.quizResponses,
+      meetingAt: lead.meetingAt,
+      efraimSlots: slots,
+      agendaSummary: lead.meetingAt ? '' : await this.agendaSummary(now),
+    };
     const ai = await this.callAiWithRetry(snapshot, [], OPENING_TRIGGER, now, greeting);
 
     let reply: string;
@@ -389,7 +408,7 @@ export class EfraimQuizService {
       // IA fora do ar: texto fixo no mesmo estilo, a abertura não se perde.
       const third = lead.meetingAt
         ? `Você agendou nossa reunião pra ${formatSlotHuman(new Date(lead.meetingAt), now)}, já está na agenda aqui! 1h antes te envio o link da sala`
-        : `Quero deixar marcada nossa reunião de apresentação do método. O melhor horário pra você é ${slots.map((s) => formatSlotHuman(new Date(s), now)).join(' ou ')}?`;
+        : `Quero deixar marcada nossa reunião de apresentação do método. O melhor horário pra você é ${formatSlotPairHuman(slots.map((s) => new Date(s)), now)}?`;
       reply = [greeting, 'Aqui é o Fagner da Convert Hair, vi que você respondeu nosso quiz pra vender mais cabelo com tráfego pago. É uma ótima oportunidade pra gente dobrar o seu faturamento', third].join('|||');
       this.logger.warn(`[Efraim] IA falhou na abertura de ${lead.phone} — usando texto fixo`);
     }
@@ -430,7 +449,14 @@ export class EfraimQuizService {
     const history = prior
       .filter((m) => !m.internal && !m.whatsappDeleted && m.content)
       .map((m) => ({ role: (m.role === 'assistant' ? 'assistant' : 'user') as 'user' | 'assistant', content: String(m.content) }));
-    const ai = await this.callAiWithRetry(lead, history, text, now);
+    const snapshot: EfraimLeadSnapshot = {
+      name: lead.name,
+      quizResponses: lead.quizResponses,
+      meetingAt: lead.meetingAt,
+      efraimSlots: lead.efraimSlots,
+      agendaSummary: await this.agendaSummary(now),
+    };
+    const ai = await this.callAiWithRetry(snapshot, history, text, now);
     if (!ai.success) return recordOnly('IA falhou');
     if (ai.botDoLead) return recordOnly('IA/atendente automático do lead');
 
@@ -468,6 +494,10 @@ export class EfraimQuizService {
 
     if (meeting && previousMeeting?.getTime() !== meeting.getTime()) {
       this.logger.log(`[Efraim] Reunião marcada com ${lead.phone}: ${meeting.toISOString()}`);
+      // Fora da agenda interna só vira aviso: a pessoa já combinou esse horário
+      // na conversa, cancelar por conta própria seria pior.
+      const offAgenda = await this.agenda.checkSlot(meeting, now).catch(() => null);
+      if (offAgenda) this.logger.warn(`[Efraim] Reunião de ${lead.phone} ${offAgenda} — confira na agenda`);
       await this.notify(MEETING_NOTIFY_PHONES_KEY, [
         previousMeeting ? '🔁 Reunião remarcada pelo Efraim!' : '📅 Reunião agendada pelo Efraim!',
         '',
@@ -475,8 +505,9 @@ export class EfraimQuizService {
         `WhatsApp: ${lead.phone}`,
         `Quando: ${formatSlotHuman(meeting, new Date())}`,
         ...(previousMeeting ? [`Antes: ${formatSlotHuman(previousMeeting, new Date())}`] : []),
+        ...(offAgenda ? ['', `⚠️ Esse horário ${offAgenda} — confira na agenda do CRM.`] : []),
         '',
-        'Lembre de mandar o link da sala 1h antes (o Efraim prometeu).',
+        'Já está na agenda do CRM. Lembre de mandar o link da sala 1h antes (o Efraim prometeu).',
       ].join('\n'));
     } else if (ai.stage === 'humano' || ai.stage === 'sem_interesse') {
       await this.notify(SDR_NOTIFY_PHONES_KEY, [

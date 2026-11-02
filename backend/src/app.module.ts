@@ -4,6 +4,8 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ScheduleModule } from '@nestjs/schedule';
 import { Lead } from './common/entities/lead.entity';
 import { KanbanCustomStage } from './common/entities/kanban-custom-stage.entity';
+import { AgendaAvailability } from './common/entities/agenda-availability.entity';
+import { AgendaBlock } from './common/entities/agenda-block.entity';
 import { Campaign } from './common/entities/campaign.entity';
 import { Form } from './common/entities/form.entity';
 import { InstagramAutomation } from './instagram-automation/instagram-automation.entity';
@@ -30,6 +32,7 @@ import { EnrichmentModule } from './enrichment/enrichment.module';
 import { FormsModule } from './forms/forms.module';
 import { FacebookModule } from './facebook/facebook.module';
 import { InstagramAutomationModule } from './instagram-automation/instagram-automation.module';
+import { AgendaModule } from './agenda/agenda.module';
 import { EfraimModule } from './efraim/efraim.module';
 import { TrackingModule } from './tracking/tracking.module';
 import { RealtimeModule } from './realtime/realtime.module';
@@ -64,7 +67,7 @@ import { ColdCallModule } from './coldcall/coldcall.module';
         // Supabase exige SSL; `DATABASE_SSL=false` permite apontar para um
         // Postgres local descartável ao testar sem tocar em produção.
         ssl: config.get('DATABASE_SSL') === 'false' ? false : { rejectUnauthorized: false },
-        entities: [Lead, KanbanCustomStage, Campaign, Form, InstagramAutomation, IgConversation, IgMessage, IgCommentEvent, Setting, FollowupRule, FollowupVideo, SmsContact, SmsMessage, IgPost, Quiz, QuizSubmission, QuizProgress, Carousel, Prospect, AudioAsset, VideoEditJob, ColdCallLead, ColdCallStage, User],
+        entities: [Lead, KanbanCustomStage, AgendaAvailability, AgendaBlock, Campaign, Form, InstagramAutomation, IgConversation, IgMessage, IgCommentEvent, Setting, FollowupRule, FollowupVideo, SmsContact, SmsMessage, IgPost, Quiz, QuizSubmission, QuizProgress, Carousel, Prospect, AudioAsset, VideoEditJob, ColdCallLead, ColdCallStage, User],
         synchronize: true,
         logging: false,
         timezone: 'Z',
@@ -72,6 +75,7 @@ import { ColdCallModule } from './coldcall/coldcall.module';
     }),
     AuthModule,
     LeadsModule,
+    AgendaModule,
     EnrichmentModule,
     FormsModule,
     FacebookModule,
