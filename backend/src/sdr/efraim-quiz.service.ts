@@ -389,8 +389,8 @@ export class EfraimQuizService {
       // IA fora do ar: texto fixo no mesmo estilo, a abertura não se perde.
       const third = lead.meetingAt
         ? `Você agendou nossa reunião pra ${formatSlotHuman(new Date(lead.meetingAt), now)}, já está na agenda aqui! 1h antes te envio o link da sala`
-        : `Melhor horário pra nossa reunião: ${slots.map((s) => formatSlotHuman(new Date(s), now)).join(' ou ')}?`;
-      reply = [greeting, 'Aqui é o Fagner da Convert Hair, vi seu quiz. Dá pra gente dobrar o seu faturamento', third].join('|||');
+        : `Quero deixar marcada nossa reunião de apresentação do método. O melhor horário pra você é ${slots.map((s) => formatSlotHuman(new Date(s), now)).join(' ou ')}?`;
+      reply = [greeting, 'Aqui é o Fagner da Convert Hair, vi que você respondeu nosso quiz pra vender mais cabelo com tráfego pago. É uma ótima oportunidade pra gente dobrar o seu faturamento', third].join('|||');
       this.logger.warn(`[Efraim] IA falhou na abertura de ${lead.phone} — usando texto fixo`);
     }
 
