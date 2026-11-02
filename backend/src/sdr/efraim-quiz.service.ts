@@ -115,6 +115,8 @@ export interface EfraimLeadSnapshot {
   efraimSlots?: string[] | null;
   /** Horários livres da agenda interna, já em texto ("amanhã (terça, 03/11): 10h, 11h · …"). */
   agendaSummary?: string | null;
+  /** A abertura já saiu? Então nada de saudação/apresentação de novo. */
+  openingSent?: boolean;
 }
 
 /** "Abaixo de 20k mês" → "até 20 mil"; "Entre 30k e 50k mês" → "entre 30 e 50 mil"; "Acima de 100k" → "mais de 100 mil". */
@@ -144,8 +146,9 @@ function buildLeadContext(lead: EfraimLeadSnapshot, now: Date, greeting?: string
     lines.push(`- Reunião JÁ AGENDADA pela própria pessoa: ${formatSlotHuman(new Date(lead.meetingAt), now)}. Na bolha 3 CONFIRME exatamente esse dia e horário (ela já agendou) — NÃO ofereça opções de horário.`);
   } else if (lead.efraimSlots?.length) {
     const offered = lead.efraimSlots.map((s) => new Date(s));
+    const where = lead.openingSent ? '' : ' na bolha 3';
     lines.push(
-      `- Dias/turnos a oferecer na bolha 3 (copie exatamente assim, SEM dizer hora): "${formatDayShiftHuman(offered, now)}"`,
+      `- Dias/turnos a oferecer${where} (copie exatamente assim, SEM dizer hora): "${formatDayShiftHuman(offered, now)}"`,
     );
   }
   if (lead.agendaSummary) {
@@ -155,6 +158,13 @@ function buildLeadContext(lead: EfraimLeadSnapshot, now: Date, greeting?: string
     );
   }
   if (greeting) lines.push(`- Saudação de abertura (bolha 1 da PRIMEIRA MENSAGEM): "${greeting}"`);
+  if (lead.openingSent) {
+    lines.push(
+      '- ⚠️ A SUA ABERTURA JÁ FOI ENVIADA (está no histórico). NÃO cumprimente de novo, NÃO se apresente de novo ("Aqui é o Fagner da Convert Hair"), NÃO repita o faturamento nem o gancho. Responda só o que ela acabou de falar.',
+      '- Tamanho: no máximo 2 bolhas, de 1 a 2 linhas cada. Se ela só cumprimentou, responda curto e puxe o horário em UMA bolha.',
+    );
+  }
+
   lines.push(calendarContext(now));
   return `\nCONTEXTO DO LEAD:\n${lines.join('\n')}`;
 }
@@ -293,6 +303,24 @@ export class EfraimQuizService {
     const bubbles = reply.split('|||').map((b) => b.trim()).filter(Boolean);
     if (bubbles.length <= 1 || !/tudo bem|bom dia|boa tarde|boa noite|ol[aá]|oi\b/i.test(bubbles[0])) bubbles.unshift(greeting);
     else bubbles[0] = greeting;
+    return bubbles.join('|||');
+  }
+
+  /**
+   * Depois da abertura a mensagem é curta: no máximo `max` bolhas, e sem
+   * repetir a apresentação (o modelo já reenviou a abertura inteira quando o
+   * lead só respondeu "boa tarde"). Guarda de código porque instrução no
+   * prompt sozinha não impediu.
+   */
+  private trimReply(reply: string, history: { role: string; content: string }[], max = 2): string {
+    const introduced = history.some((m) => m.role === 'assistant' && /aqui [eé] o fagner|da convert hair/i.test(m.content));
+    let bubbles = reply.split('|||').map((b) => b.trim()).filter(Boolean);
+    if (introduced) {
+      const clean = bubbles.filter((b) => !/aqui [eé] o fagner|da convert hair/i.test(b));
+      // Só descarta se sobrar alguma coisa pra mandar.
+      if (clean.length) bubbles = clean;
+    }
+    if (bubbles.length > max) bubbles = bubbles.slice(-max);
     return bubbles.join('|||');
   }
 
@@ -525,6 +553,7 @@ export class EfraimQuizService {
       quizResponses: lead.quizResponses,
       efraimSlots: slots,
       agendaSummary: await this.agendaSummary(now),
+      openingSent: true,
     };
     const trigger =
       `[SISTEMA] Follow-up nº ${attempt} de ${EFRAIM_FOLLOWUP_MAX}. ` +
@@ -536,6 +565,7 @@ export class EfraimQuizService {
       ' NÃO insista e NÃO ofereça horário — devolva "reply" vazio e stage "sem_interesse".';
 
     const ai = await this.callAiWithRetry(snapshot, history, trigger, now);
+    if (ai.success && ai.reply) ai.reply = this.trimReply(ai.reply, history, 1);
     if (ai.success && ai.stage === 'sem_interesse') {
       // A última mensagem dela era uma recusa: desqualifica, pausa e não insiste.
       const updated = await this.leadsService.update(lead.id, {
@@ -592,8 +622,10 @@ export class EfraimQuizService {
       meetingAt: lead.meetingAt,
       efraimSlots: lead.efraimSlots,
       agendaSummary: await this.agendaSummary(now),
+      openingSent: true,
     };
     const ai = await this.callAiWithRetry(snapshot, history, text, now);
+    if (ai.success && ai.reply) ai.reply = this.trimReply(ai.reply, history);
     if (!ai.success) return recordOnly('IA falhou');
     if (ai.botDoLead) return recordOnly('IA/atendente automático do lead');
 
