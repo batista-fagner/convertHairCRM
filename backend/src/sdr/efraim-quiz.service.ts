@@ -15,6 +15,10 @@ import {
   DEFAULT_EFRAIM_PROMPT,
   EFRAIM_DEFAULT_QUIZ_SLUGS,
   EFRAIM_ENABLED_KEY,
+  EFRAIM_FOLLOWUP_2_HOUR,
+  EFRAIM_FOLLOWUP_HOURS,
+  EFRAIM_FOLLOWUP_KEY,
+  EFRAIM_FOLLOWUP_MAX,
   EFRAIM_JSON_FORMAT,
   EFRAIM_PROMPT_KEY,
   EFRAIM_QUIZ_SLUGS_KEY,
@@ -169,6 +173,7 @@ export class EfraimQuizService {
   private readonly uazapiBaseUrl: string;
   private readonly uazapiToken: string;
   private running = false;
+  private runningFollowup = false;
 
   constructor(
     @InjectRepository(Lead) private readonly leadsRepo: Repository<Lead>,
@@ -192,12 +197,25 @@ export class EfraimQuizService {
     return (await this.settings.get(EFRAIM_PROMPT_KEY)) || DEFAULT_EFRAIM_PROMPT;
   }
 
-  async getConfig(): Promise<{ enabled: boolean; quizSlugs: string[] }> {
-    const [enabled, slugs] = await Promise.all([this.settings.get(EFRAIM_ENABLED_KEY), this.settings.get(EFRAIM_QUIZ_SLUGS_KEY)]);
+  async getConfig(): Promise<{ enabled: boolean; quizSlugs: string[]; followupEnabled: boolean }> {
+    const [enabled, slugs, followup] = await Promise.all([
+      this.settings.get(EFRAIM_ENABLED_KEY),
+      this.settings.get(EFRAIM_QUIZ_SLUGS_KEY),
+      this.settings.get(EFRAIM_FOLLOWUP_KEY),
+    ]);
     return {
       enabled: enabled === 'true',
       quizSlugs: (slugs ?? EFRAIM_DEFAULT_QUIZ_SLUGS).split(',').map((s) => s.trim()).filter(Boolean),
+      // Ligado por padrão: quem liga o Efraim quer o follow-up junto.
+      followupEnabled: followup !== 'false',
     };
+  }
+
+  /** Quando vence o próximo toque: o 1º em horas, o 2º às 9h do dia seguinte. */
+  private nextFollowupAt(count: number, now: Date): Date | null {
+    if (count >= EFRAIM_FOLLOWUP_MAX) return null;
+    if (count === 0) return new Date(now.getTime() + EFRAIM_FOLLOWUP_HOURS * 3_600_000);
+    return brtAt(brt(addDays(now, 1)).ymd, EFRAIM_FOLLOWUP_2_HOUR);
   }
 
   // ─── Agenda interna ──────────────────────────────────────────────────────
@@ -433,12 +451,119 @@ export class EfraimQuizService {
       waStage: 'abertura' as any,
       waLastMessageAt: new Date(),
       efraimSlots: slots.length ? slots : null,
+      efraimFollowupAt: this.nextFollowupAt(0, now),
+      efraimFollowupCount: 0,
       aiContext: [{ role: 'assistant', source: 'efraim', content, timestamp }] as any,
     });
     const ids = await this.sendBubbles(lead.phone, reply);
     await this.leadsService.attachWaMessageIds(lead.id, timestamp, ids).catch(() => undefined);
     this.realtime.emitLeadUpdated(updated);
     this.logger.log(`[Efraim] Abertura enviada pro lead ${lead.phone} (${ids.length} bolha(s))`);
+  }
+
+  // ─── Follow-up (quem não respondeu a última mensagem) ────────────────────
+
+  @Cron('*/5 * * * *')
+  async sendDueFollowups() {
+    if (this.runningFollowup) return;
+    this.runningFollowup = true;
+    try {
+      const now = new Date();
+      const h = brt(now).hour;
+      if (h < SEND_FROM_HOUR || h >= SEND_UNTIL_HOUR) return;
+      const { enabled, followupEnabled } = await this.getConfig();
+      if (!enabled || !followupEnabled || !this.uazapiToken) return;
+
+      const due = await this.leadsRepo
+        .createQueryBuilder('lead')
+        .select(['lead.id', 'lead.efraimFollowupCount'])
+        .where("lead.ai_agent = 'efraim'")
+        .andWhere('lead.ai_paused = false')
+        .andWhere('lead.efraim_followup_at <= :now', { now })
+        .andWhere('lead.efraim_followup_count < :max', { max: EFRAIM_FOLLOWUP_MAX })
+        .andWhere('lead.meeting_at IS NULL')
+        .orderBy('lead.efraim_followup_at', 'ASC')
+        .limit(10)
+        .getMany();
+
+      for (const lead of due) {
+        const count = lead.efraimFollowupCount ?? 0;
+        // Reserva atômica (deploy sobreposto): quem incrementar primeiro envia.
+        const claimed = await this.leadsRepo
+          .createQueryBuilder()
+          .update(Lead)
+          .set({ efraimFollowupCount: count + 1, efraimFollowupAt: this.nextFollowupAt(count + 1, now) })
+          .where('id = :id AND efraim_followup_count = :count', { id: lead.id, count })
+          .execute();
+        if (!claimed.affected) continue;
+        await this.sendFollowup(lead.id, count + 1).catch((err) =>
+          this.logger.error(`[Efraim] Erro no follow-up do lead ${lead.id}: ${err.message}`),
+        );
+      }
+    } finally {
+      this.runningFollowup = false;
+    }
+  }
+
+  private async sendFollowup(leadId: string, attempt: number) {
+    const lead = await this.leadsService.findById(leadId);
+    const prior: any[] = Array.isArray(lead.aiContext) ? lead.aiContext : [];
+    const leadReplied = prior.some((m) => m.role === 'user' && m.content);
+    if (lead.waStage === 'encerrado' || lead.meetingAt) {
+      this.logger.log(`[Efraim] Follow-up ${attempt} pulado pro lead ${lead.phone} — conversa encerrada`);
+      return;
+    }
+
+    const now = new Date();
+    // Horários novos: a agenda pode ter mudado desde a abertura.
+    const slots = await this.offeredSlots(now);
+    const history = prior
+      .filter((m) => !m.internal && !m.whatsappDeleted && m.content)
+      .map((m) => ({ role: (m.role === 'assistant' ? 'assistant' : 'user') as 'user' | 'assistant', content: String(m.content) }));
+    const snapshot: EfraimLeadSnapshot = {
+      name: lead.name,
+      quizResponses: lead.quizResponses,
+      efraimSlots: slots,
+      agendaSummary: await this.agendaSummary(now),
+    };
+    const trigger =
+      `[SISTEMA] Follow-up nº ${attempt} de ${EFRAIM_FOLLOWUP_MAX}. ` +
+      (leadReplied
+        ? 'A pessoa conversou com você mas parou sem fechar horário. Retome de onde parou.'
+        : 'A pessoa nunca respondeu a sua mensagem.') +
+      ' Escreva UMA bolha curta, sem repetir a apresentação.' +
+      ' ANTES DE ESCREVER: se a última mensagem dela recusou de alguma forma ("não tenho interesse", "não quero", "não vai dar", "me tira da lista"),' +
+      ' NÃO insista e NÃO ofereça horário — devolva "reply" vazio e stage "sem_interesse".';
+
+    const ai = await this.callAiWithRetry(snapshot, history, trigger, now);
+    if (ai.success && ai.stage === 'sem_interesse') {
+      // A última mensagem dela era uma recusa: desqualifica, pausa e não insiste.
+      const updated = await this.leadsService.update(lead.id, {
+        aiPaused: true,
+        waStage: 'encerrado' as any,
+        temperature: 'frio' as any,
+        efraimFollowupAt: null,
+        ...(lead.kanbanStageManual ? {} : { kanbanStage: 'nao-qualificado' as any }),
+      });
+      this.realtime.emitLeadUpdated(updated);
+      this.logger.log(`[Efraim] Follow-up ${attempt} cancelado pro lead ${lead.phone} — sem interesse, card desqualificado e IA pausada`);
+      return;
+    }
+    if (!ai.success || !ai.reply) {
+      this.logger.warn(`[Efraim] Follow-up ${attempt} não enviado pro lead ${lead.phone} (stage=${ai.stage}, success=${ai.success})`);
+      return;
+    }
+
+    const timestamp = new Date().toISOString();
+    const updated = await this.leadsService.update(lead.id, {
+      efraimSlots: slots.length ? slots : null,
+      waLastMessageAt: new Date(),
+      aiContext: [...prior, { role: 'assistant', source: 'efraim', followup: attempt, content: ai.reply.replace(/\|\|\|/g, '\n'), timestamp }] as any,
+    });
+    const ids = await this.sendBubbles(lead.phone, ai.reply);
+    await this.leadsService.attachWaMessageIds(lead.id, timestamp, ids).catch(() => undefined);
+    this.realtime.emitLeadUpdated(updated);
+    this.logger.log(`[Efraim] Follow-up ${attempt} enviado pro lead ${lead.phone}`);
   }
 
   // ─── Respostas do lead (chamado pelo SdrController) ──────────────────────
@@ -494,9 +619,17 @@ export class EfraimQuizService {
       waStage: (finished ? 'encerrado' : 'qualificacao') as any,
       ...kanbanPatch,
     };
+    // Respondeu → o relógio do follow-up reinicia do zero. Desfecho final
+    // (reunião, sem interesse, humano) encerra: não puxa mais.
+    patch.efraimFollowupAt = finished ? null : this.nextFollowupAt(0, now);
+    patch.efraimFollowupCount = finished ? undefined : 0;
     if (finished) patch.aiPaused = true;
     if (meeting) patch.meetingAt = meeting;
-    if (ai.stage === 'sem_interesse') patch.temperature = 'frio' as any;
+    if (ai.stage === 'sem_interesse') {
+      // Disse que não tem interesse: desqualifica o card e para a IA.
+      patch.temperature = 'frio' as any;
+      if (!lead.kanbanStageManual) patch.kanbanStage = 'nao-qualificado' as any;
+    }
 
     const previousMeeting = lead.meetingAt ? new Date(lead.meetingAt) : null;
     const updated = await this.leadsService.update(lead.id, patch);

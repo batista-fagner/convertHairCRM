@@ -237,8 +237,15 @@ function EfraimConfigBar() {
         className={`flex items-center gap-2 text-sm font-medium transition ${config.enabled ? 'text-emerald-600' : 'text-slate-500'}`}
       >
         {config.enabled ? <ToggleRight className="w-7 h-7" /> : <ToggleLeft className="w-7 h-7" />}
-        {config.enabled ? 'Ligado — chama quem termina o quiz' : 'Desligado — ninguém recebe mensagem'}
+        {config.enabled ? 'Ligado — chama quem deixa o contato no quiz' : 'Desligado — ninguém recebe mensagem'}
       </button>
+      <label className={`flex items-center gap-1.5 text-xs px-2 py-1 rounded-md border cursor-pointer transition ${
+        config.followupEnabled ? 'border-amber-400 bg-amber-50 text-amber-800' : 'border-slate-200 text-slate-500 hover:border-slate-300'
+      }`}>
+        <input type="checkbox" id="efraim-followup" checked={!!config.followupEnabled}
+          onChange={() => save({ followupEnabled: !config.followupEnabled })} disabled={saving} className="accent-amber-500" />
+        Follow-up (2 toques)
+      </label>
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-xs text-slate-500 font-medium">Quizzes:</span>
         {quizzes.map((q) => (
@@ -252,7 +259,8 @@ function EfraimConfigBar() {
       </div>
       {saving && <Loader2 className="w-4 h-4 text-slate-400 animate-spin" />}
       <p className="basis-full text-[11px] text-slate-400">
-        Sai pelo mesmo número da Sofia, 3 min depois do quiz, só entre 8h e 21h. Não chama quem respondeu "Quero comprar cabelo" ou "Não é o meu momento", nem quem já conversou no WhatsApp ou teve o card movido.
+        Sai pelo mesmo número da Sofia, 3 min depois do contato, só entre 8h e 21h. Não chama quem respondeu "Quero comprar cabelo" ou "Não é o meu momento", nem quem já conversou no WhatsApp ou teve o card movido.
+        Com o follow-up ligado, quem não responde recebe 2 toques: 3h depois e na manhã seguinte. Cada resposta do lead reinicia a contagem; depois do 2º toque ele para de puxar, mas segue respondendo se a pessoa aparecer.
       </p>
     </div>
   )

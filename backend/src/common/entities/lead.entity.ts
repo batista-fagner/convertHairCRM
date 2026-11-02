@@ -207,9 +207,17 @@ export class Lead {
   @Column({ name: 'efraim_opening_sent_at', type: 'timestamptz', nullable: true })
   efraimOpeningSentAt?: Date | null;
 
-  // Os 2 horários oferecidos na abertura (ISO) — ficam no contexto da IA nos turnos seguintes.
+  // Os horários oferecidos na abertura (ISO) — ficam no contexto da IA nos turnos seguintes.
   @Column({ name: 'efraim_slots', type: 'jsonb', nullable: true })
   efraimSlots?: string[] | null;
+
+  // Follow-up do Efraim: quando o próximo toque vence (null = não tem mais) e
+  // quantos já saíram. Zera a cada resposta do lead.
+  @Column({ name: 'efraim_followup_at', type: 'timestamptz', nullable: true })
+  efraimFollowupAt?: Date | null;
+
+  @Column({ name: 'efraim_followup_count', type: 'int', default: 0 })
+  efraimFollowupCount?: number;
 
   @Column({ name: 'assigned_to', type: 'varchar', nullable: true })
   assignedTo?: string | null;

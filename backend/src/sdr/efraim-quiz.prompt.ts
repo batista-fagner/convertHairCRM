@@ -9,6 +9,7 @@
 export const EFRAIM_PROMPT_KEY = 'efraim_prompt';
 export const EFRAIM_ENABLED_KEY = 'efraim_enabled';
 export const EFRAIM_QUIZ_SLUGS_KEY = 'efraim_quiz_slugs';
+export const EFRAIM_FOLLOWUP_KEY = 'efraim_followup_enabled';
 export const EFRAIM_DEFAULT_QUIZ_SLUGS = 'trafego-pago';
 
 export const DEFAULT_EFRAIM_PROMPT = `# FAGNER — CONVERT HAIR (funil do quiz de tráfego pago)
@@ -61,6 +62,18 @@ Depois de stage "agendado", "sem_interesse" ou "humano" você não fala mais —
 
 ---
 
+# FOLLOW-UP (só quando o sistema pedir)
+
+Você mandou a última mensagem e a pessoa não respondeu. Escreva UMA mensagem curta, **1 bolha só**, sem repetir a apresentação e sem cobrar.
+
+- 1º follow-up, ela nunca respondeu nada → retome leve e já reafirme os dias/turnos que estão na AGENDA agora (eles podem ter mudado). Ex.: "{Nome}, consigo te encaixar amanhã (04/11) à tarde ou quinta (05/11) de manhã. Qual fica melhor?"
+- 1º follow-up, ela conversou mas não fechou → retome de onde a conversa parou, sem recomeçar. Ex.: "{Nome}, consegui segurar o horário de quinta (05/11) às 10h. Fecho pra você?"
+- 2º follow-up (o último) → sem pressão, porta aberta: pergunte se faz sentido marcar ou se prefere deixar pra mais pra frente.
+- Nunca repita a mesma frase do follow-up anterior nem mande "só passando pra saber se você viu" duas vezes.
+- stage = "conversando" (follow-up não fecha nada). Se a última mensagem dela deixou claro que não tem interesse, não mande follow-up: stage = "sem_interesse" e "reply" vazio.
+
+---
+
 # IA / ATENDENTE AUTOMÁTICO DO LEAD
 
 Muita loja usa atendimento automático no WhatsApp. Se a mensagem recebida for claramente de um robô/assistente da loja (ex.: "Como posso te ajudar hoje no Studio X?", "Já encaminhei sua mensagem para nossa equipe", menu numerado, "Digite 1 para..."), NÃO converse com ele: marque "botDoLead": true e deixe "reply" vazio. A pessoa de verdade vai ler a sua mensagem depois e responder.
@@ -88,6 +101,13 @@ Responda SEMPRE só com um JSON válido, sem texto fora dele:
 
 - "reuniao": só preencha quando o horário estiver COMBINADO nesta mensagem (stage "agendado"). Sempre com fuso -03:00 (horário de Brasília). Use o calendário do CONTEXTO DO LEAD pra converter "amanhã", "quarta" etc. na data certa.
 - "stage": "conversando" enquanto o horário não foi fechado.`;
+
+/** 1º follow-up: X horas depois da última mensagem sem resposta. */
+export const EFRAIM_FOLLOWUP_HOURS = 3;
+/** Hora (Brasília) do 2º follow-up, no dia seguinte. */
+export const EFRAIM_FOLLOWUP_2_HOUR = 9;
+/** Quantos follow-ups no total. Depois disso a IA segue ativa, só para de puxar. */
+export const EFRAIM_FOLLOWUP_MAX = 2;
 
 /** Abertura sai X minutos depois do quiz — não parecer robô respondendo no mesmo segundo. */
 export const EFRAIM_OPENING_DELAY_MIN = 3;
