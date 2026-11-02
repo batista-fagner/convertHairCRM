@@ -38,6 +38,8 @@ const SEND_UNTIL_HOUR = 21;
 const OPENING_STALE_HOURS = 14;
 /** Horários "aleatórios" oferecidos enquanto não existe a agenda interna: início do par (h, h+1). */
 const SLOT_START_HOURS = [10, 11, 14, 15, 16, 17];
+/** Pausa entre uma bolha e a seguinte — o lead vê "digitando..." nesse tempo. */
+const BUBBLE_GAP_MS = 5000;
 /** Respostas do quiz que tiram o lead do Efraim (não é perfil pra reunião). */
 const SKIP_ANSWERS = [/quero comprar cabelo/i, /n[aã]o [eé] o meu momento/i];
 
@@ -330,6 +332,8 @@ export class EfraimQuizService {
     if (greeting && ai.reply) ai.reply = this.forceGreeting(ai.reply, greeting);
     return {
       reply: ai.reply.replace(/\|\|\|/g, '\n\n'),
+      // Uma entrada por bolha: é assim que chega no WhatsApp (5s entre elas).
+      bubbles: ai.reply.split('|||').map((b) => b.trim()).filter(Boolean),
       stage: isOpening ? 'abertura' : ai.stage,
       reuniao: ai.reuniao,
       reuniaoHuman: this.parseMeeting(ai.reuniao) ? formatSlotHuman(new Date(ai.reuniao!), now) : null,
@@ -549,9 +553,13 @@ export class EfraimQuizService {
 
   private async sendBubbles(phone: string, reply: string): Promise<string[]> {
     const ids: string[] = [];
-    for (const bubble of reply.split('|||').map((b) => b.trim()).filter(Boolean)) {
-      // "digitando..." proporcional ao tamanho (~45 caracteres/s), como a Sofia.
-      const delay = Math.min(8000, Math.max(1200, Math.round(bubble.length * (1000 / 45))));
+    const bubbles = reply.split('|||').map((b) => b.trim()).filter(Boolean);
+    for (const [index, bubble] of bubbles.entries()) {
+      // A 1ª sai quase na hora (só o tempo de "digitando", ~45 caracteres/s,
+      // como a Sofia); as seguintes esperam BUBBLE_GAP_MS pra conversa não
+      // chegar em bloco. O "digitando..." fica aparecendo nesse intervalo.
+      const typing = Math.min(8000, Math.max(1200, Math.round(bubble.length * (1000 / 45))));
+      const delay = index === 0 ? typing : BUBBLE_GAP_MS;
       const number = phone.startsWith('55') ? phone : `55${phone}`;
       await firstValueFrom(
         this.http.post(`${this.uazapiBaseUrl}/message/presence`, { number, presence: 'composing', delay }, { headers: { token: this.uazapiToken } }),

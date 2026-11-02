@@ -60,7 +60,7 @@ function EfraimSimulator() {
     setMessages([])
     setSlots(null)
     const data = await call('', [])
-    if (data) setMessages([{ role: 'assistant', content: data.reply }])
+    if (data) setMessages([{ role: 'assistant', content: data.reply, bubbles: data.bubbles }])
   }
 
   const send = async () => {
@@ -75,7 +75,7 @@ function EfraimSimulator() {
       ...prev,
       data.botDoLead
         ? { role: 'note', content: 'Efraim identificou o atendimento automático da loja e não respondeu — espera a pessoa de verdade.' }
-        : { role: 'assistant', content: data.reply, reuniaoHuman: data.reuniaoHuman },
+        : { role: 'assistant', content: data.reply, bubbles: data.bubbles, reuniaoHuman: data.reuniaoHuman },
     ])
   }
 
@@ -140,24 +140,33 @@ function EfraimSimulator() {
             </button>
           </div>
         )}
-        {messages.map((m, i) => (
-          m.role === 'note' ? (
-            <p key={i} className="text-center text-[11px] text-slate-400 italic px-6">{m.content}</p>
-          ) : (
-            <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div className={`max-w-[80%] px-3 py-2 rounded-2xl text-sm whitespace-pre-wrap ${
-                m.role === 'user' ? 'bg-amber-500 text-white rounded-br-sm' : 'bg-white border border-slate-200 text-slate-800 rounded-bl-sm'
-              }`}>
-                {m.content}
-                {m.reuniaoHuman && (
-                  <p className="flex items-center gap-1 text-[10px] mt-1 font-medium text-emerald-600">
-                    <CalendarCheck className="w-3 h-3" /> Reunião gravada no card: {m.reuniaoHuman}
-                  </p>
-                )}
-              </div>
+        {messages.map((m, i) => {
+          if (m.role === 'note') {
+            return <p key={i} className="text-center text-[11px] text-slate-400 italic px-6">{m.content}</p>
+          }
+          // No WhatsApp cada bolha é uma mensagem, com 5s entre elas — o
+          // simulador mostra separadas pra bater com o que o lead recebe.
+          const bubbles = m.bubbles?.length ? m.bubbles : [m.content]
+          return (
+            <div key={i} className="space-y-1.5">
+              {bubbles.map((text, b) => (
+                <div key={b} className={`flex items-end gap-1.5 ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`max-w-[80%] px-3 py-2 rounded-2xl text-sm whitespace-pre-wrap ${
+                    m.role === 'user' ? 'bg-amber-500 text-white rounded-br-sm' : 'bg-white border border-slate-200 text-slate-800 rounded-bl-sm'
+                  }`}>
+                    {text}
+                    {m.reuniaoHuman && b === bubbles.length - 1 && (
+                      <p className="flex items-center gap-1 text-[10px] mt-1 font-medium text-emerald-600">
+                        <CalendarCheck className="w-3 h-3" /> Reunião gravada no card: {m.reuniaoHuman}
+                      </p>
+                    )}
+                  </div>
+                  {m.role !== 'user' && b > 0 && <span className="text-[10px] text-slate-400 shrink-0">+5s</span>}
+                </div>
+              ))}
             </div>
           )
-        ))}
+        })}
         {loading && messages.length > 0 && (
           <div className="flex justify-start">
             <div className="bg-white border border-slate-200 px-3 py-2 rounded-2xl rounded-bl-sm">
