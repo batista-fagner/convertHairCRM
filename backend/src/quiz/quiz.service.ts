@@ -44,6 +44,34 @@ function isBotUserAgent(userAgent?: string): boolean {
   return !!userAgent && BOT_USER_AGENT_PATTERN.test(userAgent);
 }
 
+// Faixas de IP da própria rede do Meta (AS32934). A revisão de anúncio abre a
+// página com User-Agent de navegador comum (achado em 2026-11-02: 5 "sessões"
+// em 1s ao publicar a campanha, de 31.13.x / 66.220.x / 173.252.x), então o
+// filtro de UA não pega. Gente de verdade nunca sai desses IPs — mesmo no
+// navegador do Instagram/Facebook o acesso sai do IP do celular da pessoa.
+// AWS e outras nuvens ficam de fora de propósito (tem gente real atrás de VPN).
+const META_IPV4_RANGES: [string, number][] = [
+  ['31.13.24.0', 21], ['31.13.64.0', 18], ['45.64.40.0', 22], ['57.144.0.0', 14],
+  ['66.220.144.0', 20], ['69.63.176.0', 20], ['69.171.224.0', 19], ['74.119.76.0', 22],
+  ['102.132.96.0', 20], ['103.4.96.0', 22], ['129.134.0.0', 16], ['157.240.0.0', 16],
+  ['163.70.128.0', 17], ['173.252.64.0', 18], ['179.60.192.0', 22], ['185.60.216.0', 22],
+  ['185.89.216.0', 22], ['204.15.20.0', 22],
+];
+const ipv4ToInt = (ip: string) => ip.split('.').reduce((acc, octet) => ((acc << 8) + Number(octet)) >>> 0, 0);
+const META_IPV4_MASKS = META_IPV4_RANGES.map(([base, bits]) => {
+  const mask = bits === 0 ? 0 : (~0 << (32 - bits)) >>> 0;
+  return { net: (ipv4ToInt(base) & mask) >>> 0, mask };
+});
+
+function isMetaNetworkIp(rawIp?: string): boolean {
+  if (!rawIp) return false;
+  const ip = rawIp.trim().toLowerCase().replace(/^::ffff:/, '');
+  if (ip.startsWith('2a03:2880:')) return true; // IPv6 do Meta
+  if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(ip)) return false;
+  const n = ipv4ToInt(ip);
+  return META_IPV4_MASKS.some(({ net, mask }) => ((n & mask) >>> 0) === net);
+}
+
 // As datas do filtro do funil ('YYYY-MM-DD') são dias no fuso de Brasília — é
 // onde o operador do CRM está, e é o que ele espera ver ao escolher "hoje".
 // Agrupar/cortar em UTC jogaria toda sessão da noite pro dia seguinte. O Brasil
@@ -275,6 +303,9 @@ export class QuizService {
     // Auditoria automatizada (Lighthouse/PageSpeed Insights) ou crawler — não é
     // gente respondendo o quiz, não deve virar sessão nenhuma no funil.
     if (isBotUserAgent(dto.userAgent)) return { ok: true };
+    // Revisão de anúncio do Meta (UA de navegador comum, IP da rede do Meta) —
+    // também não vira sessão nem manda PageView pro pixel.
+    if (isMetaNetworkIp(dto.clientIp)) return { ok: true };
 
     let progress = await this.progressRepo.findOne({ where: { quizId: quiz.id, clickId: dto.clickId } });
     const isNewSession = !progress;
