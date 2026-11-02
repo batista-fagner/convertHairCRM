@@ -20,7 +20,7 @@ import {
   EFRAIM_QUIZ_SLUGS_KEY,
 } from './efraim-quiz.prompt';
 import { AgendaService } from '../agenda/agenda.service';
-import { WEEKDAYS, addDays, brt, brtAt, formatSlotHuman, formatSlotPairHuman } from '../common/brt.util';
+import { WEEKDAYS, addDays, brt, brtAt, formatDayShiftHuman, formatSlotHuman } from '../common/brt.util';
 import { isAutoReply } from './auto-reply.util';
 import { extractCandidateFirstName } from './name-gender.util';
 
@@ -137,7 +137,10 @@ function buildLeadContext(lead: EfraimLeadSnapshot, now: Date, greeting?: string
   if (lead.meetingAt) {
     lines.push(`- Reunião JÁ AGENDADA pela própria pessoa: ${formatSlotHuman(new Date(lead.meetingAt), now)}. Na bolha 3 CONFIRME exatamente esse dia e horário (ela já agendou) — NÃO ofereça opções de horário.`);
   } else if (lead.efraimSlots?.length) {
-    lines.push(`- Horários sugeridos (afirme exatamente assim na bolha 3): "${formatSlotPairHuman(lead.efraimSlots.map((s) => new Date(s)), now)}"`);
+    const offered = lead.efraimSlots.map((s) => new Date(s));
+    lines.push(
+      `- Dias/turnos a oferecer na bolha 3 (copie exatamente assim, SEM dizer hora): "${formatDayShiftHuman(offered, now)}"`,
+    );
   }
   if (lead.agendaSummary) {
     lines.push(
@@ -413,7 +416,7 @@ export class EfraimQuizService {
       // IA fora do ar: texto fixo no mesmo estilo, a abertura não se perde.
       const third = lead.meetingAt
         ? `Você agendou nossa reunião pra ${formatSlotHuman(new Date(lead.meetingAt), now)}, já está na agenda aqui! 1h antes te envio o link da sala`
-        : `Quero deixar marcada nossa reunião de apresentação do método. O melhor horário pra você é ${formatSlotPairHuman(slots.map((s) => new Date(s)), now)}?`;
+        : `Quero deixar marcada nossa reunião de apresentação do método. Tenho ${formatDayShiftHuman(slots.map((s) => new Date(s)), now)}. Qual horário fica melhor pra você?`;
       reply = [greeting, 'Aqui é o Fagner da Convert Hair, vi que você respondeu nosso quiz pra vender mais cabelo com tráfego pago. É uma ótima oportunidade pra gente dobrar o seu faturamento', third].join('|||');
       this.logger.warn(`[Efraim] IA falhou na abertura de ${lead.phone} — usando texto fixo`);
     }

@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/common';
 import { AgendaService } from './agenda.service';
-import { formatSlotHuman, formatSlotPairHuman } from '../common/brt.util';
+import { formatDayShiftHuman, formatSlotHuman } from '../common/brt.util';
 
 /** Agenda interna (tela /agenda): disponibilidade semanal, bloqueios e horários livres. */
 @Controller('agenda')
@@ -46,8 +46,8 @@ export class AgendaController {
     return {
       days: available.map((d) => ({ ...d, slots: d.slots.map((s) => ({ at: s.at.toISOString(), hour: s.hour })) })),
       next: next.map((at) => ({ at: at.toISOString(), human: formatSlotHuman(at, now) })),
-      // Frase exata que o Efraim afirma na abertura.
-      nextHuman: formatSlotPairHuman(next, now),
+      // Dia + turno: a frase exata que o Efraim afirma na abertura.
+      nextHuman: formatDayShiftHuman(next, now),
       summary: await this.agenda.agendaSummary(now),
     };
   }

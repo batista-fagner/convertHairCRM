@@ -189,13 +189,14 @@ export class AgendaService {
   }
 
   /**
-   * O que o Efraim afirma na abertura: horários de 2 dias diferentes (os mais
-   * próximos), com até `perDay` horas em cada — "terça às 10h ou às 11h, ou
-   * quarta às 16h ou às 17h". Dia com menos hora livre entra com o que tem.
+   * O que o Efraim afirma na abertura: TODAS as horas livres dos `dayCount`
+   * dias mais próximos. A mensagem só fala dia + turno ("terça de manhã ou à
+   * tarde"), então os turnos precisam vir completos — a pessoa escolhe a hora
+   * depois, dentro do turno que ela pedir.
    */
-  async openingSlots(now = new Date(), dayCount = 2, perDay = 2): Promise<Date[]> {
+  async openingSlots(now = new Date(), dayCount = 2): Promise<Date[]> {
     const days = await this.availableDays(now);
-    return days.slice(0, dayCount).flatMap((day) => day.slots.slice(0, perDay).map((s) => s.at));
+    return days.slice(0, dayCount).flatMap((day) => day.slots.map((s) => s.at));
   }
 
   /** Alternativas pra quando a pessoa recusa os primeiros: os próximos dias com horário. */

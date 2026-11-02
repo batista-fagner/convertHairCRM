@@ -260,8 +260,9 @@ export default function AgendaAvailability() {
             ) : (
               <>
                 <p className="text-slate-700">
-                  “O melhor horário pra você é <strong>{preview.nextHuman || preview.next.map((s) => s.human).join(' ou ')}</strong>?”
+                  “Tenho <strong>{preview.nextHuman || preview.next.map((s) => s.human).join(' ou ')}</strong>. Qual horário fica melhor pra você?”
                 </p>
+                <p className="mt-1 text-[11px] text-slate-400">A abertura fala o dia e o turno; a hora exata ele passa quando a pessoa escolhe o turno.</p>
                 {preview.summary && (
                   <>
                     <p className="mt-3 text-xs font-medium text-slate-500 uppercase tracking-wide">Alternativas que ele conhece</p>

@@ -99,3 +99,36 @@ export function formatSlotPairHuman(slots: Date[], now: Date): string {
     })
     .join(', ou ');
 }
+
+export type BrtShift = 'manha' | 'tarde' | 'noite';
+export const SHIFT_LABEL: Record<BrtShift, string> = { manha: 'de manhã', tarde: 'à tarde', noite: 'à noite' };
+
+export function shiftOf(d: Date): BrtShift {
+  const h = brt(d).hour;
+  if (h < 12) return 'manha';
+  return h < 18 ? 'tarde' : 'noite';
+}
+
+/**
+ * Dia + turno, sem hora: "amanhã (terça, 03/11) de manhã ou à tarde, ou quarta
+ * (04/11) à tarde". É o que o Efraim afirma na abertura — a pessoa escolhe a
+ * hora depois, dentro do turno que ela pedir.
+ */
+export function formatDayShiftHuman(slots: Date[], now: Date): string {
+  const list = slots.filter(Boolean).sort((a, b) => a.getTime() - b.getTime());
+  if (!list.length) return '';
+  const byDay: { ymd: string; first: Date; shifts: BrtShift[] }[] = [];
+  for (const slot of list) {
+    const ymd = brt(slot).ymd;
+    const shift = shiftOf(slot);
+    const last = byDay[byDay.length - 1];
+    if (last?.ymd === ymd) {
+      if (!last.shifts.includes(shift)) last.shifts.push(shift);
+    } else {
+      byDay.push({ ymd, first: slot, shifts: [shift] });
+    }
+  }
+  return byDay
+    .map(({ first, shifts }) => `${formatDayHuman(first, now)} ${shifts.map((s) => SHIFT_LABEL[s]).join(' ou ')}`)
+    .join(', ou ');
+}
