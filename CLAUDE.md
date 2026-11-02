@@ -283,6 +283,18 @@ O lead também aparece no **Kanban** (raia Novo, IA pausada, **tag "Form" + bord
 - **Oferta low ticket** `/q/:slug/oferta` (`QuizLowTicket.tsx`, RASCUNHO até o desenho final): `quiz.lowTicketPage` + checkbox "↪ Oferta" por opção (`goesToLowTicket`). Desligada = o quiz segue normal. Botão → `checkoutUrl` (Greenn).
 - Quiz `trafego-pago`: pixel Convert hair, MQL `mql-form-trafego` (perguntas 2/3/4), as duas páginas **desligadas** com rascunho, opção "Infelizmente não é o meu momento" já marcada pra oferta.
 
+## 🤝 Efraim — agente do funil do quiz (2026-11-02)
+
+Agente separado da Sofia, pra quem termina o quiz (hoje `trafego-pago`). **Fala primeiro**, se apresenta **como o Fagner** e só quer deixar marcada a reunião de apresentação. Sai pelo **mesmo número da Sofia** (`SDR_UAZAPI_TOKEN`).
+
+- **Configurações → Efraim**: liga/desliga (padrão **desligado**), quais quizzes, prompt editável (`settings.efraim_prompt`) e simulador que começa pela abertura. Formato JSON fica no código (`efraim-quiz.prompt.ts`), modelo = o mesmo da Sofia.
+- **Fluxo:** submit do quiz → `QuizService` marca `leads.efraim_opening_at` (+3 min) → cron de 1 em 1 min (`EfraimQuizService.sendDueOpenings`, só 8h–21h BRT, reserva atômica por `efraim_opening_sent_at`) gera a abertura (3 bolhas: saudação calculada no código | apresentação + faturamento do quiz | duas opções de horário **afirmando** ou confirmação se `meeting_at` já existe) → `ai_agent='efraim'`, `ai_paused=false`.
+- **Respostas:** `SdrController.processMessage` desvia pra `EfraimQuizService.handleReply` quando `ai_agent='efraim'`. Ignora resposta automática / IA de atendimento da loja (`botDoLead`). `agendado` → grava `meeting_at`, pausa a IA e avisa os números de "Aviso de Reunião Agendada". `humano`/`sem_interesse` → pausa e avisa os números do SDR.
+- **Não chama:** quem respondeu "Quero comprar cabelo" ou "não é o meu momento", quem já tem conversa, card fora de "Novo", abertura pendente há mais de 14h.
+- **Horários oferecidos são sorteados** (próximo dia útil, par 10/11/14/15/16/17h) até existir a agenda interna — **próximo passo**: agenda própria pra o Efraim consultar. Calendly não avisa o CRM (sem webhook).
+- Follow-up da Sofia exclui `ai_agent='efraim'`. O Efraim ainda **não tem follow-up** pra quem não responde a abertura.
+- Existe um `efraim/` antigo (live "funil com IA", rota `webhooks/uazapi`) — sem uso, não tem relação com este.
+
 ## 📊 Tracking
 
 - UTMs capturados na `ConvertHairPage` (click no botão)

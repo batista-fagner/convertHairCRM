@@ -195,6 +195,22 @@ export class Lead {
   @Column({ name: 'ai_paused', type: 'boolean', default: false })
   aiPaused: boolean;
 
+  // Qual IA conversa com o lead no número do SDR: null = Sofia (padrão),
+  // 'efraim' = agente do funil do quiz (ver sdr/efraim-quiz.service.ts).
+  @Column({ name: 'ai_agent', type: 'varchar', nullable: true })
+  aiAgent?: 'efraim' | null;
+
+  // Abertura proativa do Efraim: agendada no submit do quiz, enviada pelo cron.
+  @Column({ name: 'efraim_opening_at', type: 'timestamptz', nullable: true })
+  efraimOpeningAt?: Date | null;
+
+  @Column({ name: 'efraim_opening_sent_at', type: 'timestamptz', nullable: true })
+  efraimOpeningSentAt?: Date | null;
+
+  // Os 2 horários oferecidos na abertura (ISO) — ficam no contexto da IA nos turnos seguintes.
+  @Column({ name: 'efraim_slots', type: 'jsonb', nullable: true })
+  efraimSlots?: string[] | null;
+
   @Column({ name: 'assigned_to', type: 'varchar', nullable: true })
   assignedTo?: string | null;
 

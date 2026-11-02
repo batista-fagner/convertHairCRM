@@ -266,7 +266,7 @@ export class SdrFollowupService {
         'lead.aiPaused',
         'lead.tags',
       ])
-      .where('lead.agent_mode = :mode', { mode: 'sdr' })
+      .where("lead.agent_mode = :mode AND lead.ai_agent IS DISTINCT FROM 'efraim'", { mode: 'sdr' })
       .andWhere('lead.wa_last_message_at IS NOT NULL')
       .andWhere('lead.wa_last_message_at <= :earliestCutoff', { earliestCutoff })
       // Nunca recebeu follow-up (candidato ao 1º toque) OU está no meio de uma
@@ -466,7 +466,7 @@ export class SdrFollowupService {
         'lead.notes',
         'lead.tags',
       ])
-      .where('lead.agent_mode = :mode', { mode: 'sdr' });
+      .where("lead.agent_mode = :mode AND lead.ai_agent IS DISTINCT FROM 'efraim'", { mode: 'sdr' });
     if (rule.kanbanStage) qb.andWhere('lead.kanban_stage = :stage', { stage: rule.kanbanStage });
     if (rule.utmCampaign) qb.andWhere('lead.utm_campaign = :campaign', { campaign: rule.utmCampaign });
     if (rule.adTitle) qb.andWhere('lead.ctwa_ad_title = :adTitle', { adTitle: rule.adTitle });
@@ -625,7 +625,7 @@ export class SdrFollowupService {
     // Total real de follow-ups já enviados (sem limite — usado nos cards de resumo)
     const totalSent = await this.leadsRepo
       .createQueryBuilder('lead')
-      .where('lead.agent_mode = :mode', { mode: 'sdr' })
+      .where("lead.agent_mode = :mode AND lead.ai_agent IS DISTINCT FROM 'efraim'", { mode: 'sdr' })
       .andWhere('lead.followup_sent_at IS NOT NULL')
       .getCount();
 
@@ -633,7 +633,7 @@ export class SdrFollowupService {
     const sentLeads = await this.leadsRepo
       .createQueryBuilder('lead')
       .select(['lead.id', 'lead.name', 'lead.phone', 'lead.kanbanStage', 'lead.followupSentAt'])
-      .where('lead.agent_mode = :mode', { mode: 'sdr' })
+      .where("lead.agent_mode = :mode AND lead.ai_agent IS DISTINCT FROM 'efraim'", { mode: 'sdr' })
       .andWhere('lead.followup_sent_at IS NOT NULL')
       .orderBy('lead.followup_sent_at', 'DESC')
       .take(20)
@@ -667,7 +667,7 @@ export class SdrFollowupService {
         'lead.aiPaused',
         'lead.tags',
       ])
-      .where('lead.agent_mode = :mode', { mode: 'sdr' })
+      .where("lead.agent_mode = :mode AND lead.ai_agent IS DISTINCT FROM 'efraim'", { mode: 'sdr' })
       .andWhere('lead.wa_last_message_at IS NOT NULL')
       // Mesma condição do cron: quem nunca recebeu + quem está no meio da cadência.
       .andWhere('(lead.followup_sent_at IS NULL OR lead.followup_next_at IS NOT NULL)')

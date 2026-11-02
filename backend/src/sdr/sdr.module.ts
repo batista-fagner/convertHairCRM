@@ -14,6 +14,8 @@ import { AvatarStorageService } from './avatar-storage.service';
 import { SdrGroupJoinService } from './sdr-group-join.service';
 import { GroupWorkshopService } from './group-workshop.service';
 import { GroupWorkshopController } from './group-workshop.controller';
+import { EfraimQuizService } from './efraim-quiz.service';
+import { EfraimQuizController } from './efraim-quiz.controller';
 import { Lead } from '../common/entities/lead.entity';
 import { FollowupRule } from '../common/entities/followup-rule.entity';
 import { FollowupVideo } from '../common/entities/followup-video.entity';
@@ -45,7 +47,7 @@ const queueProviders = queueEngineEnabled ? [SdrFollowupScanProcessor] : [];
     QuizModule,
     ...queueParts,
   ],
-  controllers: [SdrController, FollowupController, ManualMessageController, GroupWorkshopController],
-  providers: [SdrService, SdrFollowupService, SdrFollowupQueueService, FollowupVideoService, AvatarStorageService, SdrGroupJoinService, GroupWorkshopService, ...queueProviders],
+  controllers: [SdrController, FollowupController, ManualMessageController, GroupWorkshopController, EfraimQuizController],
+  providers: [SdrService, EfraimQuizService, SdrFollowupService, SdrFollowupQueueService, FollowupVideoService, AvatarStorageService, SdrGroupJoinService, GroupWorkshopService, ...queueProviders],
 })
 export class SdrModule {}

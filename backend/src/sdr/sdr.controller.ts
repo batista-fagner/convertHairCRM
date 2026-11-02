@@ -9,6 +9,7 @@ import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { SettingsService } from '../settings/settings.service';
 import { EnrichmentService } from '../enrichment/enrichment.service';
 import { AvatarStorageService } from './avatar-storage.service';
+import { EfraimQuizService } from './efraim-quiz.service';
 import { Lead, WaStage } from '../common/entities/lead.entity';
 import { buildOpeningGreeting } from './name-gender.util';
 import { SDR_TRANSFER_MESSAGE } from './sdr.prompt';
@@ -95,6 +96,7 @@ export class SdrController {
     private readonly settings: SettingsService,
     private readonly enrichmentService: EnrichmentService,
     private readonly avatarStorage: AvatarStorageService,
+    private readonly efraimQuiz: EfraimQuizService,
   ) {
     this.uazapiBaseUrl = config.get('SDR_UAZAPI_BASE_URL') || config.get('UAZAPI_BASE_URL') || 'https://free.uazapi.com';
     this.uazapiToken = config.get('SDR_UAZAPI_TOKEN') || '';
@@ -410,6 +412,12 @@ export class SdrController {
       lead = await this.leadsService.update(lead.id, { aiContext: ctx, waLastMessageAt: new Date() });
       this.realtime.emitLeadUpdated(lead);
       this.logger.log(`[SDR] Lead ${phone} com IA pausada — mensagem registrada, sem resposta`);
+      return;
+    }
+
+    // Lead do funil do quiz que o Efraim abordou: quem responde é o Efraim, não a Sofia.
+    if (lead.aiAgent === 'efraim') {
+      await this.efraimQuiz.handleReply(lead, text, incomingMedia);
       return;
     }
 

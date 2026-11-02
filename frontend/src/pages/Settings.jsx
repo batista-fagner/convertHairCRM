@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { Settings as SettingsIcon, Key, Webhook, MessageCircle, Share2, Bot, Save, RotateCcw, Loader2, CheckCircle2, Send, Trash2, Clock, Sparkles, ToggleLeft, ToggleRight, Wifi, WifiOff, Timer, RefreshCw, XCircle, Activity, Plus, Pencil, Tag, Layers, Video, Copy, CalendarClock } from 'lucide-react'
 
+import EfraimSettings from '../components/EfraimSettings'
+
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3002/api'
 
 const integrations = [
@@ -1779,6 +1781,8 @@ export default function Settings() {
       </div>
 
       <SdrPromptEditor />
+
+      <EfraimSettings />
 
       <IgCatchallEditor />
 

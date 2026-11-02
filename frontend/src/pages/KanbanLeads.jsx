@@ -271,6 +271,14 @@ function CardContent({ lead, overlay = false }) {
             <ListChecks className="w-3 h-3 shrink-0" /> Quiz
           </span>
         )}
+        {lead.aiAgent === 'efraim' && (
+          <span
+            className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${lead.aiPaused ? 'bg-slate-100 text-slate-500' : 'bg-amber-500 text-white'}`}
+            title={lead.aiPaused ? 'Efraim já passou a conversa pra equipe' : 'Efraim (IA do quiz) está conversando'}
+          >
+            Efraim
+          </span>
+        )}
         {lead.utmSource === 'formulario-instantaneo' && (
           <span
             className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700 font-medium flex items-center gap-0.5"
@@ -388,6 +396,14 @@ function LeadCard({ lead, onOpen, onEdit, onDelete }) {
             title={`Deixou o contato no quiz${lead.quizSlug ? ` "${lead.quizSlug}"` : ''}`}
           >
             <ListChecks className="w-3 h-3 shrink-0" /> Quiz
+          </span>
+        )}
+        {lead.aiAgent === 'efraim' && (
+          <span
+            className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${lead.aiPaused ? 'bg-slate-100 text-slate-500' : 'bg-amber-500 text-white'}`}
+            title={lead.aiPaused ? 'Efraim já passou a conversa pra equipe' : 'Efraim (IA do quiz) está conversando'}
+          >
+            Efraim
           </span>
         )}
         {lead.utmSource === 'formulario-instantaneo' && (
@@ -854,6 +870,11 @@ function ConversationModal({ lead, onClose, onTogglePause, onAssign, onNoteReque
             {lead.tags?.includes('quiz_contato') && (
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-medium flex items-center gap-1">
                 <ListChecks className="w-3 h-3" /> Quiz{lead.quizSlug ? ` · ${lead.quizSlug}` : ''}
+              </span>
+            )}
+            {lead.aiAgent === 'efraim' && (
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${lead.aiPaused ? 'bg-slate-100 text-slate-500' : 'bg-amber-500 text-white'}`}>
+                Efraim{lead.aiPaused ? ' · pausado' : ' · ativo'}
               </span>
             )}
             {lead.utmSource === 'formulario-instantaneo' && (

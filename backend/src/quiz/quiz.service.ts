@@ -14,6 +14,7 @@ import { QuizProgress } from '../common/entities/quiz-progress.entity';
 import { FacebookService } from '../facebook/facebook.service';
 import { TrackingService } from '../tracking/tracking.service';
 import { Lead } from '../common/entities/lead.entity';
+import { efraimOpeningPatch } from '../sdr/efraim-quiz.prompt';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 
 export interface WhatsappGroupCheckResult {
@@ -805,7 +806,13 @@ export class QuizService {
     }
 
     if (capturedPhone) {
-      await this.upsertQuizLead(quiz, { answeredResponses, mqlEvents, capturedPhone, captured }, dto);
+      const lead = await this.upsertQuizLead(quiz, { answeredResponses, mqlEvents, capturedPhone, captured }, dto);
+      // Abertura do Efraim no WhatsApp (agente do funil do quiz) — só marca o
+      // horário; quem decide se envia (ligado? quiz na lista?) é o cron dele.
+      const efraimPatch = lead ? efraimOpeningPatch(lead) : null;
+      if (lead && efraimPatch) {
+        await this.leadsRepo.update(lead.id, efraimPatch).catch((err) => this.logger.error(`[Quiz] Erro ao agendar abertura do Efraim: ${err.message}`));
+      }
     }
 
     this.logger.log(`Quiz "${slug}" respondido — ${answeredResponses.length} pergunta(s), MQL events: ${Array.from(mqlEvents).join(', ') || 'nenhum'}`);
