@@ -78,14 +78,24 @@ export function formatDayHuman(slot: Date, now: Date): string {
 }
 
 /**
- * Dois horários no mesmo dia viram uma frase só: "amanhã (terça, 03/11) às 10h
- * ou às 11h" em vez de repetir a data duas vezes.
+ * Lista de horários virando frase, agrupada por dia pra não repetir a data:
+ * "amanhã (terça, 03/11) às 10h ou às 11h, ou quarta (04/11) às 16h ou às 17h".
  */
 export function formatSlotPairHuman(slots: Date[], now: Date): string {
-  const list = slots.filter(Boolean);
+  const list = slots.filter(Boolean).sort((a, b) => a.getTime() - b.getTime());
   if (!list.length) return '';
-  if (list.length === 1) return formatSlotHuman(list[0], now);
-  const sameDay = list.every((s) => brt(s).ymd === brt(list[0]).ymd);
-  if (!sameDay) return list.map((s) => formatSlotHuman(s, now)).join(' ou ');
-  return `${formatSlotHuman(list[0], now)} ou às ${list.slice(1).map((s) => hourHuman(s)).join(' ou às ')}`;
+  const byDay: { ymd: string; slots: Date[] }[] = [];
+  for (const slot of list) {
+    const ymd = brt(slot).ymd;
+    const last = byDay[byDay.length - 1];
+    if (last?.ymd === ymd) last.slots.push(slot);
+    else byDay.push({ ymd, slots: [slot] });
+  }
+  return byDay
+    .map(({ slots: daySlots }) => {
+      const head = formatSlotHuman(daySlots[0], now);
+      const rest = daySlots.slice(1).map((s) => `às ${hourHuman(s)}`);
+      return rest.length ? `${head} ou ${rest.join(' ou ')}` : head;
+    })
+    .join(', ou ');
 }

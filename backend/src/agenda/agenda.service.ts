@@ -175,14 +175,10 @@ export class AgendaService {
     return new Set(rows.filter((r) => r.meetingAt).map((r) => new Date(r.meetingAt as any).getTime()));
   }
 
-  /**
-   * Os próximos `count` horários livres, dos dias mais próximos — é o que o
-   * Efraim afirma na abertura ("amanhã às 15h ou às 16h").
-   */
+  /** Os próximos `count` horários livres, do dia mais próximo pro mais distante. */
   async nextSlots(count = 2, now = new Date()): Promise<Date[]> {
     const days = await this.availableDays(now);
     const out: Date[] = [];
-    // Prioriza o dia mais próximo: só passa pro dia seguinte quando esgota.
     for (const day of days) {
       for (const slot of day.slots) {
         out.push(slot.at);
@@ -190,6 +186,16 @@ export class AgendaService {
       }
     }
     return out;
+  }
+
+  /**
+   * O que o Efraim afirma na abertura: horários de 2 dias diferentes (os mais
+   * próximos), com até `perDay` horas em cada — "terça às 10h ou às 11h, ou
+   * quarta às 16h ou às 17h". Dia com menos hora livre entra com o que tem.
+   */
+  async openingSlots(now = new Date(), dayCount = 2, perDay = 2): Promise<Date[]> {
+    const days = await this.availableDays(now);
+    return days.slice(0, dayCount).flatMap((day) => day.slots.slice(0, perDay).map((s) => s.at));
   }
 
   /** Alternativas pra quando a pessoa recusa os primeiros: os próximos dias com horário. */

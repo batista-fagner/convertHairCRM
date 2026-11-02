@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/common';
 import { AgendaService } from './agenda.service';
-import { formatSlotHuman } from '../common/brt.util';
+import { formatSlotHuman, formatSlotPairHuman } from '../common/brt.util';
 
 /** Agenda interna (tela /agenda): disponibilidade semanal, bloqueios e horários livres. */
 @Controller('agenda')
@@ -42,10 +42,12 @@ export class AgendaController {
   async slots(@Query('days') days?: string) {
     const now = new Date();
     const maxDays = Number(days) > 0 ? Number(days) : undefined;
-    const [available, next] = await Promise.all([this.agenda.availableDays(now, maxDays), this.agenda.nextSlots(2, now)]);
+    const [available, next] = await Promise.all([this.agenda.availableDays(now, maxDays), this.agenda.openingSlots(now)]);
     return {
       days: available.map((d) => ({ ...d, slots: d.slots.map((s) => ({ at: s.at.toISOString(), hour: s.hour })) })),
       next: next.map((at) => ({ at: at.toISOString(), human: formatSlotHuman(at, now) })),
+      // Frase exata que o Efraim afirma na abertura.
+      nextHuman: formatSlotPairHuman(next, now),
       summary: await this.agenda.agendaSummary(now),
     };
   }

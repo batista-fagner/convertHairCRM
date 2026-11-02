@@ -58,11 +58,16 @@ export interface EfraimAiResult {
  * aí é melhor oferecer um horário plausível que não oferecer nenhum.
  */
 export function computeSlots(now: Date): Date[] {
+  const out: Date[] = [];
   let day = addDays(now, 1);
-  while ([0, 6].includes(brt(day).weekday)) day = addDays(day, 1);
-  const start = SLOT_START_HOURS[Math.floor(Math.random() * SLOT_START_HOURS.length)];
-  const ymd = brt(day).ymd;
-  return [brtAt(ymd, start), brtAt(ymd, start + 1)];
+  for (let i = 0; i < 2; i++) {
+    while ([0, 6].includes(brt(day).weekday)) day = addDays(day, 1);
+    const start = SLOT_START_HOURS[Math.floor(Math.random() * SLOT_START_HOURS.length)];
+    const ymd = brt(day).ymd;
+    out.push(brtAt(ymd, start), brtAt(ymd, start + 1));
+    day = addDays(day, 1);
+  }
+  return out;
 }
 
 /** Primeiro nome pra saudação; mantém nomes compostos comuns ("Ana Paula", "Maria Clara"). */
@@ -199,7 +204,7 @@ export class EfraimQuizService {
    */
   private async offeredSlots(now: Date): Promise<string[]> {
     try {
-      const slots = await this.agenda.nextSlots(2, now);
+      const slots = await this.agenda.openingSlots(now);
       if (slots.length) return slots.map((d) => d.toISOString());
       this.logger.warn('[Efraim] Agenda interna sem horário livre — usando horários sorteados');
     } catch (err: any) {

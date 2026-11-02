@@ -260,7 +260,7 @@ export default function AgendaAvailability() {
             ) : (
               <>
                 <p className="text-slate-700">
-                  “O melhor horário pra você é <strong>{preview.next.map((s) => s.human).join(' ou ')}</strong>?”
+                  “O melhor horário pra você é <strong>{preview.nextHuman || preview.next.map((s) => s.human).join(' ou ')}</strong>?”
                 </p>
                 {preview.summary && (
                   <>
