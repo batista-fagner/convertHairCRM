@@ -583,6 +583,11 @@ export class QuizService {
     if (!parsed.capturedPhone) return { ok: true };
     const lead = await this.upsertQuizLead(quiz, parsed, dto);
 
+    // Deixou o contato = já é lead do Efraim, mesmo que não termine o quiz.
+    // Se terminar nos próximos minutos, o cron lê o lead atualizado e manda a
+    // abertura com todas as respostas.
+    await this.scheduleEfraimOpening(lead);
+
     // Evento padrão "Lead" no momento em que a pessoa deixa o contato (mesmo que
     // não termine o quiz), já com telefone/nome hasheados + fbc/fbp/IP/UA. event_id
     // por clickId: se a pessoa voltar e reenviar, o Meta deduplica.
@@ -607,6 +612,21 @@ export class QuizService {
     }
 
     return { ok: true, leadId: lead?.id };
+  }
+
+  /**
+   * Marca a abertura do Efraim (agente do funil do quiz) pra daqui alguns
+   * minutos. Chamado na captura do telefone E no submit — quem decide se
+   * envia (agente ligado? quiz na lista? card ainda na raia Novo?) é o cron
+   * dele. A 2ª chamada não faz nada: `efraimOpeningPatch` devolve null quando
+   * a abertura já está marcada, então quem termina o quiz não recebe duas.
+   */
+  private async scheduleEfraimOpening(lead: Lead | null) {
+    const patch = lead ? efraimOpeningPatch(lead) : null;
+    if (!lead || !patch) return;
+    await this.leadsRepo
+      .update(lead.id, patch)
+      .catch((err) => this.logger.error(`[Quiz] Erro ao agendar abertura do Efraim: ${err.message}`));
   }
 
   private async upsertQuizLead(
@@ -807,12 +827,9 @@ export class QuizService {
 
     if (capturedPhone) {
       const lead = await this.upsertQuizLead(quiz, { answeredResponses, mqlEvents, capturedPhone, captured }, dto);
-      // Abertura do Efraim no WhatsApp (agente do funil do quiz) — só marca o
-      // horário; quem decide se envia (ligado? quiz na lista?) é o cron dele.
-      const efraimPatch = lead ? efraimOpeningPatch(lead) : null;
-      if (lead && efraimPatch) {
-        await this.leadsRepo.update(lead.id, efraimPatch).catch((err) => this.logger.error(`[Quiz] Erro ao agendar abertura do Efraim: ${err.message}`));
-      }
+      // Normalmente já foi marcada na captura do telefone; isto cobre quem
+      // mandou o submit sem passar por ela.
+      await this.scheduleEfraimOpening(lead);
     }
 
     this.logger.log(`Quiz "${slug}" respondido — ${answeredResponses.length} pergunta(s), MQL events: ${Array.from(mqlEvents).join(', ') || 'nenhum'}`);
