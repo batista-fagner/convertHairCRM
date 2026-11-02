@@ -136,7 +136,8 @@ function spokenRevenue(answer: string): string {
     .replace(/(\d+) mil e (\d+) mil/i, '$1 e $2 mil')
     .replace(/^abaixo de/i, 'até')
     .replace(/^acima de/i, 'mais de')
-    .replace(/^entre/i, 'entre')
+    .replace(/R\$\s*/gi, '')
+    .replace(/^(at[eé]|entre|mais de)(?=\s)/i, (m) => m.toLowerCase())
     .trim();
 }
 
@@ -388,8 +389,8 @@ export class EfraimQuizService {
       // IA fora do ar: texto fixo no mesmo estilo, a abertura não se perde.
       const third = lead.meetingAt
         ? `Você agendou nossa reunião pra ${formatSlotHuman(new Date(lead.meetingAt), now)}, já está na agenda aqui! 1h antes te envio o link da sala`
-        : `Quero deixar marcada nossa reunião de apresentação do método. O melhor horário pra você é ${slots.map((s) => formatSlotHuman(new Date(s), now)).join(' ou ')}?`;
-      reply = [greeting, 'Aqui é o Fagner da Convert Hair, vi que você respondeu nosso quiz pra vender mais cabelo com tráfego pago. É uma ótima oportunidade pra gente dobrar o seu faturamento', third].join('|||');
+        : `Melhor horário pra nossa reunião: ${slots.map((s) => formatSlotHuman(new Date(s), now)).join(' ou ')}?`;
+      reply = [greeting, 'Aqui é o Fagner da Convert Hair, vi seu quiz. Dá pra gente dobrar o seu faturamento', third].join('|||');
       this.logger.warn(`[Efraim] IA falhou na abertura de ${lead.phone} — usando texto fixo`);
     }
 
