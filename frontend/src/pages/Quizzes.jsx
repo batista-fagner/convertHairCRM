@@ -1855,6 +1855,12 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
                 <span className="text-sm font-medium text-slate-600">{quiz.lowTicketPage?.enabled ? 'Ligada' : 'Desligada'}</span>
               </label>
             </div>
+            <div>
+              <label className="text-sm text-slate-500">Redirecionar pra página já pronta (substitui todo o rascunho abaixo)</label>
+              <input value={quiz.lowTicketPage?.redirectUrl ?? ''} onChange={e => setPage('lowTicketPage', 'redirectUrl', e.target.value)} placeholder="https://convert-hair-page.vercel.app/oferta/..." className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition" />
+              <p className="text-sm text-slate-400 mt-1">Preenchido: quem desviar vai direto pra essa URL, os campos abaixo (rascunho interno) são ignorados.</p>
+            </div>
+            <div className={quiz.lowTicketPage?.redirectUrl ? 'opacity-40 pointer-events-none' : ''}>
             <div><label className="text-sm text-slate-500">Link de checkout (Greenn)</label><input value={quiz.lowTicketPage?.checkoutUrl ?? ''} onChange={e => setPage('lowTicketPage', 'checkoutUrl', e.target.value)} placeholder="https://payfast.greenn.com.br/..." className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition" /></div>
             <div className="grid grid-cols-2 gap-3">
               <div><label className="text-sm text-slate-500">Título</label><input value={quiz.lowTicketPage?.title ?? ''} onChange={e => setPage('lowTicketPage', 'title', e.target.value)} placeholder="vazio = texto do rascunho" className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition" /></div>
@@ -1870,7 +1876,10 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
               <textarea rows={4} value={(quiz.lowTicketPage?.bullets || []).join('\n')} onChange={e => setPage('lowTicketPage', 'bullets', e.target.value.split('\n'))} placeholder="vazio = benefícios do rascunho" className="w-full mt-1 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition resize-none" />
             </div>
             <p className="text-sm text-slate-400">Rascunho — o layout final vai seguir o desenho que você mandar.</p>
-            {quiz.slug && (
+            </div>
+            {quiz.lowTicketPage?.redirectUrl ? (
+              <a href={quiz.lowTicketPage.redirectUrl} target="_blank" rel="noreferrer" className="text-sm text-violet-600 hover:underline inline-flex items-center gap-1"><Eye size={13} /> Ver página de destino</a>
+            ) : quiz.slug && (
               <a href={`${QUIZ_PUBLIC_BASE}/${quiz.slug}/oferta`} target="_blank" rel="noreferrer" className="text-sm text-violet-600 hover:underline inline-flex items-center gap-1"><Eye size={13} /> Ver página (salve antes)</a>
             )}
           </div>
