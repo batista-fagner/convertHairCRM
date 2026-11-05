@@ -28,7 +28,6 @@ export class EnrichmentService {
   private readonly rapidapiHost: string;
   private readonly sdrUazapiBaseUrl: string;
   private readonly sdrUazapiToken: string;
-  private readonly disableProfileAiAnalysis: boolean;
   private scanning = false;
 
   constructor(
@@ -39,7 +38,6 @@ export class EnrichmentService {
     @InjectRepository(Lead) private leadsRepo: Repository<Lead>,
     private avatarStorage: AvatarStorageService,
   ) {
-    this.disableProfileAiAnalysis = config.get('DISABLE_PROFILE_AI_ANALYSIS') === 'true';
     this.scrape = new ScrapeCreatorsClient(config.get('SCRAPECREATORS_API_KEY') || '');
     this.rapidapiKey = config.get('RAPIDAPI_KEY') || '';
     this.rapidapiHost = config.get('RAPIDAPI_HOST') || 'instagram120.p.rapidapi.com';
@@ -143,7 +141,7 @@ export class EnrichmentService {
       const stats = this.stats(profile);
       const photo = await this.savePhoto(leadId, profile.profilePicUrl);
       const insight =
-        result.status === 'private' || this.disableProfileAiAnalysis
+        result.status === 'private'
           ? null
           : await this.aiAnalysisService.analyzeHairProfile(
               this.profileText(profile, stats),

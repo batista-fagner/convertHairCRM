@@ -98,10 +98,15 @@ Responda APENAS com este JSON:
           },
         ],
         response_format: { type: 'json_object' },
-        max_completion_tokens: 1000,
+        // Modelo com raciocínio: o "pensar" conta nesse limite, e com a foto junto
+        // 1000 não bastava — a resposta vinha vazia (finish_reason=length).
+        max_completion_tokens: 4000,
       });
       const content = response.choices[0]?.message?.content;
-      if (!content) return null;
+      if (!content) {
+        this.logger.warn(`Análise do perfil de ${lead.name} veio vazia (finish_reason=${response.choices[0]?.finish_reason})`);
+        return null;
+      }
       const insight = JSON.parse(content) as HairProfileInsight;
       if (!Array.isArray(insight.hooks)) insight.hooks = [];
       return insight;
