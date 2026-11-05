@@ -31,6 +31,8 @@ export interface IgProfile {
   businessPhone: string | null;
   businessEmail: string | null;
   city: string | null;
+  /** URL da foto de perfil no CDN do Instagram — assinada, expira em dias. */
+  profilePicUrl: string | null;
   posts: IgPost[];
   reels: IgPost[];
   /** De onde veio o perfil: completo (com posts) ou só o básico (reserva). */
@@ -65,8 +67,24 @@ export function handleFromInput(raw: string): string | null {
   const url = s.match(/instagram\.com\/([A-Za-z0-9._]+)/i);
   if (url) s = url[1];
   s = s.replace(/^@+/, '').replace(/\/+$/, '').trim();
-  if (/^[A-Za-z0-9._]{1,30}$/.test(s)) return s.toLowerCase();
+  // Menos de 3 letras não é @ de ninguém (ex.: "s" de "sim") — analisar @s seria outra pessoa.
+  if (/^[A-Za-z0-9._]{3,30}$/.test(s)) return s.toLowerCase();
   return null;
+}
+
+/** Distância de edição — aceita @ digitado com 1-2 letras trocadas ("vascincelos" ~ "vasconcelos"). */
+function editDistance(a: string, b: string): number {
+  const dp = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    let prev = dp[0];
+    dp[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const tmp = dp[j];
+      dp[j] = Math.min(dp[j] + 1, dp[j - 1] + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1));
+      prev = tmp;
+    }
+  }
+  return dp[b.length];
 }
 
 /**
@@ -115,6 +133,7 @@ export class ScrapeCreatorsClient {
    * candidatos pra alguém conferir à mão.
    */
   async resolve(rawInput: string, leadName?: string): Promise<ResolveResult> {
+    if (norm(rawInput).length < 3) return { status: 'not_found', candidates: [] };
     const handle = handleFromInput(rawInput);
     const guess = handle ? null : guessHandleFromInput(rawInput);
 
@@ -172,6 +191,10 @@ export class ScrapeCreatorsClient {
     }
     const byName = results.find((p) => norm(p.full_name) === input);
     if (byName) return byName;
+    if (input.length >= 8) {
+      const typo = results.find((p) => editDistance(norm(p.username), input) <= 2);
+      if (typo) return typo;
+    }
     // Digitou o nome da loja/pessoa: aceita só se o nome do lead também bate e o perfil é do ramo.
     const name = norm(leadName || '');
     if (name.length >= 5) {
@@ -197,7 +220,7 @@ export class ScrapeCreatorsClient {
     handle: string,
   ): Promise<{ kind: 'ok' | 'private'; profile: IgProfile } | { kind: 'missing' } | { kind: 'blocked' }> {
     for (let attempt = 0; attempt < 2; attempt++) {
-      const { status, data } = await this.get('/v1/instagram/profile', { handle });
+      const { status, data } = await this.get('/v1/instagram/profile', { handle, cache_max_age: '1d' });
       const user = data?.data?.user;
       if (status === 200 && user?.id && data?.message !== 'Profile is private') return { kind: 'ok', profile: this.mapFull(user) };
       if (status === 200 && user && data?.message === 'Profile is private') return { kind: 'private', profile: this.mapFull(user) };
@@ -210,7 +233,7 @@ export class ScrapeCreatorsClient {
   }
 
   private async fetchBasicProfile(userId: string): Promise<IgProfile | null> {
-    const { status, data } = await this.get('/v1/instagram/basic-profile', { userId }, 30000);
+    const { status, data } = await this.get('/v1/instagram/basic-profile', { userId, cache_max_age: '1d' }, 30000);
     if (status !== 200 || !data?.username) return null;
     return {
       userId: String(data.pk || userId),
@@ -229,6 +252,7 @@ export class ScrapeCreatorsClient {
       businessPhone: data.public_phone_number || data.contact_phone_number || null,
       businessEmail: data.public_email || null,
       city: data.city_name || null,
+      profilePicUrl: data.hd_profile_pic_url_info?.url || data.profile_pic_url || null,
       posts: [],
       reels: [],
       source: 'basic',
@@ -275,6 +299,7 @@ export class ScrapeCreatorsClient {
       businessPhone: u.business_phone_number || null,
       businessEmail: u.business_email || null,
       city,
+      profilePicUrl: u.profile_pic_url_hd || u.profile_pic_url || null,
       posts: posts.sort((a, b) => b.takenAt - a.takenAt),
       reels: [],
       source: 'profile',

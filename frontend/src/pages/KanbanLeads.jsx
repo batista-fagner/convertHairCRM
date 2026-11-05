@@ -1410,7 +1410,25 @@ function NotesPanel({ lead, onClose, onNoteRequest }) {
                     </div>
                   </div>
                 ) : (
-                  <p className="mt-2.5 text-sm text-slate-600 whitespace-pre-wrap break-words">{n.content}</p>
+                  <>
+                    {n.id === 'ig-analysis' && lead.enrichmentData?.profilePicUrl && (
+                      <a
+                        href={`https://instagram.com/${lead.enrichmentData.username || ''}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-2.5 inline-flex items-center gap-2.5 group"
+                        title="Abrir o Instagram"
+                      >
+                        <img
+                          src={lead.enrichmentData.profilePicUrl}
+                          alt={`Foto de perfil de @${lead.enrichmentData.username || ''}`}
+                          className="w-14 h-14 rounded-full object-cover border border-slate-200"
+                        />
+                        <span className="text-xs text-violet-600 group-hover:underline">@{lead.enrichmentData.username}</span>
+                      </a>
+                    )}
+                    <p className="mt-2.5 text-sm text-slate-600 whitespace-pre-wrap break-words">{n.content}</p>
+                  </>
                 )}
 
                 {confirmDeleteId === n.id && (

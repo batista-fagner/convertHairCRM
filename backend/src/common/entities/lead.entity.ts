@@ -30,6 +30,8 @@ export interface EnrichmentData {
   startedAt?: string;
   enrichedAt?: string;
   error?: string;
+  /** Foto de perfil do Instagram já no nosso storage (link permanente). */
+  profilePicUrl?: string | null;
   followers?: number;
   engagement_rate?: number;
   content_type?: string;

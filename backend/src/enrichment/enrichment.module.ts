@@ -8,10 +8,11 @@ import { Lead } from '../common/entities/lead.entity';
 import { EnrichmentService } from './enrichment.service';
 import { EnrichmentController } from './enrichment.controller';
 import { InstagramProxyController } from './instagram-proxy.controller';
+import { AvatarStorageService } from '../sdr/avatar-storage.service';
 
 @Module({
   imports: [HttpModule, TypeOrmModule.forFeature([Lead]), LeadsModule, AiAnalysisModule, RealtimeModule],
-  providers: [EnrichmentService],
+  providers: [EnrichmentService, AvatarStorageService],
   controllers: [EnrichmentController, InstagramProxyController],
   exports: [EnrichmentService],
 })

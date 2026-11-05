@@ -7,6 +7,7 @@ import axios from 'axios';
 import { LeadsService } from '../leads/leads.service';
 import { AiAnalysisService, HairProfileInsight } from '../ai-analysis/ai-analysis.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { AvatarStorageService } from '../sdr/avatar-storage.service';
 import { Lead, EnrichmentData } from '../common/entities/lead.entity';
 import { IgPost, IgProfile, ScrapeCreatorsClient } from './scrape-creators.client';
 
@@ -36,6 +37,7 @@ export class EnrichmentService {
     private aiAnalysisService: AiAnalysisService,
     private realtime: RealtimeGateway,
     @InjectRepository(Lead) private leadsRepo: Repository<Lead>,
+    private avatarStorage: AvatarStorageService,
   ) {
     this.disableProfileAiAnalysis = config.get('DISABLE_PROFILE_AI_ANALYSIS') === 'true';
     this.scrape = new ScrapeCreatorsClient(config.get('SCRAPECREATORS_API_KEY') || '');
@@ -139,13 +141,18 @@ export class EnrichmentService {
 
       const profile = result.profile;
       const stats = this.stats(profile);
+      const photo = await this.savePhoto(leadId, profile.profilePicUrl);
       const insight =
         result.status === 'private' || this.disableProfileAiAnalysis
           ? null
-          : await this.aiAnalysisService.analyzeHairProfile(this.profileText(profile, stats), {
-              name: lead.name,
-              quizAnswers: (lead.quizResponses || []).map((r) => `${r.question}: ${r.answer}`).join('\n') || undefined,
-            });
+          : await this.aiAnalysisService.analyzeHairProfile(
+              this.profileText(profile, stats),
+              {
+                name: lead.name,
+                quizAnswers: (lead.quizResponses || []).map((r) => `${r.question}: ${r.answer}`).join('\n') || undefined,
+              },
+              photo?.dataUrl,
+            );
 
       const data: EnrichmentData = {
         ...claim,
@@ -155,6 +162,7 @@ export class EnrichmentService {
         source: profile.source,
         resolvedBy: profile.resolvedBy,
         enrichedAt: new Date().toISOString(),
+        profilePicUrl: photo?.publicUrl ?? null,
         followers: profile.followers ?? 0,
         engagement_rate: stats.engagementRate,
         content_type: profile.biography,
@@ -182,6 +190,29 @@ export class EnrichmentService {
     await this.leadsService.update(leadId, { enrichmentData: data as any, ...(insight ? { aiInsight: insight } : {}) });
     const lead = await this.leadsService.upsertNoteEntry(leadId, { id: NOTE_ID, author: NOTE_AUTHOR, content: note.slice(0, 2000) });
     this.realtime.emitLeadUpdated(lead);
+  }
+
+  /**
+   * Baixa a foto de perfil uma vez: vai pra IA (base64) e pro nosso storage —
+   * o link do CDN do Instagram é assinado e para de abrir em poucos dias.
+   */
+  private async savePhoto(leadId: string, url: string | null): Promise<{ dataUrl: string; publicUrl: string | null } | null> {
+    if (!url) return null;
+    try {
+      const res = await axios.get(url, { responseType: 'arraybuffer', timeout: 15000 });
+      const contentType = String(res.headers['content-type'] || 'image/jpeg');
+      const buffer = Buffer.from(res.data);
+      const publicUrl = await this.avatarStorage
+        .persistBuffer(`ig-${leadId}`, buffer, contentType)
+        .catch((err) => {
+          this.logger.warn(`[Enriquecimento] Foto do lead ${leadId} não foi pro storage: ${err.message}`);
+          return null;
+        });
+      return { dataUrl: `data:${contentType};base64,${buffer.toString('base64')}`, publicUrl };
+    } catch (err: any) {
+      this.logger.warn(`[Enriquecimento] Não baixei a foto de perfil do lead ${leadId}: ${err.message}`);
+      return null;
+    }
   }
 
   private firstName(name?: string) {
@@ -290,6 +321,7 @@ export class EnrichmentService {
       `Ponto forte: ${insight.strengths}`,
       `Gargalo: ${insight.selling_angle}`,
     );
+    if (insight.profile_photo) lines.push(`Foto de perfil: ${insight.profile_photo}`);
     if (insight.hooks.length) lines.push('', 'Ganchos pra abordagem:', ...insight.hooks.slice(0, 3).map((h) => `• ${h}`));
     return lines.join('\n');
   }

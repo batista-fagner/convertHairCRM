@@ -25,6 +25,7 @@ export interface HairProfileInsight {
   engagement_level: 'baixo' | 'médio' | 'alto';
   strengths: string;
   selling_angle: string;
+  profile_photo: string;
   hooks: string[];
   summary: string;
   confidence_score: number;
@@ -48,7 +49,11 @@ export class AiAnalysisService {
    * onde está o gargalo e detalhes concretos pra citar numa mensagem.
    * `profileText` já vem montado pelo EnrichmentService; null = falhou.
    */
-  async analyzeHairProfile(profileText: string, lead: { name?: string; quizAnswers?: string }): Promise<HairProfileInsight | null> {
+  async analyzeHairProfile(
+    profileText: string,
+    lead: { name?: string; quizAnswers?: string },
+    photoDataUrl?: string | null,
+  ): Promise<HairProfileInsight | null> {
     const prompt = `Você analisa perfis de Instagram para a Convert Hair, que faz tráfego pago + atendimento com IA no WhatsApp para quem vende cabelo (mega hair, extensões, perucas, laces) e para salões especializados.
 
 Analise o perfil abaixo e responda o que um vendedor precisa saber ANTES de falar com essa pessoa. Seja concreto e baseado só no que está no perfil — nada de suposição genérica. Se algo não dá pra saber pelo perfil, diga "não dá pra saber pelo perfil".
@@ -60,7 +65,7 @@ LEAD: ${lead.name || 'sem nome'}
 ${lead.quizAnswers ? `RESPOSTAS DO QUIZ:\n${lead.quizAnswers}\n` : ''}
 PERFIL:
 ${profileText}
-
+${photoDataUrl ? '\nA FOTO DE PERFIL vai junto nesta mensagem (imagem).\n' : '\nSem foto de perfil disponível.\n'}
 Responda APENAS com este JSON:
 {
   "niche": "o que ela faz, específico (ex: aplicação de mega hair fita invisível + curso de formação)",
@@ -72,6 +77,7 @@ Responda APENAS com este JSON:
   "engagement_level": "baixo | médio | alto",
   "strengths": "o que ela já faz bem no Instagram/venda (curto)",
   "selling_angle": "o principal gargalo de venda que dá pra ver (máx 120 caracteres)",
+  "profile_photo": "o que a foto de perfil mostra e se passa uma marca profissional (ex: 'logo da loja, bem feito', 'selfie escura, não passa marca', 'foto profissional dela com cabelo longo'). Vazio se não tem foto",
   "hooks": ["2 ou 3 detalhes ESPECÍFICOS e recentes DO NEGÓCIO que dá pra citar numa mensagem de vendas (ex: 'formou a aluna Maiara no curso de mega hair', 'lançou cabelo loiro 70cm na última semana', 'atende em Mirandópolis/SP')"],
   "summary": "1 frase resumindo quem é essa pessoa como negócio",
   "confidence_score": 0-100
@@ -80,9 +86,19 @@ Responda APENAS com este JSON:
     try {
       const response = await this.openai.chat.completions.create({
         model: this.model,
-        messages: [{ role: 'user', content: prompt }],
+        messages: [
+          {
+            role: 'user',
+            content: photoDataUrl
+              ? [
+                  { type: 'text', text: prompt },
+                  { type: 'image_url', image_url: { url: photoDataUrl, detail: 'low' } },
+                ]
+              : prompt,
+          },
+        ],
         response_format: { type: 'json_object' },
-        max_completion_tokens: 900,
+        max_completion_tokens: 1000,
       });
       const content = response.choices[0]?.message?.content;
       if (!content) return null;

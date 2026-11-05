@@ -48,23 +48,25 @@ export class AvatarStorageService {
       const res = await fetch(sourceUrl);
       if (!res.ok) throw new Error(`download falhou: HTTP ${res.status}`);
       const contentType = res.headers.get('content-type') || 'image/jpeg';
-      const ext = contentType.includes('png') ? 'png' : contentType.includes('webp') ? 'webp' : 'jpg';
-      const buffer = Buffer.from(await res.arrayBuffer());
-
-      await this.ensureBucket();
-      const storagePath = `${leadId}.${ext}`;
-      const { error } = await this.supabase.storage
-        .from(this.bucket)
-        .upload(storagePath, buffer, { contentType, upsert: true });
-      if (error) throw new Error(error.message);
-
-      const { data } = this.supabase.storage.from(this.bucket).getPublicUrl(storagePath);
-      // Cache-bust: a URL pública é sempre a mesma pro mesmo lead (upsert), então
-      // sem isso o browser pode continuar servindo a foto antiga do cache.
-      return `${data.publicUrl}?v=${Date.now()}`;
+      return await this.persistBuffer(leadId, Buffer.from(await res.arrayBuffer()), contentType);
     } catch (err: any) {
       this.logger.warn(`[Avatar] Falha ao persistir foto do lead ${leadId} no storage, usando URL original: ${err.message}`);
       return sourceUrl;
     }
+  }
+
+  /** Sobe a imagem já baixada como `<name>.<ext>` e devolve a URL pública permanente. */
+  async persistBuffer(name: string, buffer: Buffer, contentType: string): Promise<string> {
+    const ext = contentType.includes('png') ? 'png' : contentType.includes('webp') ? 'webp' : 'jpg';
+    await this.ensureBucket();
+    const storagePath = `${name}.${ext}`;
+    const { error } = await this.supabase.storage
+      .from(this.bucket)
+      .upload(storagePath, buffer, { contentType, upsert: true });
+    if (error) throw new Error(error.message);
+    const { data } = this.supabase.storage.from(this.bucket).getPublicUrl(storagePath);
+    // Cache-bust: a URL pública é sempre a mesma pro mesmo nome (upsert), então
+    // sem isso o browser pode continuar servindo a foto antiga do cache.
+    return `${data.publicUrl}?v=${Date.now()}`;
   }
 }
