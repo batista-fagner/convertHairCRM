@@ -1248,6 +1248,23 @@ function NoteAuthorAvatar() {
 function NotesPanel({ lead, onClose, onNoteRequest }) {
   const [draft, setDraft] = useState('')
   const [saving, setSaving] = useState(false)
+  const [analyzing, setAnalyzing] = useState(false)
+  const [analyzeError, setAnalyzeError] = useState('')
+  const igStatus = lead.enrichmentData?.input === lead.instagram?.trim() ? lead.enrichmentData?.status : null
+
+  // A nota "Análise do Instagram" chega pelo socket (lead:updated) quando termina.
+  const analyzeInstagram = async () => {
+    setAnalyzing(true)
+    setAnalyzeError('')
+    try {
+      const res = await fetch(`${API}/leads/${lead.id}/enrich`, { method: 'POST' })
+      if (!res.ok) throw new Error()
+    } catch {
+      setAnalyzeError('Não deu pra analisar agora. Tente de novo em alguns minutos.')
+    } finally {
+      setAnalyzing(false)
+    }
+  }
   const [error, setError] = useState('')
   const [menuId, setMenuId] = useState(null)
   const [editingId, setEditingId] = useState(null)
@@ -1291,10 +1308,24 @@ function NotesPanel({ lead, onClose, onNoteRequest }) {
         <h3 className="flex items-center gap-2 text-base font-semibold text-slate-800">
           <FileText className="w-5 h-5 text-amber-500" /> Notas
         </h3>
-        <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition" title="Fechar notas">
-          <X className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-1">
+          {lead.instagram && (
+            <button
+              onClick={analyzeInstagram}
+              disabled={analyzing || igStatus === 'running'}
+              className="flex items-center gap-1.5 text-xs font-medium text-violet-700 bg-violet-50 hover:bg-violet-100 disabled:opacity-60 disabled:cursor-not-allowed px-2.5 py-1.5 rounded-lg transition"
+              title={`Analisar o Instagram ${lead.instagram} (perfil, posts e reels)`}
+            >
+              {analyzing || igStatus === 'running' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+              {analyzing || igStatus === 'running' ? 'Analisando…' : igStatus && igStatus !== 'error' ? 'Reanalisar Instagram' : 'Analisar Instagram'}
+            </button>
+          )}
+          <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition" title="Fechar notas">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
       </div>
+      {analyzeError && <p className="px-5 -mt-2 mb-2 text-[11px] text-red-600">{analyzeError}</p>}
 
       <div className="flex-1 overflow-y-auto px-5 pb-5 space-y-4">
         <div>

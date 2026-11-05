@@ -18,6 +18,18 @@ export interface Post {
 }
 
 export interface EnrichmentData {
+  // Controle do enriquecimento (EnrichmentService): o que a pessoa digitou,
+  // em que pé está e quantas tentativas — evita rodar em dobro e repetir falha.
+  status?: 'running' | 'ok' | 'private' | 'not_found' | 'error';
+  input?: string;
+  username?: string;
+  userId?: string;
+  source?: 'profile' | 'basic';
+  resolvedBy?: 'handle' | 'guess' | 'search';
+  attempts?: number;
+  startedAt?: string;
+  enrichedAt?: string;
+  error?: string;
   followers?: number;
   engagement_rate?: number;
   content_type?: string;

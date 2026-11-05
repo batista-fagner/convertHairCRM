@@ -14,14 +14,85 @@ export interface LeadInsight {
   confidence_score: number;
 }
 
+/** Análise do perfil de quem vende cabelo / atende no salão (enriquecimento do lead). */
+export interface HairProfileInsight {
+  niche: string;
+  business_type: string;
+  products: string;
+  location: string;
+  audience_profile: string;
+  content_pattern: string;
+  engagement_level: 'baixo' | 'médio' | 'alto';
+  strengths: string;
+  selling_angle: string;
+  hooks: string[];
+  summary: string;
+  confidence_score: number;
+}
+
 @Injectable()
 export class AiAnalysisService {
   private readonly logger = new Logger(AiAnalysisService.name);
   private openai: OpenAI;
+  private readonly model: string;
 
   constructor(private config: ConfigService) {
     const apiKey = config.get('OPENAI_API_KEY');
     this.openai = new OpenAI({ apiKey });
+    this.model = config.get('SDR_OPENAI_MODEL') || 'gpt-5.4-mini';
+  }
+
+  /**
+   * Lê o perfil (bio, números, posts e reels já resumidos em texto) e devolve
+   * o que importa pra Convert Hair abordar: que negócio é, como vende hoje,
+   * onde está o gargalo e detalhes concretos pra citar numa mensagem.
+   * `profileText` já vem montado pelo EnrichmentService; null = falhou.
+   */
+  async analyzeHairProfile(profileText: string, lead: { name?: string; quizAnswers?: string }): Promise<HairProfileInsight | null> {
+    const prompt = `Você analisa perfis de Instagram para a Convert Hair, que faz tráfego pago + atendimento com IA no WhatsApp para quem vende cabelo (mega hair, extensões, perucas, laces) e para salões especializados.
+
+Analise o perfil abaixo e responda o que um vendedor precisa saber ANTES de falar com essa pessoa. Seja concreto e baseado só no que está no perfil — nada de suposição genérica. Se algo não dá pra saber pelo perfil, diga "não dá pra saber pelo perfil".
+Os ganchos são só sobre o NEGÓCIO (produtos, técnicas, alunas, clientes, lançamentos, cidade, resultados). Nunca use vida pessoal ou assunto sensível: luto, doença, família, filhos, religião, política, relacionamento, aparência.
+Se o perfil não mostra negócio nenhum (conta pessoal, sem posts de cabelo), devolva "hooks": [] — não invente gancho.
+Escreva tudo em português do Brasil.
+
+LEAD: ${lead.name || 'sem nome'}
+${lead.quizAnswers ? `RESPOSTAS DO QUIZ:\n${lead.quizAnswers}\n` : ''}
+PERFIL:
+${profileText}
+
+Responda APENAS com este JSON:
+{
+  "niche": "o que ela faz, específico (ex: aplicação de mega hair fita invisível + curso de formação)",
+  "business_type": "loja de cabelo | salão | profissional autônoma | distribuidora/fornecedora | escola/cursos | outro",
+  "products": "produtos/serviços que aparecem (técnicas, tipos de cabelo, cursos, preços se aparecerem)",
+  "location": "cidade/estado se aparecer, senão vazio",
+  "audience_profile": "pra quem ela vende, pelo que aparece",
+  "content_pattern": "o que ela posta e com que frequência (ex: reels de antes/depois 1x por semana + conteúdo pessoal/religioso)",
+  "engagement_level": "baixo | médio | alto",
+  "strengths": "o que ela já faz bem no Instagram/venda (curto)",
+  "selling_angle": "o principal gargalo de venda que dá pra ver (máx 120 caracteres)",
+  "hooks": ["2 ou 3 detalhes ESPECÍFICOS e recentes DO NEGÓCIO que dá pra citar numa mensagem de vendas (ex: 'formou a aluna Maiara no curso de mega hair', 'lançou cabelo loiro 70cm na última semana', 'atende em Mirandópolis/SP')"],
+  "summary": "1 frase resumindo quem é essa pessoa como negócio",
+  "confidence_score": 0-100
+}`;
+
+    try {
+      const response = await this.openai.chat.completions.create({
+        model: this.model,
+        messages: [{ role: 'user', content: prompt }],
+        response_format: { type: 'json_object' },
+        max_completion_tokens: 900,
+      });
+      const content = response.choices[0]?.message?.content;
+      if (!content) return null;
+      const insight = JSON.parse(content) as HairProfileInsight;
+      if (!Array.isArray(insight.hooks)) insight.hooks = [];
+      return insight;
+    } catch (err: any) {
+      this.logger.error(`Erro na análise do perfil de ${lead.name}: ${err.message}`);
+      return null;
+    }
   }
 
   async analyzeLeadInstagram(

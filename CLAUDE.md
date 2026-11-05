@@ -95,6 +95,7 @@ Faturamento 30k+ → MQL
 | `FB_LEADS_TOKEN` | ✅ configurado | Token de usuário de longa duração (~60 dias) com `leads_retrieval` — busca os dados do Formulário Instantâneo. **Expira em 2026-12-13 — renovar antes** (ver seção Formulário Instantâneo) |
 | `FB_LEADS_FORM_ID` | ✅ `1947596935912490` | ID do formulário "ConvertHair50" |
 | `LEADGEN_WEBHOOK_VERIFY_TOKEN` | ✅ `converthair-leadgen-2026` | Verify token do webhook de Lead Ads — precisa bater com o cadastrado no App Dashboard (Meta) |
+| `SCRAPECREATORS_API_KEY` | ⚠️ pendente | Scrape Creators (análise do Instagram do lead). Sem ela o enriquecimento fica parado |
 | `JWT_SECRET` | ⚠️ obrigatório | Assina o login do CRM. **Sem ele o backend nem sobe** (AuthModule lança erro no boot) |
 | `JWT_EXPIRES_IN` | opcional | Duração da sessão, padrão `7d` |
 | `RESEND_API_KEY` | ⚠️ pendente | Mesma chave do fisio-secretary — envia os dados de acesso dos usuários |
@@ -312,6 +313,16 @@ Substitui o Calendly como fonte dos horários: o sócio cadastra a disponibilida
 - Reunião marcada fora da agenda (a pessoa já combinou na conversa) **não é cancelada**: entra no log e no aviso do closer com ⚠️.
 - Helpers de data de Brasília ficam em `backend/src/common/brt.util.ts` (o Efraim importa de lá; a agenda não pode importar do Efraim, é ele que importa a agenda).
 - **Não trata ainda:** dois leads em conversa ao mesmo tempo podem receber o mesmo horário (só reunião **já gravada** sai da agenda); não há duração configurável (slot = 1h cheia) nem lembrete antes da reunião.
+
+## 📸 Enriquecimento do Instagram (2026-11-04)
+
+Quando o lead tem Instagram, o CRM analisa o perfil e grava o resultado como nota **"Análise do Instagram"** no painel de notas do card (id fixo `ig-analysis`: reanalisar troca a nota, não empilha).
+
+- **Quem dispara:** cron de 2 em 2 min (`EnrichmentService.enrichPending`) pega leads **criados nos últimos 3 dias** com Instagram ainda não analisado (ou que trocaram o @) — cobre quiz, Sofia, formulário. A Sofia também chama direto quando o lead informa o @. Lead mais antigo: botão **"Analisar Instagram"** no cabeçalho do painel de notas (`POST /leads/:id/enrich`, força reanálise).
+- **Scrape Creators** (`enrichment/scrape-creators.client.ts`): perfil completo pelo @ → se o Instagram bloquear (500), tenta de novo e cai no **básico** (precisa do userId, que vem da busca) → **reels** do perfil (só os dela, o endpoint também traz collabs). Se não veio um @ válido: tenta o nome sem espaço/acento ou a parte antes do @ do e-mail ("Sheila Alongamentos" → `sheilaalongamentos`), e por último a **busca**, que só aceita resultado que bate com segurança — senão a nota lista os possíveis perfis pra conferir. Perfil achado por palpite/busca leva aviso "confira se é o certo". ~2 a 4 créditos por lead.
+- **IA** (`AiAnalysisService.analyzeHairProfile`, modelo da Sofia): nicho, tipo de negócio, conteúdo, ponto forte, gargalo e **ganchos pra abordagem** — só do negócio, nunca vida pessoal/assunto sensível. Vai pra `leads.ai_insight` (a Sofia já lê `niche`/`selling_angle` no contexto) e a nota.
+- **Controle** em `leads.enrichment_data` (`status` running/ok/private/not_found/error, `input` = o que a pessoa digitou, `attempts`): reserva atômica, então cron/Sofia/botão nunca rodam em dobro; erro tenta até 3x.
+- **Não manda mensagem nenhuma** (o fluxo antigo via Apify mandava a "msg 1 do Efraim" do funil antigo — removido). Usar a análise na abordagem é o próximo passo, estilo da mensagem ainda a definir.
 
 ## 📊 Tracking
 

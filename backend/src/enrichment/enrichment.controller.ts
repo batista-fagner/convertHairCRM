@@ -7,7 +7,7 @@ export class EnrichmentController {
 
   @Post(':id/enrich')
   async enrich(@Param('id') id: string) {
-    return this.enrichmentService.enrichLeadFromInstagram(id);
+    return this.enrichmentService.enrichLeadFromInstagram(id, { force: true });
   }
 
   @Post(':id/followup')

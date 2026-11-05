@@ -115,6 +115,26 @@ export class LeadsService {
     );
   }
 
+  /**
+   * Grava uma nota do sistema no painel de notas do card, trocando a anterior
+   * com o mesmo id (ex.: reanálise do Instagram substitui a análise antiga em
+   * vez de empilhar). A nota legada (texto único) vira entrada antes, como no
+   * LeadsController, pra não sumir.
+   */
+  async upsertNoteEntry(id: string, entry: { id: string; author: string; content: string }): Promise<Lead> {
+    const lead = await this.findById(id);
+    const entries = Array.isArray(lead.noteEntries) ? [...lead.noteEntries] : [];
+    if (entries.length === 0 && lead.notes?.trim()) {
+      const at = (lead.notesUpdatedAt ?? lead.updatedAt ?? new Date()).toISOString();
+      entries.push({ id: 'legacy', author: 'ConvertHair', content: lead.notes.trim(), createdAt: at });
+    }
+    const next = [
+      { ...entry, createdAt: new Date().toISOString() },
+      ...entries.filter((n) => n.id !== entry.id),
+    ];
+    return this.update(id, { noteEntries: next, notes: next[0].content, notesUpdatedAt: new Date() } as any);
+  }
+
   async update(id: string, dto: Partial<Lead>): Promise<Lead> {
     await this.leadsRepo.update(id, dto);
     return this.findById(id);

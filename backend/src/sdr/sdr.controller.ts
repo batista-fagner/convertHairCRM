@@ -613,12 +613,11 @@ export class SdrController {
 
     lead = await this.leadsService.update(lead.id, updateData);
 
-    // Instagram informado pela 1ª vez → busca dados reais (Apify) + análise
-    // IA em segundo plano, pra alimentar a página "Instagram Leads". skipMessage
-    // porque a Sofia já está conversando com o lead — não manda outra mensagem.
+    // Instagram informado pela 1ª vez → análise do perfil (Scrape Creators + IA)
+    // em segundo plano, vira nota no card. Só analisa, não manda mensagem.
     // Roda só depois do update acima pra evitar buscar o lead sem o Instagram salvo ainda.
     if (isNewInstagram) {
-      this.enrichmentService.enrichLeadFromInstagram(lead.id, { skipMessage: true }).catch((err) =>
+      this.enrichmentService.enrichLeadFromInstagram(lead.id).catch((err) =>
         this.logger.warn(`[SDR] Erro ao enriquecer Instagram do lead ${phone}: ${err.message}`),
       );
     }
