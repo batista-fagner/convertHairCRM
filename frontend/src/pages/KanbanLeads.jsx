@@ -82,12 +82,18 @@ function getAvatarColor(name) {
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length]
 }
 
+// Foto do Instagram (análise do perfil) primeiro, depois a do WhatsApp; se a
+// imagem não abrir, tenta a próxima e por fim as iniciais.
 function Avatar({ lead, size = 'w-8 h-8 text-xs' }) {
-  if (lead.avatarUrl) {
+  const sources = [lead.enrichmentData?.profilePicUrl, lead.avatarUrl].filter(Boolean)
+  const [failed, setFailed] = useState(0)
+  const src = sources[failed]
+  if (src) {
     return (
       <img
-        src={lead.avatarUrl}
+        src={src}
         alt={lead.name}
+        onError={() => setFailed((n) => n + 1)}
         className={`${size.split(' ').slice(0, 2).join(' ')} rounded-full object-cover shrink-0`}
       />
     )
