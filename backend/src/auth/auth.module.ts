@@ -19,7 +19,7 @@ import { AuthGuard } from './auth.guard';
       useFactory: (config: ConfigService) => {
         const secret = config.get<string>('JWT_SECRET');
         if (!secret) throw new Error('JWT_SECRET não configurado — o login do CRM não funciona sem ele.');
-        return { secret, signOptions: { expiresIn: (config.get<string>('JWT_EXPIRES_IN') || '7d') as any } };
+        return { secret, signOptions: { expiresIn: (config.get<string>('JWT_EXPIRES_IN') || '30d') as any } };
       },
     }),
   ],

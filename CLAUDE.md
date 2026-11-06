@@ -97,7 +97,7 @@ Faturamento 30k+ → MQL
 | `LEADGEN_WEBHOOK_VERIFY_TOKEN` | ✅ `converthair-leadgen-2026` | Verify token do webhook de Lead Ads — precisa bater com o cadastrado no App Dashboard (Meta) |
 | `SCRAPECREATORS_API_KEY` | ⚠️ pendente | Scrape Creators (análise do Instagram do lead). Sem ela o enriquecimento fica parado |
 | `JWT_SECRET` | ⚠️ obrigatório | Assina o login do CRM. **Sem ele o backend nem sobe** (AuthModule lança erro no boot) |
-| `JWT_EXPIRES_IN` | opcional | Duração da sessão, padrão `7d` |
+| `JWT_EXPIRES_IN` | opcional | Duração da sessão, padrão `30d` |
 | `RESEND_API_KEY` | ⚠️ pendente | Mesma chave do fisio-secretary — envia os dados de acesso dos usuários |
 | `RESEND_FROM_EMAIL` | opcional | Padrão `Convert Hair <contato@converthair.com.br>` (domínio já verificado no Resend) |
 | `CRM_URL` | opcional | URL do front (sem `/login`) — vira o link "Entrar no CRM" no email de acesso |

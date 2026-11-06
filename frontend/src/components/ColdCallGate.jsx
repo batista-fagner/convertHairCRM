@@ -2,18 +2,36 @@ import { useState } from 'react'
 import { Lock } from 'lucide-react'
 
 const EXPECTED_HASH = import.meta.env.VITE_COLDCALL_PASSWORD_HASH || ''
+const STORAGE_KEY = 'coldcall_auth'
+const UNLOCK_MS = 30 * 24 * 60 * 60 * 1000
 
 // Trava extra só pra essa aba — a tela de Cold Call é vista por outras pessoas
 // que usam o CRM, e essa lista/script é pessoal. Mesmo esquema client-side do
-// login principal (SHA-256 + sessionStorage): não é uma trava de API real,
-// só evita que quem tem acesso ao CRM abra essa aba sem querer/saber.
+// não é uma trava de API real, só evita que quem tem acesso ao CRM abra essa
+// aba sem querer/saber. Fica em localStorage por 30 dias (vale pra todas as
+// abas, igual à sessão do CRM); sair do CRM limpa (clearSession em lib/auth.js).
 async function sha256(text) {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))
   return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, '0')).join('')
 }
 
+function isUnlocked() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null')
+    return Boolean(EXPECTED_HASH) && saved?.hash === EXPECTED_HASH && saved.until > Date.now()
+  } catch {
+    return false
+  }
+}
+
+function saveUnlock(hash) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ hash, until: Date.now() + UNLOCK_MS }))
+  } catch { /* storage bloqueado — desbloqueia só nesta tela */ }
+}
+
 export default function ColdCallGate({ children }) {
-  const [unlocked, setUnlocked] = useState(() => sessionStorage.getItem('coldcall_auth') === EXPECTED_HASH)
+  const [unlocked, setUnlocked] = useState(isUnlocked)
   const [pass, setPass] = useState('')
   const [error, setError] = useState('')
 
@@ -25,7 +43,7 @@ export default function ColdCallGate({ children }) {
     e.preventDefault()
     const hash = await sha256(pass)
     if (EXPECTED_HASH && hash === EXPECTED_HASH) {
-      sessionStorage.setItem('coldcall_auth', hash)
+      saveUnlock(hash)
       setUnlocked(true)
     } else {
       setError('Senha incorreta.')
