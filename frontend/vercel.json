@@ -1,3 +1,17 @@
 {
+  "redirects": [
+    {
+      "source": "/:path*",
+      "has": [{ "type": "host", "value": "convert-hair-crm-git-main-batista-fagners-projects.vercel.app" }],
+      "destination": "https://convert-hair-crm.vercel.app/:path*",
+      "permanent": false
+    },
+    {
+      "source": "/:path*",
+      "has": [{ "type": "host", "value": "convert-hair-crm-batista-fagners-projects.vercel.app" }],
+      "destination": "https://convert-hair-crm.vercel.app/:path*",
+      "permanent": false
+    }
+  ],
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
 }

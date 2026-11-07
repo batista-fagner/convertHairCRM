@@ -21,8 +21,6 @@ export function clearSession() {
   try {
     localStorage.removeItem(TOKEN_KEY)
     localStorage.removeItem(USER_KEY)
-    // Quem sair do CRM também perde o desbloqueio do Cold Call (ver ColdCallGate).
-    localStorage.removeItem('coldcall_auth')
   } catch { /* storage bloqueado — nada a limpar */ }
 }
 
