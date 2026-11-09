@@ -36,6 +36,23 @@ const KANBAN_STAGE_LABEL = {
 }
 const KANBAN_STAGE_OPTIONS = Object.entries(KANBAN_STAGE_LABEL).map(([id, label]) => ({ id, label }))
 
+// Raias fixas + as criadas pelo usuário no Kanban ("Nova raia"), na mesma ordem do board.
+function useKanbanStageOptions() {
+  const [custom, setCustom] = useState([])
+  useEffect(() => {
+    fetch(`${API}/leads/kanban-stages`)
+      .then(r => (r.ok ? r.json() : []))
+      .then(rows => setCustom(Array.isArray(rows) ? rows : []))
+      .catch(() => {})
+  }, [])
+  const options = [
+    ...KANBAN_STAGE_OPTIONS,
+    ...custom.filter(c => !KANBAN_STAGE_LABEL[c.stageKey]).map(c => ({ id: c.stageKey, label: c.title })),
+  ]
+  const label = (id) => options.find(o => o.id === id)?.label || id
+  return { options, label }
+}
+
 const STAGE_COLOR = {
   abertura: 'bg-slate-100 text-slate-600',
   qualificacao: 'bg-blue-100 text-blue-700',
@@ -538,7 +555,7 @@ function todayStartLocal() {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T00:00`
 }
 
-function FollowupRuleForm({ initial, campaignOptions, adTitleOptions, tagOptions, videos, onCancel, onSaved }) {
+function FollowupRuleForm({ initial, stageOptions = KANBAN_STAGE_OPTIONS, campaignOptions, adTitleOptions, tagOptions, videos, onCancel, onSaved }) {
   const [rule, setRule] = useState(initial)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -631,7 +648,7 @@ function FollowupRuleForm({ initial, campaignOptions, adTitleOptions, tagOptions
             className="w-full text-sm border border-slate-200 rounded-lg px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-violet-300 bg-white"
           >
             <option value="">Todas as raias</option>
-            {KANBAN_STAGE_OPTIONS.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+            {stageOptions.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
           </select>
         </div>
         <div>
@@ -1036,6 +1053,7 @@ function FollowupRuleForm({ initial, campaignOptions, adTitleOptions, tagOptions
 }
 
 function FollowupRules() {
+  const stages = useKanbanStageOptions()
   const [rules, setRules] = useState([])
   const [campaignOptions, setCampaignOptions] = useState([])
   const [adTitleOptions, setAdTitleOptions] = useState([])
@@ -1103,7 +1121,7 @@ function FollowupRules() {
   const [broadcasting, setBroadcasting] = useState(null) // id da regra disparando agora
 
   const broadcastNow = async (rule) => {
-    const alvo = rule.kanbanStage ? KANBAN_STAGE_LABEL[rule.kanbanStage] || rule.kanbanStage : 'TODAS as raias'
+    const alvo = rule.kanbanStage ? stages.label(rule.kanbanStage) : 'TODAS as raias'
     if (!confirm(`Disparar "${rule.name}" agora pra TODOS os leads de "${alvo}" (respondendo ou não)? Isso manda WhatsApp de verdade pra cada um.`)) return
     setBroadcasting(rule.id)
     try {
@@ -1143,7 +1161,7 @@ function FollowupRules() {
   const [resettingId, setResettingId] = useState(null) // id da regra resetando agora
 
   const resetCycleNow = async (rule) => {
-    const alvo = rule.kanbanStage ? KANBAN_STAGE_LABEL[rule.kanbanStage] || rule.kanbanStage : 'TODAS as raias'
+    const alvo = rule.kanbanStage ? stages.label(rule.kanbanStage) : 'TODAS as raias'
     if (!confirm(`Liberar novo ciclo de "${rule.name}" pra leads de "${alvo}" que já receberam follow-up e ainda não responderam? Eles voltam pro toque 1 (ou reenviam, se for disparo único).`)) return
     setResettingId(rule.id)
     try {
@@ -1206,6 +1224,7 @@ function FollowupRules() {
       {editingId === 'new' && (
         <FollowupRuleForm
           initial={EMPTY_RULE}
+          stageOptions={stages.options}
           campaignOptions={campaignOptions}
           adTitleOptions={adTitleOptions}
           tagOptions={tagOptions}
@@ -1226,6 +1245,7 @@ function FollowupRules() {
           editingId === rule.id ? (
             <FollowupRuleForm
               key={rule.id}
+              stageOptions={stages.options}
               initial={{
                 ...rule,
                 kanbanStage: rule.kanbanStage || '',
@@ -1263,7 +1283,7 @@ function FollowupRules() {
                 </div>
                 <div className="flex items-center gap-1.5 flex-wrap text-[10px]">
                   <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-600">
-                    <Layers className="w-2.5 h-2.5" /> {rule.kanbanStage ? KANBAN_STAGE_LABEL[rule.kanbanStage] || rule.kanbanStage : 'Todas as raias'}
+                    <Layers className="w-2.5 h-2.5" /> {rule.kanbanStage ? stages.label(rule.kanbanStage) : 'Todas as raias'}
                   </span>
                   <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-orange-50 text-orange-600">
                     <Tag className="w-2.5 h-2.5" /> {rule.utmCampaign || 'Todas as campanhas'}
