@@ -4,6 +4,12 @@ import { SDR_PROMPT_KEY, DEFAULT_SDR_PROMPT, SDR_MODEL_KEY, SDR_DEFAULT_MODEL } 
 import { SDR_NOTIFY_PHONES_KEY } from '../sdr/sdr.controller';
 import { CURIOSITY_MESSAGES_KEY, DEFAULT_CURIOSITY_MESSAGES } from '../sdr/manual-message.controller';
 
+// Mensagem padrão do Cold Call pra copiar e mandar no WhatsApp (editável na tela do Cold Call).
+const COLDCALL_WA_SCRIPT_KEY = 'coldcall_whatsapp_script';
+const DEFAULT_COLDCALL_WA_SCRIPT = `Trabalho com captação de clientes qualificados pra integradoras solares, 24h por dia, 7 dias por semana, em conjunto com uma IA que qualifica os leads antes de passar pro time comercial.
+
+A ideia é ter cliente chegando todo dia, sem depender só de indicação. Consigo te mostrar em uma demonstração de 15 minutos.`;
+
 @Controller('settings')
 export class SettingsController {
   constructor(private settingsService: SettingsService) {}
@@ -95,4 +101,16 @@ export class SettingsController {
     return { messages: messages.length ? messages : DEFAULT_CURIOSITY_MESSAGES };
   }
 
+  @Get('coldcall-whatsapp-script')
+  async getColdCallWhatsappScript() {
+    const value = await this.settingsService.get(COLDCALL_WA_SCRIPT_KEY);
+    return { value: value ?? DEFAULT_COLDCALL_WA_SCRIPT };
+  }
+
+  @Put('coldcall-whatsapp-script')
+  async setColdCallWhatsappScript(@Body() body: { value: string }) {
+    const value = (body.value ?? '').trim();
+    await this.settingsService.set(COLDCALL_WA_SCRIPT_KEY, value || DEFAULT_COLDCALL_WA_SCRIPT);
+    return { value: value || DEFAULT_COLDCALL_WA_SCRIPT };
+  }
 }

@@ -5,7 +5,7 @@ import {
   UserPlus, PhoneCall, Snowflake, CalendarClock, XCircle, Trophy,
   Phone, Mail, Globe, Loader2, X, Plus, Check, Pencil, Trash2, Upload,
   StickyNote, Building2, MapPin, Layers, Link2, FileText, Sparkles,
-  ChevronLeft, ChevronRight, MessageCircle, Star, AtSign, Megaphone, Users, Quote,
+  ChevronLeft, ChevronRight, MessageCircle, Star, AtSign, Megaphone, Users, Quote, Copy,
 } from 'lucide-react'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3002/api'
@@ -820,6 +820,103 @@ function ProspectModal({ prospect, onClose, onSave, onDelete, onMeetingSaved, on
   )
 }
 
+// Mensagem padrão pra copiar e mandar no WhatsApp — a mesma pra todos, editável aqui (fica no banco, settings).
+function WhatsappScriptModal({ onClose }) {
+  const [value, setValue] = useState('')
+  const [saved, setSaved] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [status, setStatus] = useState('')
+
+  useEffect(() => {
+    fetch(`${API}/settings/coldcall-whatsapp-script`)
+      .then((r) => r.json())
+      .then((d) => { setValue(d.value || ''); setSaved(d.value || '') })
+      .catch(() => setStatus('Não consegui carregar a mensagem'))
+      .finally(() => setLoading(false))
+  }, [])
+
+  const dirty = value !== saved
+
+  const save = async () => {
+    setSaving(true)
+    setStatus('')
+    try {
+      const res = await fetch(`${API}/settings/coldcall-whatsapp-script`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value }),
+      })
+      if (!res.ok) throw new Error()
+      const d = await res.json()
+      setValue(d.value)
+      setSaved(d.value)
+      setStatus('Salvo')
+    } catch {
+      setStatus('Erro ao salvar, tente de novo')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(value)
+      setStatus('Copiado')
+    } catch {
+      setStatus('Não consegui copiar, selecione o texto e copie manualmente')
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-xl p-5 flex flex-col gap-3" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
+              <MessageCircle className="w-4 h-4 text-emerald-600" /> Mensagem do WhatsApp
+            </h3>
+            <p className="text-xs text-slate-500">A mesma pra todos os contatos. Edite, salve e copie pra mandar.</p>
+          </div>
+          <button onClick={onClose} aria-label="Fechar" className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+        </div>
+        {loading ? (
+          <div className="h-56 flex items-center justify-center text-slate-400"><Loader2 className="w-5 h-5 animate-spin" /></div>
+        ) : (
+          <textarea
+            id="coldcall-wa-script"
+            value={value}
+            onChange={(e) => { setValue(e.target.value); setStatus('') }}
+            rows={10}
+            className="w-full text-sm text-slate-700 border border-slate-200 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-emerald-300 resize-y"
+          />
+        )}
+        <div className="flex items-center justify-between gap-3">
+          <span className={`text-xs font-medium ${status.startsWith('Erro') || status.startsWith('Não') ? 'text-red-600' : 'text-emerald-600'}`}>
+            {status || (dirty ? 'Alterações não salvas' : '')}
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={copy}
+              disabled={loading || !value.trim()}
+              className="flex items-center gap-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 disabled:opacity-50 px-3.5 py-2 rounded-lg transition"
+            >
+              <Copy className="w-4 h-4" /> Copiar
+            </button>
+            <button
+              onClick={save}
+              disabled={loading || saving || !dirty}
+              className="flex items-center gap-1.5 text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 px-3.5 py-2 rounded-lg transition"
+            >
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Salvar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function ColdCall() {
   const { stages, reload: reloadStages, setStages } = useStages()
   const [board, setBoard] = useState({})
@@ -833,6 +930,7 @@ export default function ColdCall() {
     try { return localStorage.getItem('coldcall_list_filter') || '' } catch { return '' }
   })
   const [pendingFile, setPendingFile] = useState(null)
+  const [waScriptOpen, setWaScriptOpen] = useState(false)
   const [listNameDraft, setListNameDraft] = useState('')
   const fileInputRef = useRef(null)
   const boardRef = useRef(board)
@@ -1044,6 +1142,7 @@ export default function ColdCall() {
 
   return (
     <div className="p-6 h-full flex flex-col">
+      {waScriptOpen && <WhatsappScriptModal onClose={() => setWaScriptOpen(false)} />}
       <div className="flex items-center justify-between mb-4 gap-4">
         <div>
           <h2 className="text-lg font-bold text-slate-800">Cold Call</h2>
@@ -1077,6 +1176,12 @@ export default function ColdCall() {
           >
             <Sparkles className="w-4 h-4" /> Cola da ligação
           </a>
+          <button
+            onClick={() => setWaScriptOpen(true)}
+            className="flex items-center gap-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-3.5 py-2 rounded-lg transition"
+          >
+            <MessageCircle className="w-4 h-4" /> Mensagem WhatsApp
+          </button>
           {importResult && !importResult.error && (
             <span className="text-xs text-emerald-600 font-medium">
               {importResult.imported} importado(s) em "{importResult.listName}", {importResult.skipped} ignorado(s) (duplicado/sem nome){importResult.enriched > 0 && `, ${importResult.enriched} atualizado(s) com nota/bairro`}
