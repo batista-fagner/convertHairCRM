@@ -5,6 +5,7 @@ import { FacebookService } from '../facebook/facebook.service';
 import { QuizService } from '../quiz/quiz.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { SettingsService, MEETING_NOTIFY_PHONES_KEY } from '../settings/settings.service';
+import { phoneWithoutDdi } from '../common/phone-display.util';
 import { Lead } from '../common/entities/lead.entity';
 import { randomUUID } from 'crypto';
 
@@ -48,7 +49,7 @@ export class LeadsController {
       header,
       '',
       `Lead: ${lead.name}`,
-      `WhatsApp: ${lead.phone}`,
+      `WhatsApp: ${phoneWithoutDdi(lead.phone)}`,
       lead.meetingAt ? `Quando: ${formatMeetingDate(new Date(lead.meetingAt))}` : null,
       previous && change !== 'agendada' ? `${change === 'remarcada' ? 'Antes' : 'Era'}: ${formatMeetingDate(previous)}` : null,
       lead.assignedTo ? `Responsável: ${lead.assignedTo}` : null,
