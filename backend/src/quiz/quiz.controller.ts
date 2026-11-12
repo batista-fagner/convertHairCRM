@@ -103,6 +103,15 @@ export class QuizController {
     return this.quizService.captureLead(slug, { ...dto, clientIp, userAgent });
   }
 
+  // Eventos da página de oferta (ViewContent / InitiateCheckout) via CAPI.
+  @Public()
+  @Post(':slug/page-event')
+  trackPageEvent(@Param('slug') slug: string, @Body() dto: any, @Req() req: Request) {
+    const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || '';
+    const userAgent = req.headers['user-agent'] as string | undefined;
+    return this.quizService.trackPageEvent(slug, { ...dto, clientIp, userAgent });
+  }
+
   @Public()
   @Post(':slug/progress')
   trackProgress(@Param('slug') slug: string, @Body() dto: any, @Req() req: Request) {

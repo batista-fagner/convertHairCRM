@@ -298,6 +298,39 @@ export class QuizService {
    * pode chegar fora de ordem ou duplicado (rede instável) sem corromper o
    * dado, porque só avança furthestQuestionIndex, nunca recua.
    */
+  /**
+   * Eventos da página de oferta (ConvertHairPage /oferta/5-fornecedores) via
+   * CAPI, no pixel do quiz de onde a pessoa veio. O navegador dispara o mesmo
+   * evento com o mesmo eventId — o Meta deduplica e fica com o que chegar.
+   */
+  async trackPageEvent(
+    slug: string,
+    dto: {
+      eventName?: string; eventId?: string; url?: string; contentName?: string;
+      fbclid?: string; fbc?: string; fbp?: string; clickId?: string; clientIp?: string; userAgent?: string;
+    },
+  ): Promise<{ ok: true }> {
+    const allowed = ['ViewContent', 'InitiateCheckout'];
+    if (!dto.eventName || !allowed.includes(dto.eventName) || !dto.eventId) return { ok: true };
+    if (isBotUserAgent(dto.userAgent) || isMetaNetworkIp(dto.clientIp)) return { ok: true };
+    const quiz = await this.findBySlug(slug);
+    const pixelOverride = quiz.fbPixelId || quiz.fbAccessToken
+      ? { pixelId: quiz.fbPixelId ?? undefined, accessToken: quiz.fbAccessToken ?? undefined }
+      : undefined;
+    const contentName = dto.contentName ? String(dto.contentName).slice(0, 60) : undefined;
+    this.facebookService
+      .sendCustomEvent(
+        dto.eventName,
+        { fbclid: dto.fbclid, fbc: dto.fbc, fbp: dto.fbp, externalId: dto.clickId, clientIp: dto.clientIp, userAgent: dto.userAgent },
+        dto.url ? String(dto.url).slice(0, 500) : undefined,
+        String(dto.eventId).slice(0, 100),
+        pixelOverride,
+        contentName ? { content_name: contentName } : undefined,
+      )
+      .catch((err) => this.logger.error(`Erro ao enviar ${dto.eventName} da oferta: ${err.message}`));
+    return { ok: true };
+  }
+
   async trackProgress(slug: string, dto: ProgressDto): Promise<{ ok: true }> {
     const quiz = await this.findBySlug(slug);
     if (!dto.clickId) return { ok: true }; // sem clickId não dá pra agrupar a sessão — ignora silenciosamente
