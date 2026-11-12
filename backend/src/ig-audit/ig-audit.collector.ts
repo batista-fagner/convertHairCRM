@@ -84,12 +84,15 @@ export interface AuditData {
     textSnippet: string;
   };
   whatsappNaBio: boolean;
+  /** Número de telefone escrito no texto da bio (não é link clicável). */
+  telefoneNaBio: boolean;
   transcripts: { code: string; plays: number | null; group: 'melhor' | 'pior'; text: string }[];
   stories: null;
   /** Capas (base64) dos melhores/piores reels — só pra IA olhar, não vão pro banco. */
   coverDataUrls?: { code: string; group: 'melhor' | 'pior'; dataUrl: string }[];
 }
 
+const PHONE_RE = /\(?\b\d{2}\)?[\s.-]?9[\s.]?\d{4}[\s.-]?\d{4}\b/;
 const WHATS_RE = /wa\.me|api\.whatsapp|whatsapp\.com\/(send|message)|chat\.whatsapp/i;
 const AGGREGATOR_RE = /linktr\.ee|beacons\.ai|linkbio|bio\.link|lnk\.bio|campsite\.bio|taplink|linkin\.bio|msha\.ke|link\.me|hoo\.be/i;
 const CART_RE = /carrinho|add[-_ ]to[-_ ]cart|adicionar ao carrinho|comprar agora|checkout|finalizar compra|nuvemshop|shopify|lojaintegrada|tray\.com|yampi|wix stores|vtex/i;
@@ -116,6 +119,11 @@ export class IgAuditCollector {
     }
     const p = resolved.profile;
     if (resolved.status === 'private') throw new Error(`O perfil @${p.username} é privado — não dá pra analisar.`);
+    // Perfil tem publicações mas não veio nenhuma (Instagram bloqueou a leitura):
+    // nunca seguir — a análise diria "0 postagens", o que seria falso no PDF.
+    if ((p.mediaCount ?? 0) > 0 && !p.posts.length && !p.reels.length) {
+      throw new Error('O Instagram não deixou ler as publicações desse perfil agora. Tente de novo em alguns minutos.');
+    }
 
     const now = Math.floor(Date.now() / 1000);
     const reels: AuditReel[] = p.reels.map((r) => ({
@@ -179,6 +187,7 @@ export class IgAuditCollector {
       highlights,
       ads,
       site,
+      telefoneNaBio: PHONE_RE.test(p.biography || ''),
       whatsappNaBio: WHATS_RE.test(linkText) || /whats/i.test(p.biography) || !!p.businessPhone || site.kind === 'whatsapp',
       transcripts,
       stories: null,
@@ -198,12 +207,20 @@ export class IgAuditCollector {
       .filter((x) => x.takenAt && !seen.has(x.code) && seen.add(x.code))
       .map((x) => x.takenAt)
       .sort((a, b) => b - a);
+    // Frequência só pela janela recente (90 dias): post FIXADO antigo aparece
+    // no topo do perfil e, se entrasse na conta, inventaria "401 dias sem postar".
+    const WINDOW = 90;
+    const recentDates = dates.filter((d) => now - d <= WINDOW * DAY);
     let maxGap: number | null = null;
-    for (let i = 0; i < dates.length - 1; i++) {
-      const gap = Math.floor((dates[i] - dates[i + 1]) / DAY);
+    for (let i = 0; i < recentDates.length - 1; i++) {
+      const gap = Math.floor((recentDates[i] - recentDates[i + 1]) / DAY);
       if (maxGap === null || gap > maxGap) maxGap = gap;
     }
-    const spanDays = dates.length >= 2 ? (dates[0] - dates[dates.length - 1]) / DAY : null;
+    // Janela efetiva: se tudo que lemos é mais novo que 90 dias, usa do mais antigo lido até hoje.
+    // Janela efetiva = do mais antigo que lemos (dentro dos 90 dias) até hoje —
+    // só lemos as ~12 últimas publicações, então não dá pra dividir por 90 sempre.
+    const oldestRecent = recentDates.length ? recentDates[recentDates.length - 1] : null;
+    const windowDays = oldestRecent ? Math.max(7, (now - oldestRecent) / DAY) : WINDOW;
 
     const recent = p.posts.slice(0, 12);
     const engagement =
@@ -225,7 +242,7 @@ export class IgAuditCollector {
       postsUltimos30Dias: dates.filter((d) => now - d <= 30 * DAY).length,
       diasDesdeUltimaPublicacao: dates.length ? Math.floor((now - dates[0]) / DAY) : null,
       maiorIntervaloSemPostarDias: maxGap,
-      mediaPostsPorSemana: spanDays && spanDays > 0 ? Math.round((dates.length / spanDays) * 7 * 10) / 10 : null,
+      mediaPostsPorSemana: dates.length ? Math.round((recentDates.length / windowDays) * 7 * 10) / 10 : null,
       taxaEngajamentoPct: engagement,
     };
   }

@@ -29,7 +29,7 @@ export class IgAuditService implements OnModuleInit {
   ) {
     this.openai = new OpenAI({ apiKey: config.get('OPENAI_API_KEY') });
     this.model = config.get('IG_AUDIT_MODEL') || 'gpt-5.4-mini';
-    const sc = new ScrapeCreatorsClient(config.get('SCRAPECREATORS_API_KEY') || '', { reelsLimit: 15 });
+    const sc = new ScrapeCreatorsClient(config.get('SCRAPECREATORS_API_KEY') || '', { reelsLimit: 15, includeCollabs: true });
     this.scConfigured = sc.configured;
     this.collector = new IgAuditCollector(sc);
   }
@@ -184,7 +184,7 @@ export class IgAuditService implements OnModuleInit {
     lines.push(`Seguidores: ${fmt(p.followers)} | Seguindo: ${fmt(p.following)} | Publicações: ${fmt(p.mediaCount)}`);
     lines.push(`Bio (texto exato): """${p.bio || '(vazia)'}"""`);
     lines.push(`Link na bio: ${p.externalUrl || 'nenhum'}${p.links.length > 1 ? ` | Outros links: ${p.links.map((l) => l.url).join(', ')}` : ''}`);
-    lines.push(`Botão/telefone de contato comercial: ${p.businessPhone ? 'sim' : 'não'} | Algum caminho pro WhatsApp na bio/link: ${d.whatsappNaBio ? 'sim' : 'não'}`);
+    lines.push(`Botão/telefone de contato comercial: ${p.businessPhone ? 'sim' : 'não'} | Link/botão clicável pro WhatsApp na bio ou no link: ${d.whatsappNaBio ? 'sim' : 'não'} | Número de telefone escrito no texto da bio: ${d.telefoneNaBio ? 'sim (a pessoa precisa copiar e salvar o número)' : 'não'}`);
     lines.push('');
     lines.push('## Destaques');
     lines.push(d.highlights.available ? `${d.highlights.count} destaque(s): ${d.highlights.titles.join(' | ') || '(sem título)'}` : 'Não foi possível ler os destaques.');
@@ -192,7 +192,7 @@ export class IgAuditService implements OnModuleInit {
     lines.push('## Frequência (feed + reels; stories: não disponível)');
     lines.push(`Publicações nos últimos 7 dias: ${s.postsUltimos7Dias} | nos últimos 30 dias: ${s.postsUltimos30Dias}`);
     lines.push(`Reels nos últimos 7 dias: ${s.reelsUltimos7Dias} | nos últimos 30 dias: ${s.reelsUltimos30Dias}`);
-    lines.push(`Dias desde a última publicação: ${fmt(s.diasDesdeUltimaPublicacao)} | Maior intervalo sem publicar (no período lido): ${fmt(s.maiorIntervaloSemPostarDias)} dias | Média: ${fmt(s.mediaPostsPorSemana)} publicações por semana`);
+    lines.push(`Dias desde a última publicação: ${fmt(s.diasDesdeUltimaPublicacao)} | Maior intervalo sem publicar (últimos 90 dias): ${fmt(s.maiorIntervaloSemPostarDias)} dias | Média: ${fmt(s.mediaPostsPorSemana)} publicações por semana (últimos 90 dias). Obs.: posts fixados antigos podem aparecer na lista — não use a data deles pra falar de frequência`);
     lines.push('');
     lines.push(`## Reels (últimos ${s.reelsAnalisados})`);
     lines.push(`Média de visualizações: ${fmt(s.mediaViews)} | Mediana: ${fmt(s.medianaViews)} | Média de views ÷ seguidores: ${s.viewsPorSeguidorPct ?? 'não disponível'}%`);

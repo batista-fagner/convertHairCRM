@@ -103,10 +103,14 @@ export function guessHandleFromInput(raw: string): string | null {
 export class ScrapeCreatorsClient {
   private readonly logger = new Logger('ScrapeCreators');
 
-  /** reelsLimit: quantos reels dela guardar (enriquecimento usa 8; auditoria usa mais). */
+  /**
+   * reelsLimit: quantos reels dela guardar (enriquecimento usa 8; auditoria usa mais).
+   * includeCollabs: conta posts/reels em parceria (o dono é a outra conta) —
+   * a auditoria quer, porque aparecem no perfil dela; o enriquecimento não.
+   */
   constructor(
     private readonly apiKey: string,
-    private readonly opts: { reelsLimit?: number } = {},
+    private readonly opts: { reelsLimit?: number; includeCollabs?: boolean } = {},
   ) {}
 
   /** Chamada crua pra outros endpoints da Scrape Creators (auditoria: destaques, anúncios, transcrição). */
@@ -273,7 +277,7 @@ export class ScrapeCreatorsClient {
     const edges: any[] = u.edge_owner_to_timeline_media?.edges || [];
     const posts: IgPost[] = edges
       .map((e) => e.node)
-      .filter((n) => n && (!n.owner?.username || n.owner.username === u.username))
+      .filter((n) => n && (this.opts.includeCollabs || !n.owner?.username || n.owner.username === u.username))
       .map((n) => ({
         code: n.shortcode,
         kind: n.product_type === 'clips' ? 'reel' : n.__typename === 'XDTGraphSidecar' ? 'carrossel' : n.is_video ? 'video' : 'foto',
@@ -328,7 +332,7 @@ export class ScrapeCreatorsClient {
     const { status, data } = await this.get('/v1/instagram/user/reels', { user_id: userId, trim: true }, 30000);
     if (status !== 200 || !Array.isArray(data?.items)) return [];
     return data.items
-      .filter((r: any) => !r.user?.username || r.user.username === username)
+      .filter((r: any) => this.opts.includeCollabs || !r.user?.username || r.user.username === username)
       .slice(0, this.opts.reelsLimit ?? 8)
       .map((r: any) => ({
         code: r.code,
