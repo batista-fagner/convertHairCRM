@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom'
 import { io } from 'socket.io-client'
 import {
+  ScanSearch,
   LayoutDashboard,
   Megaphone,
   Users,
@@ -54,6 +55,7 @@ const NAV_GROUPS = [
       { icon: FileSpreadsheet, label: 'Formulário Instantâneo', path: '/instant-form-leads' },
       { icon: Radar, label: 'Prospecção', path: '/prospeccao' },
       { icon: PhoneCall, label: 'Cold Call', path: '/cold-call' },
+      { icon: ScanSearch, label: 'Auditoria de Instagram', path: '/auditoria-instagram' },
       { icon: Users, label: 'Grupo WhatsApp', path: '/group-workshop' },
     ],
   },
@@ -130,6 +132,7 @@ const PAGE_TITLES = {
   '/agenda': 'Agenda de Reuniões',
   '/prospeccao': 'Prospecção',
   '/cold-call': 'Cold Call',
+  '/auditoria-instagram': 'Auditoria de Instagram',
   '/settings': 'Configurações',
   '/usuarios': 'Usuários',
 }

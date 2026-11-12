@@ -27,6 +27,7 @@ import { AudioAsset } from './video-edit/audio-asset.entity';
 import { VideoEditJob } from './video-edit/video-edit-job.entity';
 import { ColdCallLead } from './common/entities/coldcall-lead.entity';
 import { ColdCallStage } from './common/entities/coldcall-stage.entity';
+import { IgAudit } from './common/entities/ig-audit.entity';
 import { LeadsModule } from './leads/leads.module';
 import { EnrichmentModule } from './enrichment/enrichment.module';
 import { FormsModule } from './forms/forms.module';
@@ -50,6 +51,7 @@ import { ProspectingModule } from './prospecting/prospecting.module';
 import { VideoEditModule } from './video-edit/video-edit.module';
 import { GreennModule } from './greenn/greenn.module';
 import { ColdCallModule } from './coldcall/coldcall.module';
+import { IgAuditModule } from './ig-audit/ig-audit.module';
 
 @Module({
   imports: [
@@ -67,7 +69,7 @@ import { ColdCallModule } from './coldcall/coldcall.module';
         // Supabase exige SSL; `DATABASE_SSL=false` permite apontar para um
         // Postgres local descartável ao testar sem tocar em produção.
         ssl: config.get('DATABASE_SSL') === 'false' ? false : { rejectUnauthorized: false },
-        entities: [Lead, KanbanCustomStage, AgendaAvailability, AgendaBlock, Campaign, Form, InstagramAutomation, IgConversation, IgMessage, IgCommentEvent, Setting, FollowupRule, FollowupVideo, SmsContact, SmsMessage, IgPost, Quiz, QuizSubmission, QuizProgress, Carousel, Prospect, AudioAsset, VideoEditJob, ColdCallLead, ColdCallStage, User],
+        entities: [Lead, KanbanCustomStage, AgendaAvailability, AgendaBlock, Campaign, Form, InstagramAutomation, IgConversation, IgMessage, IgCommentEvent, Setting, FollowupRule, FollowupVideo, SmsContact, SmsMessage, IgPost, Quiz, QuizSubmission, QuizProgress, Carousel, Prospect, AudioAsset, VideoEditJob, ColdCallLead, ColdCallStage, IgAudit, User],
         synchronize: true,
         logging: false,
         timezone: 'Z',
@@ -94,6 +96,7 @@ import { ColdCallModule } from './coldcall/coldcall.module';
     VideoEditModule,
     GreennModule,
     ColdCallModule,
+    IgAuditModule,
   ],
 })
 export class AppModule {}

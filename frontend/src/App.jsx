@@ -22,6 +22,7 @@ import Agenda from './pages/Agenda'
 import InstantFormLeads from './pages/InstantFormLeads'
 import Prospeccao from './pages/Prospeccao'
 import ColdCall from './pages/ColdCall'
+import IgAudit from './pages/IgAudit'
 import ColdCallGate from './components/ColdCallGate'
 import SmsInbox from './pages/sms/SmsInbox'
 import IgInbox from './pages/instagram-inbox/IgInbox'
@@ -76,6 +77,7 @@ export default function App() {
           <Route path="/instant-form-leads" element={<InstantFormLeads />} />
           <Route path="/prospeccao" element={<Prospeccao />} />
           <Route path="/cold-call" element={<ColdCallGate><ColdCall /></ColdCallGate>} />
+          <Route path="/auditoria-instagram" element={<IgAudit />} />
           <Route path="/group-workshop" element={<GroupWorkshop />} />
           <Route path="/forms" element={<Forms />} />
           <Route path="/quiz-builder" element={<Quizzes />} />

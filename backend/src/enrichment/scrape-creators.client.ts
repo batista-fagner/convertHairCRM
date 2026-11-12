@@ -103,7 +103,16 @@ export function guessHandleFromInput(raw: string): string | null {
 export class ScrapeCreatorsClient {
   private readonly logger = new Logger('ScrapeCreators');
 
-  constructor(private readonly apiKey: string) {}
+  /** reelsLimit: quantos reels dela guardar (enriquecimento usa 8; auditoria usa mais). */
+  constructor(
+    private readonly apiKey: string,
+    private readonly opts: { reelsLimit?: number } = {},
+  ) {}
+
+  /** Chamada crua pra outros endpoints da Scrape Creators (auditoria: destaques, anúncios, transcrição). */
+  request(path: string, params: Record<string, any>, timeout = 45000) {
+    return this.get(path, params, timeout);
+  }
 
   get configured() {
     return !!this.apiKey;
@@ -320,7 +329,7 @@ export class ScrapeCreatorsClient {
     if (status !== 200 || !Array.isArray(data?.items)) return [];
     return data.items
       .filter((r: any) => !r.user?.username || r.user.username === username)
-      .slice(0, 8)
+      .slice(0, this.opts.reelsLimit ?? 8)
       .map((r: any) => ({
         code: r.code,
         kind: 'reel' as const,
