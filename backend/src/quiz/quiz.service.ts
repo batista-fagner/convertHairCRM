@@ -486,6 +486,17 @@ export class QuizService {
     await this.repo.delete(id);
   }
 
+  // Cópia de segurança do quiz: tudo igual (perguntas, páginas, pixel, mensagens),
+  // mas DESATIVADA e com slug novo — a cópia nunca recebe tráfego sem querer.
+  async duplicate(id: string): Promise<Quiz> {
+    const original = await this.findById(id);
+    let slug = `${original.slug}-copia`;
+    for (let n = 2; await this.repo.exist({ where: { slug } }); n++) slug = `${original.slug}-copia-${n}`;
+    const { id: _id, createdAt: _c, updatedAt: _u, ...rest } = structuredClone(original);
+    const copy = this.repo.create({ ...rest, name: `${original.name} (cópia)`, slug, active: false });
+    return this.repo.save(copy);
+  }
+
   listSubmissions(quizId: string): Promise<QuizSubmission[]> {
     return this.submissionRepo.find({ where: { quizId }, order: { createdAt: 'DESC' } });
   }

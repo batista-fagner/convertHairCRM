@@ -2344,6 +2344,7 @@ export default function Quizzes() {
   const [saving, setSaving] = useState(false)
   const [copiedId, setCopiedId] = useState(null)
   const [togglingId, setTogglingId] = useState(null)
+  const [duplicatingId, setDuplicatingId] = useState(null)
   const [submissionsQuiz, setSubmissionsQuiz] = useState(null)
   const [submissions, setSubmissions] = useState([])
   const [loadingSubmissions, setLoadingSubmissions] = useState(false)
@@ -2403,6 +2404,19 @@ export default function Quizzes() {
     if (!confirm('Excluir esse quiz?')) return
     await fetch(`${API}/quiz/${id}`, { method: 'DELETE' })
     loadQuizzes()
+  }
+
+  async function handleDuplicate(quiz) {
+    setDuplicatingId(quiz.id)
+    try {
+      const res = await fetch(`${API}/quiz/id/${quiz.id}/duplicate`, { method: 'POST' })
+      if (!res.ok) throw new Error('Erro ao duplicar quiz')
+      await loadQuizzes()
+    } catch (err) {
+      alert(err.message || 'Erro ao duplicar quiz')
+    } finally {
+      setDuplicatingId(null)
+    }
   }
 
   async function toggleActive(quiz) {
@@ -2553,6 +2567,14 @@ export default function Quizzes() {
                 </button>
                 <button onClick={() => setFunnelQuiz(quiz)} className="flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-violet-600 border border-slate-200 hover:border-violet-300 px-3 py-2 rounded-lg transition">
                   Funil
+                </button>
+                <button
+                  onClick={() => handleDuplicate(quiz)}
+                  disabled={duplicatingId === quiz.id}
+                  title="Cria uma cópia desativada desse quiz"
+                  className="flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-violet-600 border border-slate-200 hover:border-violet-300 disabled:opacity-50 px-3 py-2 rounded-lg transition"
+                >
+                  {duplicatingId === quiz.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Copy className="w-3.5 h-3.5" />} Duplicar
                 </button>
                 <button onClick={() => handleDelete(quiz.id)} className="flex items-center gap-1.5 text-sm font-medium text-slate-400 hover:text-red-500 border border-slate-200 hover:border-red-200 px-3 py-2 rounded-lg transition">
                   <Trash2 className="w-3.5 h-3.5" />

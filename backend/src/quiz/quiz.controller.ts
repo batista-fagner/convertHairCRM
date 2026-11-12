@@ -59,6 +59,11 @@ export class QuizController {
     return this.quizService.update(id, dto);
   }
 
+  @Post('id/:id/duplicate')
+  duplicate(@Param('id') id: string) {
+    return this.quizService.duplicate(id);
+  }
+
   @Delete(':id')
   remove(@Param('id') id: string) {
     return this.quizService.remove(id);
