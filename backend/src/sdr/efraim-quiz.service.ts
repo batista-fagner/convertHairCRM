@@ -11,6 +11,7 @@ import { LeadsService } from '../leads/leads.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { SettingsService, MEETING_NOTIFY_PHONES_KEY } from '../settings/settings.service';
 import { phoneWithoutDdi } from '../common/phone-display.util';
+import { formatQuizAnswers } from '../common/quiz-answers.util';
 import { SDR_MODEL_KEY } from './sdr.prompt';
 import {
   DEFAULT_EFRAIM_PROMPT,
@@ -684,6 +685,7 @@ export class EfraimQuizService {
         `Quando: ${formatSlotHuman(meeting, new Date())}`,
         ...(previousMeeting ? [`Antes: ${formatSlotHuman(previousMeeting, new Date())}`] : []),
         ...(offAgenda ? ['', `⚠️ Esse horário ${offAgenda} — confira na agenda do CRM.`] : []),
+        ...(formatQuizAnswers(lead) ? ['', 'Respostas do quiz:', formatQuizAnswers(lead) as string] : []),
         '',
         'Já está na agenda do CRM. Lembre de mandar o link da sala 1h antes (o Efraim prometeu).',
       ].join('\n'));

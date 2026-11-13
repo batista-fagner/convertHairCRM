@@ -6,6 +6,7 @@ import { QuizService } from '../quiz/quiz.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { SettingsService, MEETING_NOTIFY_PHONES_KEY } from '../settings/settings.service';
 import { phoneWithoutDdi } from '../common/phone-display.util';
+import { formatQuizAnswers } from '../common/quiz-answers.util';
 import { Lead } from '../common/entities/lead.entity';
 import { randomUUID } from 'crypto';
 
@@ -45,6 +46,9 @@ export class LeadsController {
       desmarcada: '❌ Reunião desmarcada',
     }[change];
     const notes = (lead.notes || '').trim();
+    // Lead do quiz: manda sempre as respostas do quiz (a "nota mais recente"
+    // costuma ser a análise do Instagram, que não serve pro closer aqui).
+    const quizAnswers = formatQuizAnswers(lead);
     const lines = [
       header,
       '',
@@ -53,7 +57,9 @@ export class LeadsController {
       lead.meetingAt ? `Quando: ${formatMeetingDate(new Date(lead.meetingAt))}` : null,
       previous && change !== 'agendada' ? `${change === 'remarcada' ? 'Antes' : 'Era'}: ${formatMeetingDate(previous)}` : null,
       lead.assignedTo ? `Responsável: ${lead.assignedTo}` : null,
-      notes ? `\nNotas: ${notes.length > 400 ? `${notes.slice(0, 400)}…` : notes}` : null,
+      quizAnswers
+        ? `\nRespostas do quiz:\n${quizAnswers}`
+        : notes ? `\nNotas: ${notes.length > 400 ? `${notes.slice(0, 400)}…` : notes}` : null,
     ].filter((l) => l !== null);
     const text = lines.join('\n');
 
@@ -228,9 +234,18 @@ export class LeadsController {
   }
 
   @Patch(':id')
-  async edit(@Param('id') id: string, @Body() body: { name?: string; assignedTo?: string | null; notes?: string | null; groupJid?: string | null }) {
-    const data: { name?: string; assignedTo?: string | null; notes?: string | null; notesUpdatedAt?: Date; groupJid?: string | null } = {};
+  async edit(@Param('id') id: string, @Body() body: { name?: string; assignedTo?: string | null; notes?: string | null; groupJid?: string | null; instagram?: string | null }) {
+    const data: { name?: string; assignedTo?: string | null; notes?: string | null; notesUpdatedAt?: Date; groupJid?: string | null; instagram?: string; semInstagram?: boolean } = {};
     if (typeof body.name === 'string' && body.name.trim()) data.name = body.name.trim();
+    // Correção manual do @ (o lead digitou errado ou pôs o e-mail no campo).
+    // Link do perfil vira @usuario; quem tem @ informado deixa de ser "sem Instagram".
+    if ('instagram' in body) {
+      const raw = (body.instagram || '').trim();
+      const fromUrl = raw.match(/instagram\.com\/([A-Za-z0-9._]+)/i)?.[1];
+      const handle = (fromUrl || raw).replace(/^@+/, '').replace(/\/+$/, '');
+      data.instagram = handle ? `@${handle}` : (null as any);
+      if (handle) data.semInstagram = false;
+    }
     if ('assignedTo' in body) data.assignedTo = body.assignedTo?.trim() || null;
     if ('notes' in body) {
       const newNotes = body.notes ?? null;
