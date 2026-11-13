@@ -17,16 +17,72 @@ const KANBAN_PER_STAGE_LIMIT = 200;
 const CSV_COLUMNS = ['company_name', 'city', 'state', 'phone_e164', 'email', 'website', 'source_url', 'b2b_evidence'] as const;
 
 // Nomes alternativos (em português) aceitos no cabeçalho → nome canônico.
+// O cabeçalho é comparado em minúsculas e sem acento (ver normalizeHeader).
 const HEADER_ALIASES: Record<string, string> = {
   nome: 'company_name',
+  nome_empresa: 'company_name',
+  empresa: 'company_name',
   cidade: 'city',
   estado: 'state',
+  uf: 'state',
   telefone_e164: 'phone_e164',
+  telefone: 'phone_e164',
+  telefone_whatsapp: 'phone_e164',
+  whatsapp: 'phone_e164',
   google_rating: 'nota_google',
   google_reviews: 'avaliacoes_google',
+  qtd_avaliacoes_google: 'avaliacoes_google',
   neighborhood: 'bairro',
   site: 'website',
+  segmento_foco: 'segmento',
+  segment: 'segmento',
+  faturamento_anual_estimado: 'faturamento',
+  faturamento_estimado: 'faturamento',
+  endereco_referencia: 'endereco',
+  address: 'endereco',
+  url_site_ou_instagram: 'site_ou_instagram',
 };
+
+// Colunas que o importador entende (canônicas). Qualquer outra vai pra
+// extraFields, com o cabeçalho original como rótulo — nada do CSV se perde.
+const KNOWN_COLUMNS = new Set<string>([
+  ...CSV_COLUMNS,
+  'nota_google', 'avaliacoes_google', 'bairro',
+  'segmento', 'faturamento', 'endereco', 'site_ou_instagram', 'prioridade_crm',
+  'instagram', 'seguidores_ig', 'anuncios_meta', 'equipe_comercial', 'sinal_equipe_comercial',
+  'outros_sinais_porte', 'gancho_ligacao', 'score', 'prioridade',
+]);
+
+// Colunas descartadas: numeração da planilha e status de prospecção (quem
+// controla o status é a raia do Kanban).
+const IGNORED_COLUMNS = new Set<string>(['id', 'status_prospeccao', 'status']);
+
+/** "Segmento_Foco" → "segmento_foco"; "Endereço Referência" → "endereco_referencia". */
+function normalizeHeader(h: string): string {
+  return h
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/(^_|_$)/g, '');
+}
+
+/**
+ * Telefone em qualquer formato → E.164 (+55...). "(27) 3763-2663" →
+ * "+552737632663". Mantém o padrão dos lotes antigos (que já vinham com +55),
+ * então o dedup por telefone continua batendo entre listas.
+ */
+function normalizePhone(value?: string): string | null {
+  const raw = value?.trim();
+  if (!raw) return null;
+  const digits = raw.replace(/\D/g, '');
+  if (!digits) return null;
+  if (raw.startsWith('+')) return `+${digits}`;
+  if (digits.length === 10 || digits.length === 11) return `+55${digits}`;
+  if ((digits.length === 12 || digits.length === 13) && digits.startsWith('55')) return `+${digits}`;
+  return raw;
+}
 
 // Coluna do CSV → campo do levantamento de porte. 'int'/'num' viram número.
 const PROFILE_FIELDS: { col: string; field: keyof ColdCallLead; type: 'text' | 'int' | 'num' }[] = [
@@ -61,10 +117,16 @@ function parseNumber(value?: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-/** Parser simples de CSV (aspas + vírgula) — arquivo pequeno (dezenas de linhas), não justifica dependência nova. */
-function parseCsv(text: string): Record<string, string>[] {
+/**
+ * Parser simples de CSV (aspas + vírgula ou ponto e vírgula) — arquivo pequeno
+ * (dezenas de linhas), não justifica dependência nova. O separador é detectado
+ * pelo cabeçalho (Excel em português exporta com ";").
+ */
+function parseCsv(text: string): { rows: Record<string, string>[]; labels: Record<string, string> } {
   const lines = text.split(/\r\n|\n|\r/).filter((line) => line.trim().length > 0);
-  if (lines.length === 0) return [];
+  if (lines.length === 0) return { rows: [], labels: {} };
+  const firstLine = lines[0].replace(/^﻿/, '');
+  const delimiter = (firstLine.match(/;/g)?.length ?? 0) > (firstLine.match(/,/g)?.length ?? 0) ? ';' : ',';
 
   const parseLine = (line: string): string[] => {
     const fields: string[] = [];
@@ -83,7 +145,7 @@ function parseCsv(text: string): Record<string, string>[] {
         }
       } else if (char === '"') {
         inQuotes = true;
-      } else if (char === ',') {
+      } else if (char === delimiter) {
         fields.push(current);
         current = '';
       } else {
@@ -95,11 +157,15 @@ function parseCsv(text: string): Record<string, string>[] {
   };
 
   // BOM do Excel ("﻿") grudaria no nome da 1ª coluna e ela nunca casaria.
-  const header = parseLine(lines[0].replace(/^﻿/, '')).map((h) => {
-    const key = h.toLowerCase();
-    return HEADER_ALIASES[key] ?? key;
+  const rawHeader = parseLine(firstLine);
+  const labels: Record<string, string> = {};
+  const header = rawHeader.map((h) => {
+    const key = normalizeHeader(h);
+    const canonical = HEADER_ALIASES[key] ?? key;
+    labels[canonical] = h.replace(/_/g, ' ').trim();
+    return canonical;
   });
-  return lines.slice(1).map((line) => {
+  const rows = lines.slice(1).map((line) => {
     const values = parseLine(line);
     const row: Record<string, string> = {};
     header.forEach((col, idx) => {
@@ -107,6 +173,49 @@ function parseCsv(text: string): Record<string, string>[] {
     });
     return row;
   });
+  return { rows, labels };
+}
+
+const isEmpty = (v?: string) => !v || v === '—' || v === '-';
+
+/**
+ * Campos que só alguns lotes trazem: segmento, faturamento, endereço, a coluna
+ * única "site ou Instagram", a prioridade numerada ("1 - Prioridade Local...")
+ * e as colunas desconhecidas (extraFields).
+ */
+function parseExtras(row: Record<string, string>, labels: Record<string, string>, columns: string[]): Partial<ColdCallLead> {
+  const out: Partial<ColdCallLead> = {};
+  const get = (col: string) => {
+    const v = row[col]?.trim();
+    return isEmpty(v) ? undefined : v;
+  };
+  if (get('segmento')) out.segment = get('segmento');
+  if (get('faturamento')) out.estimatedRevenue = get('faturamento');
+  if (get('endereco')) out.address = get('endereco');
+
+  const siteOrIg = get('site_ou_instagram');
+  if (siteOrIg) {
+    if (/instagram\.com\//i.test(siteOrIg) || siteOrIg.startsWith('@')) out.instagram = siteOrIg;
+    else out.website = siteOrIg;
+  }
+
+  // "1 - Prioridade Local (Presencial / WhatsApp)" → selo "1" no card; o texto
+  // inteiro vai pros extras pra explicar o número.
+  const prio = get('prioridade_crm');
+  if (prio) {
+    const n = prio.match(/^\s*(\d+)/)?.[1];
+    if (n) out.priority = n;
+  }
+
+  const extras: { label: string; value: string }[] = [];
+  if (prio) extras.push({ label: labels['prioridade_crm'] || 'Prioridade', value: prio });
+  for (const col of columns) {
+    if (KNOWN_COLUMNS.has(col) || IGNORED_COLUMNS.has(col)) continue;
+    const v = get(col);
+    if (v) extras.push({ label: labels[col] || col, value: v });
+  }
+  if (extras.length) out.extraFields = extras;
+  return out;
 }
 
 @Injectable()
@@ -124,10 +233,17 @@ export class ColdCallService {
    * com segurança só por nome da empresa).
    */
   async importCsv(fileContent: string, listName?: string): Promise<{ imported: number; skipped: number; enriched: number; total: number; listName: string | null }> {
-    const rows = parseCsv(fileContent);
+    const { rows, labels } = parseCsv(fileContent);
+    const columns = Object.keys(labels);
     const list = listName?.trim() || null;
     const existingByPhone = new Map(
-      (await this.repo.find({ select: ['id', 'phone', 'website', 'googleRating', 'googleReviews', 'neighborhood', ...PROFILE_FIELDS.map((f) => f.field)] }))
+      (await this.repo.find({
+        select: [
+          'id', 'phone', 'website', 'googleRating', 'googleReviews', 'neighborhood',
+          'segment', 'estimatedRevenue', 'address', 'extraFields',
+          ...PROFILE_FIELDS.map((f) => f.field),
+        ],
+      }))
         .filter((l) => !!l.phone)
         .map((l) => [l.phone as string, l]),
     );
@@ -144,13 +260,17 @@ export class ColdCallService {
         skipped++;
         continue;
       }
-      const phone = row['phone_e164']?.trim() || null;
+      const phone = normalizePhone(row['phone_e164']);
       const enrichment = {
         googleRating: parseNumber(row['nota_google']),
         googleReviews: parseNumber(row['avaliacoes_google']),
         neighborhood: row['bairro']?.trim() || null,
       };
-      const profile = parseProfile(row);
+      // Extras primeiro: as colunas explícitas (instagram, prioridade, website)
+      // ganham da coluna combinada "site ou Instagram".
+      const profile = { ...parseExtras(row, labels, columns), ...parseProfile(row) };
+      const website = row['website']?.trim() || profile.website || null;
+      delete profile.website;
 
       // Já existe: não duplica, mas completa o enriquecimento que estiver vazio
       // (reimportar uma lista com nota/avaliações/bairro atualiza os cards).
@@ -160,7 +280,6 @@ export class ColdCallService {
         if (existing.googleRating == null && enrichment.googleRating != null) patch.googleRating = enrichment.googleRating;
         if (existing.googleReviews == null && enrichment.googleReviews != null) patch.googleReviews = Math.round(enrichment.googleReviews);
         if (!existing.neighborhood && enrichment.neighborhood) patch.neighborhood = enrichment.neighborhood;
-        const website = row['website']?.trim();
         if (!existing.website && website) patch.website = website;
         for (const [field, value] of Object.entries(profile)) {
           if ((existing as any)[field] == null) (patch as any)[field] = value;
@@ -184,7 +303,7 @@ export class ColdCallService {
         state: row['state']?.trim() || null,
         phone,
         email: row['email']?.trim() || null,
-        website: row['website']?.trim() || null,
+        website,
         sourceUrl: row['source_url']?.trim() || null,
         b2bEvidence: row['b2b_evidence']?.trim() || null,
         googleRating: enrichment.googleRating,

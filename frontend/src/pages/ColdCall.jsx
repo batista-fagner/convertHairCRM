@@ -6,6 +6,7 @@ import {
   Phone, Mail, Globe, Loader2, X, Plus, Check, Pencil, Trash2, Upload,
   StickyNote, Building2, MapPin, Layers, Link2, FileText, Sparkles,
   ChevronLeft, ChevronRight, MessageCircle, Star, AtSign, Megaphone, Users, Quote, Copy,
+  Tag, Banknote, Info,
 } from 'lucide-react'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3002/api'
@@ -18,7 +19,14 @@ const PRIORITY_STYLES = {
   A: 'bg-emerald-100 text-emerald-800',
   B: 'bg-amber-100 text-amber-800',
   C: 'bg-slate-100 text-slate-600',
+  // Prioridade_CRM numerada (lista de agropecuárias): 1 = local, 2 = alta, 3 = normal.
+  1: 'bg-emerald-100 text-emerald-800',
+  2: 'bg-amber-100 text-amber-800',
+  3: 'bg-slate-100 text-slate-600',
 }
+
+// Texto completo da prioridade numerada ("1 - Prioridade Local (...)"), vem nos extras do CSV.
+const priorityLabel = (p) => p.extraFields?.find((f) => /^prioridade/i.test(f.label))?.value
 
 // Tags livres — cor fixa por texto (a mesma tag sempre na mesma cor).
 const TAG_COLORS = [
@@ -186,11 +194,21 @@ function ProspectCard({ prospect, onOpen, showList, onTagsChange }) {
           <div className="flex items-center gap-1.5 min-w-0">
             <p className="font-semibold text-slate-800 text-sm truncate">{prospect.companyName}</p>
             {prospect.priority && (
-              <span title={prospect.score != null ? `Score ${formatRating(prospect.score)}` : undefined} className={`text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 ${PRIORITY_STYLES[prospect.priority] || PRIORITY_STYLES.C}`}>
-                {prospect.priority}
+              <span title={prospect.score != null ? `Score ${formatRating(prospect.score)}` : priorityLabel(prospect)} className={`text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 ${PRIORITY_STYLES[prospect.priority] || PRIORITY_STYLES.C}`}>
+                {/^\d+$/.test(prospect.priority) ? `P${prospect.priority}` : prospect.priority}
               </span>
             )}
           </div>
+          {prospect.segment && (
+            <p className="text-[11px] text-slate-600 flex items-center gap-1 mt-0.5 truncate" title={prospect.segment}>
+              <Tag className="w-3 h-3 shrink-0 text-slate-400" /> {prospect.segment}
+            </p>
+          )}
+          {prospect.estimatedRevenue && (
+            <p className="text-[11px] text-slate-600 flex items-center gap-1 mt-0.5 truncate">
+              <Banknote className="w-3 h-3 shrink-0 text-slate-400" /> {prospect.estimatedRevenue}
+            </p>
+          )}
           {(prospect.neighborhood || prospect.city || prospect.state) && (
             <p className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5 truncate">
               <MapPin className="w-3 h-3 shrink-0" /> {[prospect.neighborhood, prospect.city, prospect.state].filter(Boolean).join(' - ')}
@@ -588,7 +606,7 @@ function ProfileSection({ prospect }) {
         <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Levantamento de porte</p>
         {prospect.priority && (
           <span className={`text-xs font-bold px-2 py-0.5 rounded ${PRIORITY_STYLES[prospect.priority] || PRIORITY_STYLES.C}`}>
-            Prioridade {prospect.priority}{prospect.score != null && <span className="font-medium"> · score {formatRating(prospect.score)}</span>}
+            {priorityLabel(prospect) || `Prioridade ${prospect.priority}`}{prospect.score != null && <span className="font-medium"> · score {formatRating(prospect.score)}</span>}
           </span>
         )}
       </div>
@@ -694,12 +712,26 @@ function ProspectModal({ prospect, onClose, onSave, onDelete, onMeetingSaved, on
               ) :<span className="text-slate-400 italic">Telefone não informado</span>}
             </div>
 
-            <div className="flex items-center gap-2 text-sm">
-              <MapPin className="w-4 h-4 text-slate-400 shrink-0" />
-              {prospect.neighborhood
-                ? <span className="font-medium text-slate-700">{prospect.neighborhood}</span>
-                : <span className="text-slate-400 italic">Bairro não informado</span>}
+            <div className="flex items-start gap-2 text-sm">
+              <MapPin className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
+              {prospect.address || prospect.neighborhood
+                ? <span className="font-medium text-slate-700">{[prospect.address, prospect.neighborhood].filter(Boolean).join(' - ')}</span>
+                : <span className="text-slate-400 italic">Endereço não informado</span>}
             </div>
+
+            {prospect.segment && (
+              <div className="flex items-start gap-2 text-sm">
+                <Tag className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
+                <span className="text-slate-700"><span className="text-slate-500">Segmento: </span><span className="font-medium">{prospect.segment}</span></span>
+              </div>
+            )}
+
+            {prospect.estimatedRevenue && (
+              <div className="flex items-center gap-2 text-sm">
+                <Banknote className="w-4 h-4 text-slate-400 shrink-0" />
+                <span className="text-slate-700"><span className="text-slate-500">Faturamento estimado: </span><span className="font-medium">{prospect.estimatedRevenue}</span></span>
+              </div>
+            )}
 
             <div className="flex items-center gap-2 text-sm">
               <Star className="w-4 h-4 text-slate-400 shrink-0" />
@@ -738,6 +770,21 @@ function ProspectModal({ prospect, onClose, onSave, onDelete, onMeetingSaved, on
                 <a href={prospect.sourceUrl} target="_blank" rel="noreferrer" className="font-medium text-slate-500 hover:underline truncate">
                   Fonte: {prospect.sourceUrl}
                 </a>
+              </div>
+            )}
+
+            {/* Prioridade já aparece no selo do "Levantamento de porte" logo abaixo. */}
+            {prospect.extraFields?.some((f) => !/^prioridade/i.test(f.label)) && (
+              <div className="flex items-start gap-2 text-sm pt-1 border-t border-slate-200 mt-1">
+                <Info className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
+                <dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 min-w-0">
+                  {prospect.extraFields.filter((f) => !/^prioridade/i.test(f.label)).map((f) => (
+                    <div key={f.label} className="contents">
+                      <dt className="text-slate-500">{f.label}:</dt>
+                      <dd className="font-medium text-slate-700 break-words">{f.value}</dd>
+                    </div>
+                  ))}
+                </dl>
               </div>
             )}
 

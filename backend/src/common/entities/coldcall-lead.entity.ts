@@ -55,6 +55,22 @@ export class ColdCallLead {
   @Column({ name: 'neighborhood', type: 'varchar', nullable: true })
   neighborhood?: string | null;
 
+  // Lista de agropecuárias (2026-11-13): segmento, faturamento estimado e
+  // endereço de referência. Opcionais, listas antigas não têm.
+  @Column({ name: 'segment', type: 'varchar', nullable: true })
+  segment?: string | null;
+
+  @Column({ name: 'estimated_revenue', type: 'varchar', nullable: true })
+  estimatedRevenue?: string | null;
+
+  @Column({ name: 'address', type: 'varchar', nullable: true })
+  address?: string | null;
+
+  // Colunas do CSV que o importador não conhece: guardadas como estão
+  // (rótulo = cabeçalho original), na ordem do arquivo, e exibidas no modal.
+  @Column({ name: 'extra_fields', type: 'jsonb', nullable: true })
+  extraFields?: { label: string; value: string }[] | null;
+
   // Levantamento de porte (lista de integradoras solares, 2026-10-28) — base
   // pra mensagem personalizada. Tudo opcional; listas antigas não têm.
   @Column({ name: 'instagram', type: 'varchar', nullable: true })
@@ -83,7 +99,8 @@ export class ColdCallLead {
   @Column({ name: 'score', type: 'real', nullable: true })
   score?: number | null;
 
-  // "A" | "B" | "C", derivada do score no levantamento.
+  // "A" | "B" | "C", derivada do score no levantamento — ou o número da
+  // coluna Prioridade_CRM ("1" | "2" | "3") na lista de agropecuárias.
   @Column({ name: 'priority', type: 'varchar', nullable: true })
   priority?: string | null;
 
