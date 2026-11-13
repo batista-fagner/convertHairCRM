@@ -732,6 +732,7 @@ export class QuizService {
           }),
         );
         this.realtime.emitLeadCreated(saved);
+        void this.resolveAdNames(saved);
       }
       this.logger.log(`[Quiz] Lead ${saved.id} (${phone.slice(0, 4)}…${phone.slice(-3)}) ${existing ? 'atualizado' : 'criado'} pelo quiz "${quiz.slug}"`);
       return saved;
@@ -739,6 +740,31 @@ export class QuizService {
       // Falha aqui nunca pode travar o quiz de quem está respondendo.
       this.logger.error(`[Quiz] Erro ao salvar lead do quiz "${quiz.slug}": ${err.message}`);
       return null;
+    }
+  }
+
+  /**
+   * O anúncio do quiz manda os IDs (campanha/conjunto/anúncio) na URL. Troca
+   * pelos nomes do Ads Manager, mesmo padrão do CTWA: campanha → utmCampaign,
+   * conjunto → utmMedium, ID do conjunto → utmTerm, ID do anúncio → utmContent
+   * (o botão "Ver criativo" usa ele). Segundo plano: falha só deixa os IDs.
+   */
+  private async resolveAdNames(lead: Lead) {
+    const adId = lead.utmContent || '';
+    if (!/^\d{10,}$/.test(adId)) return;
+    if (lead.utmCampaign && !/^\d+$/.test(lead.utmCampaign)) return;
+    try {
+      const d = await this.facebookService.getAdDetails(adId);
+      if (!d?.campaignName) return;
+      await this.leadsRepo.update(lead.id, {
+        utmCampaign: d.campaignName,
+        utmMedium: d.adsetName || lead.utmMedium,
+        utmTerm: d.adsetId || lead.utmTerm,
+      });
+      const updated = await this.leadsRepo.findOne({ where: { id: lead.id } });
+      if (updated) this.realtime.emitLeadUpdated(updated);
+    } catch (err: any) {
+      this.logger.warn(`[Quiz] Não deu pra buscar o nome do anúncio ${adId}: ${err.message}`);
     }
   }
 

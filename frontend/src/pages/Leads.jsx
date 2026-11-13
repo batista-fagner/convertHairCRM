@@ -790,12 +790,6 @@ export default function Leads() {
                               <p className="text-sm font-semibold text-slate-800">{sel.utmMedium}</p>
                             </div>
                           )}
-                          {sel.utmTerm && (
-                            <div>
-                              <p className="text-[11px] text-slate-400 mb-0.5">ID do Conjunto</p>
-                              <p className="text-sm font-semibold text-slate-800">{sel.utmTerm}</p>
-                            </div>
-                          )}
                           <div>
                             <p className="text-[11px] text-slate-400 mb-0.5">Canal</p>
                             <p className="text-sm font-semibold text-slate-800 flex items-center gap-1">
