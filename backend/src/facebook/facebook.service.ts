@@ -24,9 +24,12 @@ export class FacebookService {
     return digits.length <= 11 ? `55${digits}` : digits;
   }
 
+  // Formato do Meta: fb.1.<creationTime em MILISSEGUNDOS>.<fbclid>. Em segundos
+  // (como estava até 2026-11-14) o Meta trata o fbc como malformado e pode
+  // descartá-lo — o clique deixa de casar com o anúncio e o Lead não aparece
+  // na campanha.
   private buildFbc(fbclid: string): string {
-    const timestamp = Math.floor(Date.now() / 1000);
-    return `fb.1.${timestamp}.${fbclid}`;
+    return `fb.1.${Date.now()}.${fbclid}`;
   }
 
   /** Dados pessoais hasheados (em, ph, fn, ln, country) — o que mais pesa na qualidade de correspondência do pixel. */
