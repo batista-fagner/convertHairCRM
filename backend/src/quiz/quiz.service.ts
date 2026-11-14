@@ -768,7 +768,8 @@ export class QuizService {
     }
   }
 
-  async submit(slug: string, dto: SubmitDto): Promise<{ ok: true; redirectUrl: string; mqlEvents: string[] }> {
+  async submit(slug: string, dto: SubmitDto): Promise<{ ok: true; redirectUrl: string; mqlEvents: string[]; leadId?: string }> {
+    let submittedLeadId: string | undefined;
     const quiz = await this.findBySlug(slug);
     // Bug corrigido em 2026-08-30: antes mandava só `https://${slug}` (não é
     // uma URL real) — sem isso, uma regra de Conversão Personalizada no Meta
@@ -897,6 +898,7 @@ export class QuizService {
 
     if (capturedPhone) {
       const lead = await this.upsertQuizLead(quiz, { answeredResponses, mqlEvents, capturedPhone, captured }, dto);
+      submittedLeadId = lead?.id;
       // Normalmente já foi marcada na captura do telefone; isto cobre quem
       // mandou o submit sem passar por ela.
       await this.scheduleEfraimOpening(lead);
@@ -908,6 +910,8 @@ export class QuizService {
       ok: true,
       redirectUrl: quiz.whatsappUrl || '',
       mqlEvents: Array.from(mqlEvents),
+      // A página de agendamento (/q/:slug/agendar) usa pra saber quem está marcando.
+      leadId: submittedLeadId,
     };
   }
 

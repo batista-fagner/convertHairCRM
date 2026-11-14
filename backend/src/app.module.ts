@@ -34,6 +34,7 @@ import { FormsModule } from './forms/forms.module';
 import { FacebookModule } from './facebook/facebook.module';
 import { InstagramAutomationModule } from './instagram-automation/instagram-automation.module';
 import { AgendaModule } from './agenda/agenda.module';
+import { BookingModule } from './booking/booking.module';
 import { EfraimModule } from './efraim/efraim.module';
 import { TrackingModule } from './tracking/tracking.module';
 import { RealtimeModule } from './realtime/realtime.module';
@@ -78,6 +79,7 @@ import { IgAuditModule } from './ig-audit/ig-audit.module';
     AuthModule,
     LeadsModule,
     AgendaModule,
+    BookingModule,
     EnrichmentModule,
     FormsModule,
     FacebookModule,
