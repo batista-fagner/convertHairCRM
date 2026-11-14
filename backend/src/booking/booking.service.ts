@@ -6,7 +6,7 @@ import { Lead } from '../common/entities/lead.entity';
 import { AgendaService } from '../agenda/agenda.service';
 import { SettingsService, MEETING_NOTIFY_PHONES_KEY } from '../settings/settings.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
-import { formatSlotHuman } from '../common/brt.util';
+import { addDays, brt, formatSlotHuman, WEEKDAYS } from '../common/brt.util';
 import { phoneWithoutDdi } from '../common/phone-display.util';
 import { formatQuizAnswers } from '../common/quiz-answers.util';
 
@@ -74,6 +74,7 @@ export class BookingService {
     if (updated) this.realtime.emitLeadUpdated(updated);
     this.logger.log(`[Agendamento] ${lead.phone} marcou ${at.toISOString()} pela página`);
     this.notify(updated ?? lead, at, previous).catch((err) => this.logger.error(`[Agendamento] Falha no aviso: ${err.message}`));
+    this.confirmToLead(updated ?? lead, at).catch((err) => this.logger.error(`[Agendamento] Falha na confirmação ao lead: ${err.message}`));
     return { ok: true, meetingAt: at.toISOString() };
   }
 
@@ -102,6 +103,46 @@ export class BookingService {
     );
     this.realtime.emitLeadCreated(saved);
     return saved;
+  }
+
+  /** "até quinta" / "até amanhã" / "até daqui a pouco" — o dia da reunião, nunca fixo. */
+  private untilHuman(at: Date, now: Date): string {
+    const s = brt(at);
+    if (s.ymd === brt(now).ymd) return 'até daqui a pouco';
+    if (s.ymd === brt(addDays(now, 1)).ymd) return 'até amanhã';
+    return `até ${WEEKDAYS[s.weekday]}`;
+  }
+
+  /**
+   * Confirmação no WhatsApp do lead (mesmo número da Sofia/Efraim): a 1ª bolha
+   * sai na hora e a 2ª 10s depois. Fica registrada na conversa do card.
+   * Remarcação também confirma o novo horário.
+   */
+  private async confirmToLead(lead: Lead, at: Date) {
+    const baseUrl = this.config.get('SDR_UAZAPI_BASE_URL') || this.config.get('UAZAPI_BASE_URL');
+    const token = this.config.get('SDR_UAZAPI_TOKEN');
+    if (!baseUrl || !token || !lead.phone) return;
+    const now = new Date();
+    const firstName = (lead.name || '').trim().split(/\s+/)[0];
+    const greeting = firstName && !/^Lead \d{4}$/.test(lead.name || '') ? `Oi ${firstName}` : 'Oi';
+    const bubbles = [
+      `${greeting}, parabéns! Sua reunião está confirmada: ${formatSlotHuman(at, now)}.\nVou te mandar o link 1h antes.`,
+      `Lá vamos explicar pra você como pode dobrar o seu faturamento com a nossa ajuda, ${this.untilHuman(at, now)}!`,
+    ];
+    const number = lead.phone.startsWith('55') ? lead.phone : `55${lead.phone}`;
+    for (const [i, content] of bubbles.entries()) {
+      if (i > 0) await new Promise((r) => setTimeout(r, 10_000));
+      const res = await fetch(`${baseUrl}/send/text`, { method: 'POST', headers: { 'Content-Type': 'application/json', token }, body: JSON.stringify({ number, text: content }) });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      // Grava cada bolha assim que sai: com a conversa não vazia, o Efraim não
+      // manda a abertura dele por cima da confirmação. Relê o contexto a cada
+      // vez porque o lead pode responder no intervalo dos 10s.
+      const fresh = await this.leadsRepo.findOne({ where: { id: lead.id } });
+      const prior: any[] = Array.isArray(fresh?.aiContext) ? (fresh!.aiContext as any[]) : [];
+      await this.leadsRepo.update(lead.id, { aiContext: [...prior, { role: 'assistant', source: 'agendamento', content, timestamp: Date.now() }] as any });
+      const updated = await this.leadsRepo.findOne({ where: { id: lead.id } });
+      if (updated) this.realtime.emitLeadUpdated(updated);
+    }
   }
 
   private async notify(lead: Lead, at: Date, previous: Date | null) {
