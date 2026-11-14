@@ -127,7 +127,7 @@ export class BookingService {
     const greeting = firstName && !/^Lead \d{4}$/.test(lead.name || '') ? `Oi ${firstName}` : 'Oi';
     const bubbles = [
       `${greeting}, parabéns! Sua reunião está confirmada: ${formatSlotHuman(at, now)}.\nVou te mandar o link 1h antes.`,
-      `Lá vamos explicar pra você como pode dobrar o seu faturamento com a nossa ajuda, ${this.untilHuman(at, now)}!`,
+      `Lá vamos te explicar como você vai dobrar o seu faturamento com a nossa ajuda, ${this.untilHuman(at, now)}!`,
     ];
     const number = lead.phone.startsWith('55') ? lead.phone : `55${lead.phone}`;
     for (const [i, content] of bubbles.entries()) {
