@@ -6,7 +6,7 @@ import {
   Phone, Mail, Globe, Loader2, X, Plus, Check, Pencil, Trash2, Upload,
   StickyNote, Building2, MapPin, Layers, Link2, FileText, Sparkles,
   ChevronLeft, ChevronRight, MessageCircle, Star, AtSign, Megaphone, Users, Quote, Copy,
-  Tag, Banknote, Info,
+  Tag, Banknote, Info, Search,
 } from 'lucide-react'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3002/api'
@@ -967,6 +967,17 @@ function WhatsappScriptModal({ onClose }) {
 export default function ColdCall() {
   const { stages, reload: reloadStages, setStages } = useStages()
   const [board, setBoard] = useState({})
+  // Busca por nome da empresa — filtra o board já carregado, sem ir ao servidor.
+  const [search, setSearch] = useState('')
+  const normalize = (t) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+  const searchNorm = normalize(search.trim())
+  const visibleBoard = useMemo(() => {
+    if (!searchNorm) return board
+    return Object.fromEntries(Object.entries(board).map(([stage, items]) => [
+      stage,
+      (items || []).filter((p) => normalize(p.companyName).includes(searchNorm)),
+    ]))
+  }, [board, searchNorm])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState(null)
   const [activeId, setActiveId] = useState(null)
@@ -1196,6 +1207,18 @@ export default function ColdCall() {
           <p className="text-sm text-slate-500">Prospecção B2B — importe uma lista e organize as ligações por raia.</p>
         </div>
         <div className="flex items-center gap-3">
+          <div className="relative">
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              id="coldcall-search"
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar por nome..."
+              aria-label="Buscar por nome da empresa"
+              className="w-48 text-xs text-slate-700 bg-white border border-slate-200 rounded-lg pl-8 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-300"
+            />
+          </div>
           <select
             value={listFilter}
             onChange={(e) => changeListFilter(e.target.value)}
@@ -1257,7 +1280,7 @@ export default function ColdCall() {
               <Column
                 key={col.id}
                 column={col}
-                prospects={board[col.id] || []}
+                prospects={visibleBoard[col.id] || []}
                 onOpen={setSelected}
                 showList={!listFilter}
                 isFirst={i === 0}
