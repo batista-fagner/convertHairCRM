@@ -79,6 +79,16 @@ export class SettingsController {
     return { phone1: phones[0] ?? '', phone2: phones[1] ?? '' };
   }
 
+  @Get('share-contacts')
+  async getShareContacts() {
+    return this.settingsService.getShareContacts();
+  }
+
+  @Put('share-contacts')
+  async setShareContacts(@Body() body: { contacts: { name?: string; phone?: string }[] }) {
+    return this.settingsService.setShareContacts(body?.contacts || []);
+  }
+
   @Get('curiosity-messages')
   async getCuriosityMessages() {
     const stored = await this.settingsService.get(CURIOSITY_MESSAGES_KEY);

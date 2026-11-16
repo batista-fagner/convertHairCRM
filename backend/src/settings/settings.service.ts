@@ -9,6 +9,7 @@ import { SDR_PROMPT_KEY, DEFAULT_SDR_PROMPT, SDR_JSON_FORMAT, SDR_MODEL_KEY, SDR
 // Números (CSV, só dígitos com DDI) que recebem WhatsApp quando a SDR agenda,
 // remarca ou desmarca uma reunião no Kanban — normalmente o(s) closer(s).
 export const MEETING_NOTIFY_PHONES_KEY = 'meeting_notify_phones';
+export const SHARE_CONTACTS_KEY = 'share_contacts';
 
 @Injectable()
 export class SettingsService {
@@ -115,5 +116,29 @@ export class SettingsService {
       instagram: parsed.instagram ?? null,
       semInstagram: parsed.semInstagram ?? null,
     };
+  }
+
+  // Pessoas pra quem o time compartilha o contato de um lead: [{ name, phone }]
+  async getShareContacts(): Promise<{ name: string; phone: string }[]> {
+    try {
+      const v = JSON.parse((await this.get(SHARE_CONTACTS_KEY)) || '[]');
+      return Array.isArray(v) ? v : [];
+    } catch {
+      return [];
+    }
+  }
+
+  async setShareContacts(contacts: { name?: string; phone?: string }[]): Promise<{ name: string; phone: string }[]> {
+    const seen = new Set<string>();
+    const clean: { name: string; phone: string }[] = [];
+    for (const c of contacts) {
+      let phone = String(c?.phone || '').replace(/\D/g, '');
+      if (phone.length === 10 || phone.length === 11) phone = `55${phone}`;
+      if (phone.length < 12 || seen.has(phone)) continue;
+      seen.add(phone);
+      clean.push({ name: String(c?.name || '').trim().slice(0, 60) || phone, phone });
+    }
+    await this.set(SHARE_CONTACTS_KEY, JSON.stringify(clean));
+    return clean;
   }
 }

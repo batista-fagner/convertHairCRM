@@ -312,6 +312,59 @@ export class LeadsController {
     return this.saveNoteEntries(id, this.noteEntriesOf(lead).filter((n) => n.id !== noteId));
   }
 
+  // Compartilha o contato do lead por WhatsApp: resumo em texto + cartão de contato (vCard).
+  @Post(':id/share')
+  async share(@Param('id') id: string, @Body() body: { phones?: string[] }) {
+    const lead = await this.leadsService.findById(id);
+    if (!lead) throw new HttpException('Lead não encontrado', HttpStatus.NOT_FOUND);
+    const phones = [...new Set((body?.phones || []).map((p) => {
+      const d = String(p || '').replace(/\D/g, '');
+      return d.length === 10 || d.length === 11 ? `55${d}` : d;
+    }).filter((d) => d.length >= 12))];
+    if (!phones.length) throw new HttpException('Informe ao menos um número válido (com DDD)', HttpStatus.BAD_REQUEST);
+
+    const baseUrl = this.config.get('SDR_UAZAPI_BASE_URL') || this.config.get('UAZAPI_BASE_URL');
+    const token = this.config.get('SDR_UAZAPI_TOKEN');
+    if (!baseUrl || !token) throw new HttpException('WhatsApp do CRM não configurado', HttpStatus.BAD_GATEWAY);
+
+    const leadPhone = String(lead.phone || '').replace(/\D/g, '');
+    const quizAnswers = formatQuizAnswers(lead);
+    const text = [
+      '👤 Contato de lead',
+      '',
+      `Nome: ${lead.name}`,
+      `WhatsApp: ${phoneWithoutDdi(lead.phone)}`,
+      leadPhone ? `Link: https://wa.me/${leadPhone}` : null,
+      lead.instagram ? `Instagram: ${lead.instagram}` : null,
+      quizAnswers ? `\nRespostas do quiz:\n${quizAnswers}` : null,
+    ].filter((l) => l !== null).join('\n');
+
+    const post = async (path: string, payload: object) => {
+      const res = await fetch(`${baseUrl}${path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', token },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    };
+
+    let sent = 0;
+    for (const number of phones) {
+      try {
+        await post('/send/text', { number, text });
+        // O cartão é um extra: se falhar, o resumo já chegou.
+        await post('/send/contact', { number, fullName: lead.name, phoneNumber: leadPhone }).catch((e) =>
+          this.logger.warn(`[Compartilhar] vCard não enviado pra ${number}: ${e.message}`),
+        );
+        sent++;
+      } catch (e) {
+        this.logger.error(`[Compartilhar] Falha ao enviar pra ${number}: ${e.message}`);
+      }
+    }
+    if (!sent) throw new HttpException('Não consegui enviar pelo WhatsApp', HttpStatus.BAD_GATEWAY);
+    return { sent, total: phones.length };
+  }
+
   @Patch(':id/meeting')
   async setMeeting(@Param('id') id: string, @Body() body: { meetingAt?: string | null }) {
     let meetingAt: Date | null = null;

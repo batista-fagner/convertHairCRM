@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo, useSyncExternalStore
 import { DndContext, DragOverlay, useDraggable, useDroppable, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { io } from 'socket.io-client'
 import { socketOptions, getUser } from '../lib/auth'
-import { ClipboardList, ListChecks, Flame, Snowflake, UserPlus, XCircle, Phone, Mail, UserCheck, Loader2, X, MessageCircle, PauseCircle, Bot, MoreVertical, Pencil, Trash2, Play, Eye, EyeOff, Handshake, Trophy, HeadphonesIcon, Paperclip, Send, FileText, Video, StickyNote, ChevronDown, ChevronUp, Plus, CheckCircle2, Megaphone, Search, Layers, Mic, Square, Check, CalendarClock, Zap, RefreshCw } from 'lucide-react'
+import { ClipboardList, ListChecks, Flame, Snowflake, UserPlus, XCircle, Phone, Mail, UserCheck, Loader2, X, MessageCircle, PauseCircle, Bot, MoreVertical, Pencil, Trash2, Play, Eye, EyeOff, Handshake, Trophy, HeadphonesIcon, Paperclip, Send, FileText, Video, StickyNote, ChevronDown, ChevronUp, Plus, CheckCircle2, Megaphone, Search, Layers, Mic, Square, Check, CalendarClock, Zap, RefreshCw, Share2 } from 'lucide-react'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3002/api'
 const SOCKET_URL = API.replace(/\/api\/?$/, '') || 'http://localhost:3002'
@@ -603,6 +603,14 @@ function ConversationModal({ lead, onClose, onTogglePause, onAssign, onNoteReque
   const [meetingValue, setMeetingValue] = useState(toDatetimeLocalValue(lead.meetingAt))
   const [meetingSaving, setMeetingSaving] = useState(false)
   const [meetingResult, setMeetingResult] = useState(null) // { ok, text }
+  const [shareOpen, setShareOpen] = useState(false)
+  const [shareContacts, setShareContacts] = useState([])
+  const [sharePicked, setSharePicked] = useState([])
+  const [shareName, setShareName] = useState('')
+  const [sharePhone, setSharePhone] = useState('')
+  const [shareRemember, setShareRemember] = useState(true)
+  const [shareSending, setShareSending] = useState(false)
+  const [shareResult, setShareResult] = useState(null) // { ok, text }
   const [draft, setDraft] = useState('')
   const [pendingMedia, setPendingMedia] = useState(null) // { type, base64, dataUrl, filename, mimeType }
   const [sending, setSending] = useState(false)
@@ -660,6 +668,51 @@ function ConversationModal({ lead, onClose, onTogglePause, onAssign, onNoteReque
       setMeetingResult({ ok: false, text: 'Erro ao salvar a reunião. Tente de novo.' })
     } finally {
       setMeetingSaving(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!shareOpen) return
+    fetch(`${API}/settings/share-contacts`).then(r => r.json()).then(d => Array.isArray(d) && setShareContacts(d)).catch(() => {})
+  }, [shareOpen])
+
+  const toggleSharePick = (phone) =>
+    setSharePicked(p => p.includes(phone) ? p.filter(x => x !== phone) : [...p, phone])
+
+  const sendShare = async () => {
+    const typed = sharePhone.replace(/\D/g, '')
+    const phones = [...sharePicked]
+    if (typed) phones.push(typed.length <= 11 ? `55${typed}` : typed)
+    if (!phones.length) return
+    setShareSending(true)
+    setShareResult(null)
+    try {
+      const res = await fetch(`${API}/leads/${lead.id}/share`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phones }),
+      })
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).message || 'Erro')
+      const data = await res.json()
+      if (typed && shareRemember) {
+        const full = typed.length <= 11 ? `55${typed}` : typed
+        if (!shareContacts.some(c => c.phone === full)) {
+          const next = [...shareContacts, { name: shareName.trim() || full, phone: full }]
+          fetch(`${API}/settings/share-contacts`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contacts: next }),
+          }).then(r => r.json()).then(d => Array.isArray(d) && setShareContacts(d)).catch(() => {})
+        }
+      }
+      setShareResult({ ok: true, text: `Enviado pra ${data.sent} ${data.sent === 1 ? 'pessoa' : 'pessoas'} (resumo + cartão de contato)` })
+      setSharePhone('')
+      setShareName('')
+      setSharePicked([])
+    } catch (err) {
+      setShareResult({ ok: false, text: err.message && err.message !== 'Erro' ? err.message : 'Não consegui enviar. Tente de novo.' })
+    } finally {
+      setShareSending(false)
     }
   }
 
@@ -960,6 +1013,19 @@ function ConversationModal({ lead, onClose, onTogglePause, onAssign, onNoteReque
               {meetingOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
             </button>
             <button
+              onClick={() => setShareOpen(o => !o)}
+              className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg border transition ${
+                shareOpen
+                  ? 'bg-violet-50 border-violet-200 text-violet-700'
+                  : 'border-slate-200 text-slate-500 hover:bg-slate-100'
+              }`}
+              title="Enviar o contato deste lead pra outra pessoa pelo WhatsApp"
+            >
+              <Share2 className="w-3.5 h-3.5" />
+              Compartilhar
+              {shareOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+            </button>
+            <button
               onClick={handleCuriosityBlast}
               disabled={curiosityLoading}
               className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg border border-orange-200 text-orange-600 hover:bg-orange-50 disabled:opacity-50 transition shrink-0"
@@ -1011,6 +1077,67 @@ function ConversationModal({ lead, onClose, onTogglePause, onAssign, onNoteReque
             {meetingResult && (
               <p className={`text-[11px] mt-1.5 flex items-center gap-1 ${meetingResult.ok ? 'text-emerald-600' : 'text-amber-700'}`}>
                 {meetingResult.ok && <CheckCircle2 className="w-3 h-3" />} {meetingResult.text}
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Compartilhar contato do lead */}
+        {shareOpen && (
+          <div className="px-5 py-3 border-b border-slate-200 bg-violet-50/50">
+            <p className="text-xs font-medium text-slate-600 mb-1.5">
+              Enviar o contato de {lead.name} pelo WhatsApp (resumo + cartão de contato)
+            </p>
+            {shareContacts.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {shareContacts.map(c => (
+                  <button
+                    key={c.phone}
+                    onClick={() => toggleSharePick(c.phone)}
+                    className={`text-xs px-2.5 py-1 rounded-full border transition ${
+                      sharePicked.includes(c.phone)
+                        ? 'bg-violet-600 border-violet-600 text-white'
+                        : 'bg-white border-violet-200 text-violet-700 hover:bg-violet-100'
+                    }`}
+                  >
+                    {c.name}
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="flex items-center gap-2 flex-wrap">
+              <input
+                id="share-name"
+                type="text"
+                value={shareName}
+                onChange={e => setShareName(e.target.value)}
+                placeholder="Nome (opcional)"
+                className="text-sm border border-violet-200 rounded-lg px-3 py-1.5 bg-white w-36 focus:outline-none focus:ring-2 focus:ring-violet-300"
+              />
+              <input
+                id="share-phone"
+                type="tel"
+                value={sharePhone}
+                onChange={e => setSharePhone(e.target.value)}
+                placeholder="WhatsApp com DDD"
+                className="text-sm border border-violet-200 rounded-lg px-3 py-1.5 bg-white w-44 focus:outline-none focus:ring-2 focus:ring-violet-300"
+              />
+              <label htmlFor="share-remember" className="flex items-center gap-1 text-[11px] text-slate-500">
+                <input id="share-remember" type="checkbox" checked={shareRemember} onChange={e => setShareRemember(e.target.checked)} />
+                Lembrar
+              </label>
+              <button
+                onClick={sendShare}
+                disabled={shareSending || (!sharePicked.length && sharePhone.replace(/\D/g, '').length < 10)}
+                className="flex items-center gap-1.5 text-xs font-medium text-white bg-violet-600 hover:bg-violet-700 disabled:opacity-50 px-3 py-2 rounded-lg transition"
+              >
+                {shareSending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                Enviar
+              </button>
+            </div>
+            {shareResult && (
+              <p className={`text-[11px] mt-1.5 flex items-center gap-1 ${shareResult.ok ? 'text-emerald-600' : 'text-amber-700'}`}>
+                {shareResult.ok && <CheckCircle2 className="w-3 h-3" />} {shareResult.text}
               </p>
             )}
           </div>
