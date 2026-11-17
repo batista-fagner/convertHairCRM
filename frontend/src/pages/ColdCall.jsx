@@ -6,7 +6,7 @@ import {
   Phone, Mail, Globe, Loader2, X, Plus, Check, Pencil, Trash2, Upload,
   StickyNote, Building2, MapPin, Layers, Link2, FileText, Sparkles,
   ChevronLeft, ChevronRight, MessageCircle, Star, AtSign, Megaphone, Users, Quote, Copy,
-  Tag, Banknote, Info, Search,
+  Tag, Banknote, Info, Search, Send, Pause, Play, RotateCcw, Wifi, WifiOff,
 } from 'lucide-react'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3002/api'
@@ -47,6 +47,13 @@ const addTag = (tags, value) => {
 
 const igHandle = (ig) => String(ig).replace(/^@/, '').replace(/^https?:\/\/(www\.)?instagram\.com\//, '').replace(/\/$/, '')
 const igLink = (ig) => `https://instagram.com/${igHandle(ig)}`
+const OUTREACH_BADGE = {
+  queued: { label: '⏳ Na fila do disparo', cls: 'bg-slate-100 text-slate-600' },
+  sending: { label: '⏳ Enviando…', cls: 'bg-slate-100 text-slate-600' },
+  sent: { label: '✓ Mensagem enviada', cls: 'bg-emerald-100 text-emerald-700' },
+  failed: { label: '⚠ Falha no disparo', cls: 'bg-red-100 text-red-700' },
+  skipped: { label: 'Sem WhatsApp', cls: 'bg-slate-100 text-slate-500' },
+}
 const formatCount = (n) => Number(n).toLocaleString('pt-BR')
 
 const waLink = (phone) => `https://wa.me/${String(phone).replace(/\D/g, '')}`
@@ -297,6 +304,14 @@ function ProspectCard({ prospect, onOpen, showList, onTagsChange }) {
         {prospect.meetingAt && (
           <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-sky-100 text-sky-700 font-medium flex items-center gap-1" title="Reunião agendada">
             📅 Reunião {formatDateTime(prospect.meetingAt)}
+          </span>
+        )}
+        {prospect.outreachStatus && OUTREACH_BADGE[prospect.outreachStatus] && (
+          <span
+            className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${OUTREACH_BADGE[prospect.outreachStatus].cls}`}
+            title={prospect.outreachError || (prospect.outreachSentAt ? `Enviada ${formatDateTime(prospect.outreachSentAt)}` : '')}
+          >
+            {OUTREACH_BADGE[prospect.outreachStatus].label}
           </span>
         )}
         {prospect.notes && (
@@ -796,6 +811,14 @@ function ProspectModal({ prospect, onClose, onSave, onDelete, onMeetingSaved, on
             )}
           </div>
 
+          {prospect.outreachMessage && (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 p-3">
+              <p className="text-[11px] font-semibold text-emerald-700 mb-1 flex items-center gap-1">
+                <Send className="w-3 h-3" /> Mensagem enviada no disparo{prospect.outreachSentAt ? ` · ${formatDateTime(prospect.outreachSentAt)}` : ''}
+              </p>
+              <p className="text-xs text-slate-700 whitespace-pre-line">{prospect.outreachMessage}</p>
+            </div>
+          )}
           <ProfileSection prospect={prospect} />
 
           <div>
@@ -861,6 +884,365 @@ function ProspectModal({ prospect, onClose, onSave, onDelete, onMeetingSaved, on
           >
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Salvar
           </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Disparo em lote pelo WhatsApp do sócio (ColdCallOutreachService no backend).
+// O ritmo e a fila ficam no servidor: dá pra fechar esta janela que o lote segue.
+const BATCH_PRESETS = [8, 10, 20]
+const VARIABLE_HINTS = {
+  saudacao: 'Bom dia / Boa tarde / Boa noite (pelo horário do envio)',
+  empresa: 'Nome da empresa, sem "Ltda" e sem parênteses',
+  cidade: 'Cidade',
+  estado: 'UF',
+  segmento: 'Primeira parte do segmento, em minúsculas',
+}
+
+function secondsUntil(iso) {
+  if (!iso) return null
+  return Math.max(0, Math.round((new Date(iso).getTime() - Date.now()) / 1000))
+}
+
+function OutreachModal({ listName, onClose, onChanged }) {
+  const [data, setData] = useState(null)
+  const [template, setTemplate] = useState('')
+  const [delaySec, setDelaySec] = useState(60)
+  const [dailyLimit, setDailyLimit] = useState(50)
+  const [startHour, setStartHour] = useState(8)
+  const [endHour, setEndHour] = useState(18)
+  const [size, setSize] = useState(10)
+  const [token, setToken] = useState('')
+  const [preview, setPreview] = useState([])
+  const [busy, setBusy] = useState('')
+  const [error, setError] = useState('')
+  const [, setNow] = useState(0)
+  const textareaRef = useRef(null)
+  const loadedRef = useRef(false)
+
+  const load = useCallback(() => {
+    const qs = listName ? `?list=${encodeURIComponent(listName)}` : ''
+    return fetch(`${API}/coldcall/outreach${qs}`)
+      .then((r) => r.json())
+      .then((d) => {
+        setData(d)
+        if (!loadedRef.current && d?.state) {
+          loadedRef.current = true
+          setTemplate(d.state.template)
+          setDelaySec(d.state.delaySec)
+          setDailyLimit(d.state.dailyLimit)
+          setStartHour(d.state.startHour)
+          setEndHour(d.state.endHour)
+        }
+      })
+      .catch(() => {})
+  }, [listName])
+
+  useEffect(() => { load() }, [load])
+  // Enquanto o lote roda, atualiza o painel e o board.
+  useEffect(() => {
+    const running = data?.state?.running
+    const t = setInterval(() => {
+      setNow((n) => n + 1)
+      if (running) load().then(() => onChanged?.())
+    }, running ? 5000 : 1000)
+    return () => clearInterval(t)
+  }, [data?.state?.running, load, onChanged])
+
+  useEffect(() => {
+    if (!template.trim()) return setPreview([])
+    const t = setTimeout(() => {
+      fetch(`${API}/coldcall/outreach/preview`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ template, listName: listName || null }),
+      }).then((r) => r.json()).then((d) => setPreview(Array.isArray(d) ? d : [])).catch(() => {})
+    }, 400)
+    return () => clearTimeout(t)
+  }, [template, listName])
+
+  const call = async (path, body, method = 'POST') => {
+    setError('')
+    setBusy(path)
+    try {
+      const res = await fetch(`${API}/coldcall/outreach/${path}`, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body || {}),
+      })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(d.message || 'Algo deu errado. Tente de novo.')
+      await load()
+      onChanged?.()
+      return d
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const insertVariable = (v) => {
+    const el = textareaRef.current
+    const tag = `{${v}}`
+    if (!el) return setTemplate((t) => t + tag)
+    const start = el.selectionStart ?? template.length
+    const end = el.selectionEnd ?? template.length
+    const next = template.slice(0, start) + tag + template.slice(end)
+    setTemplate(next)
+    requestAnimationFrame(() => { el.focus(); el.selectionStart = el.selectionEnd = start + tag.length })
+  }
+
+  const saveSettings = () => call('settings', { template, delaySec, dailyLimit, startHour, endHour }, 'PUT')
+  const start = async () => {
+    const saved = await call('settings', { template, delaySec, dailyLimit, startHour, endHour }, 'PUT')
+    if (!saved) return
+    await call('start', { listName: listName || null, size, template, delaySec })
+  }
+
+  const conn = data?.connection
+  const state = data?.state
+  const running = state?.running
+  const wait = secondsUntil(state?.nextAt)
+  const waitLabel = wait == null ? '' : wait >= 60 ? `${Math.floor(wait / 60)}min ${wait % 60}s` : `${wait}s`
+  const minHuman = Math.round(delaySec * 0.7)
+  const maxHuman = Math.round(delaySec * 1.4)
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[92vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200">
+          <div>
+            <h2 className="font-semibold text-slate-800 flex items-center gap-2"><Send className="w-4 h-4 text-emerald-600" /> Disparo pelo WhatsApp</h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Lista: <span className="font-medium text-slate-700">{listName || 'todas as listas'}</span> · só entra quem está em "Novo" e nunca recebeu
+            </p>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500" aria-label="Fechar"><X className="w-5 h-5" /></button>
+        </div>
+
+        {!data ? (
+          <div className="p-10 flex justify-center text-slate-400"><Loader2 className="w-6 h-6 animate-spin" /></div>
+        ) : (
+          <div className="overflow-y-auto p-5 space-y-5">
+            {/* Conexão */}
+            <section className="rounded-xl border border-slate-200 p-3.5">
+              <div className="flex items-center gap-2 flex-wrap">
+                {conn?.connected ? (
+                  <span className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full">
+                    <Wifi className="w-3.5 h-3.5" /> Conectado{conn.number ? ` · ${conn.number}` : ''}{conn.name ? ` (${conn.name})` : ''}
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1.5 text-xs font-semibold text-red-700 bg-red-50 px-2.5 py-1 rounded-full">
+                    <WifiOff className="w-3.5 h-3.5" /> {conn?.hasToken ? 'Instância desconectada ou token inválido' : 'Nenhum número conectado'}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2 mt-2.5 flex-wrap">
+                <input
+                  id="outreach-token"
+                  type="password"
+                  value={token}
+                  onChange={(e) => setToken(e.target.value)}
+                  placeholder={conn?.hasToken ? 'Trocar o token da instância' : 'Cole aqui o token da instância do uazapi'}
+                  className="flex-1 min-w-[220px] text-sm border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                  autoComplete="off"
+                />
+                <button
+                  onClick={async () => { await call('token', { token }, 'PUT'); setToken('') }}
+                  disabled={!token.trim() || !!busy}
+                  className="text-xs font-medium text-white bg-slate-800 hover:bg-slate-900 disabled:opacity-50 px-3 py-2 rounded-lg"
+                >
+                  Salvar token
+                </button>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-1.5">Crie a instância no painel do uazapi, conecte o seu número pelo QR code e cole o token dela aqui.</p>
+            </section>
+
+            {/* Lote em andamento */}
+            {(running || data.queued > 0 || state?.pausedReason) && (
+              <section className={`rounded-xl border p-3.5 ${running ? 'border-emerald-200 bg-emerald-50/50' : 'border-amber-200 bg-amber-50/50'}`}>
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="text-sm">
+                    <p className="font-semibold text-slate-800">
+                      {running ? 'Lote rodando' : state?.pausedReason || 'Lote pausado'}
+                    </p>
+                    <p className="text-xs text-slate-600 mt-0.5">
+                      {data.queued} na fila · {data.sentToday}/{state.dailyLimit} enviadas hoje
+                      {running && !data.inWindow && ` · fora do horário (${state.startHour}h–${state.endHour}h, seg a sáb), continua sozinho no próximo horário`}
+                      {running && data.inWindow && data.sentToday >= state.dailyLimit && ' · limite diário atingido, continua amanhã'}
+                      {running && data.inWindow && data.sentToday < state.dailyLimit && waitLabel && ` · próxima em ${waitLabel}`}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    {running ? (
+                      <button onClick={() => call('pause')} disabled={!!busy} className="flex items-center gap-1 text-xs font-medium text-amber-700 bg-white border border-amber-200 hover:bg-amber-50 px-3 py-1.5 rounded-lg">
+                        <Pause className="w-3.5 h-3.5" /> Pausar
+                      </button>
+                    ) : data.queued > 0 && (
+                      <button onClick={() => call('resume')} disabled={!!busy} className="flex items-center gap-1 text-xs font-medium text-emerald-700 bg-white border border-emerald-200 hover:bg-emerald-50 px-3 py-1.5 rounded-lg">
+                        <Play className="w-3.5 h-3.5" /> Retomar
+                      </button>
+                    )}
+                    {data.queued > 0 && (
+                      <button onClick={() => call('cancel')} disabled={!!busy} className="text-xs font-medium text-red-600 bg-white border border-red-200 hover:bg-red-50 px-3 py-1.5 rounded-lg">
+                        Cancelar o resto
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </section>
+            )}
+
+            {/* Mensagem */}
+            <section>
+              <label htmlFor="outreach-template" className="text-xs font-semibold text-slate-700 block mb-1.5">Mensagem</label>
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {(data.variables || Object.keys(VARIABLE_HINTS)).map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => insertVariable(v)}
+                    title={VARIABLE_HINTS[v]}
+                    className="text-[11px] font-mono px-2 py-0.5 rounded-md bg-violet-50 text-violet-700 border border-violet-200 hover:bg-violet-100"
+                  >
+                    {`{${v}}`}
+                  </button>
+                ))}
+              </div>
+              <textarea
+                id="outreach-template"
+                ref={textareaRef}
+                value={template}
+                onChange={(e) => setTemplate(e.target.value)}
+                rows={6}
+                className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-300 font-[inherit]"
+              />
+              <p className="text-[11px] text-slate-500 mt-1">
+                Pra variar o texto entre as empresas, use opções entre chaves com <span className="font-mono">|</span>: <span className="font-mono">{'{Preciso tirar|Queria tirar}'}</span> uma dúvida. Cada envio sorteia uma.
+              </p>
+              {preview.length > 0 && (
+                <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                  {preview.map((p, i) => (
+                    <div key={i} className="rounded-lg bg-[#e7ffdb] border border-emerald-100 p-2.5">
+                      <p className="text-[10px] font-semibold text-emerald-700 mb-1 truncate">{p.companyName}</p>
+                      <p className="text-xs text-slate-800 whitespace-pre-line">{p.text}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            {/* Ritmo */}
+            <section className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <p className="text-xs font-semibold text-slate-700 mb-1.5">Quantos enviar neste lote</p>
+                <div className="flex items-center gap-1.5">
+                  {BATCH_PRESETS.map((n) => (
+                    <button
+                      key={n}
+                      onClick={() => setSize(n)}
+                      className={`text-xs font-medium px-3 py-1.5 rounded-lg border ${size === n ? 'bg-violet-600 text-white border-violet-600' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                  <input
+                    id="outreach-size"
+                    type="number"
+                    min={1}
+                    max={200}
+                    value={size}
+                    onChange={(e) => setSize(Math.max(1, Number(e.target.value) || 1))}
+                    className="w-20 text-sm border border-slate-200 rounded-lg px-2 py-1.5"
+                    aria-label="Quantidade do lote"
+                  />
+                </div>
+                <p className="text-[11px] text-slate-500 mt-1">{data.eligible} disponíveis nesta lista (prioridade 1 sai primeiro)</p>
+              </div>
+              <div>
+                <label htmlFor="outreach-delay" className="text-xs font-semibold text-slate-700 block mb-1.5">Intervalo entre mensagens (segundos)</label>
+                <input
+                  id="outreach-delay"
+                  type="number"
+                  min={20}
+                  max={600}
+                  value={delaySec}
+                  onChange={(e) => setDelaySec(Number(e.target.value) || 60)}
+                  className="w-28 text-sm border border-slate-200 rounded-lg px-2 py-1.5"
+                />
+                <p className="text-[11px] text-slate-500 mt-1">Varia sozinho entre {minHuman}s e {maxHuman}s, e a cada 10 envios faz uma pausa de 3 a 6 min.</p>
+              </div>
+              <div>
+                <label htmlFor="outreach-daily" className="text-xs font-semibold text-slate-700 block mb-1.5">Limite por dia</label>
+                <input
+                  id="outreach-daily"
+                  type="number"
+                  min={1}
+                  max={300}
+                  value={dailyLimit}
+                  onChange={(e) => setDailyLimit(Number(e.target.value) || 50)}
+                  className="w-28 text-sm border border-slate-200 rounded-lg px-2 py-1.5"
+                />
+                <p className="text-[11px] text-slate-500 mt-1">Somando todos os lotes do dia. Passou disso, o que faltar sai no dia seguinte.</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-slate-700 mb-1.5">Horário de envio (seg a sáb)</p>
+                <div className="flex items-center gap-1.5 text-sm">
+                  <input id="outreach-start" type="number" min={0} max={23} value={startHour} onChange={(e) => setStartHour(Number(e.target.value))} className="w-16 border border-slate-200 rounded-lg px-2 py-1.5" aria-label="Hora de início" />
+                  <span className="text-slate-500">h às</span>
+                  <input id="outreach-end" type="number" min={1} max={24} value={endHour} onChange={(e) => setEndHour(Number(e.target.value))} className="w-16 border border-slate-200 rounded-lg px-2 py-1.5" aria-label="Hora de fim" />
+                  <span className="text-slate-500">h</span>
+                </div>
+                <p className="text-[11px] text-slate-500 mt-1">Fora disso o lote espera e continua sozinho.</p>
+              </div>
+            </section>
+
+            {/* Últimos envios */}
+            {data.recent?.length > 0 && (
+              <section>
+                <p className="text-xs font-semibold text-slate-700 mb-1.5">
+                  Últimos envios · {data.sent} enviadas, {data.skipped} sem WhatsApp, {data.failed} com falha
+                  {data.failed > 0 && (
+                    <button onClick={() => call('retry-failed', { listName: listName || null })} className="ml-2 inline-flex items-center gap-1 text-[11px] text-violet-700 hover:underline">
+                      <RotateCcw className="w-3 h-3" /> devolver as falhas pra fila disponível
+                    </button>
+                  )}
+                </p>
+                <ul className="divide-y divide-slate-100 border border-slate-200 rounded-lg">
+                  {data.recent.map((r) => (
+                    <li key={r.id} className="flex items-center justify-between gap-2 px-3 py-1.5 text-xs">
+                      <span className="truncate text-slate-700">{r.companyName}{r.city ? ` · ${r.city}` : ''}</span>
+                      <span className={`shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-medium ${OUTREACH_BADGE[r.outreachStatus]?.cls || ''}`} title={r.outreachError || ''}>
+                        {OUTREACH_BADGE[r.outreachStatus]?.label || r.outreachStatus}
+                        {r.outreachStatus === 'sent' && r.outreachSentAt ? ` · ${formatDateTime(r.outreachSentAt)}` : ''}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+          </div>
+        )}
+
+        <div className="px-5 py-3.5 border-t border-slate-200 flex items-center justify-between gap-3 flex-wrap">
+          <p className="text-xs text-red-600 min-h-[1rem]">{error}</p>
+          <div className="flex items-center gap-2">
+            <button onClick={saveSettings} disabled={!!busy || !data} className="text-sm font-medium text-slate-600 border border-slate-200 hover:bg-slate-50 px-4 py-2 rounded-lg">
+              Salvar mensagem
+            </button>
+            <button
+              onClick={start}
+              disabled={!!busy || !data || running || !conn?.connected || !template.trim() || !data.eligible}
+              className="flex items-center gap-1.5 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 px-4 py-2 rounded-lg"
+              title={!conn?.connected ? 'Conecte o número primeiro' : ''}
+            >
+              {busy === 'start' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              Iniciar lote de {Math.min(size, data?.eligible || size)}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -989,6 +1371,7 @@ export default function ColdCall() {
   })
   const [pendingFile, setPendingFile] = useState(null)
   const [waScriptOpen, setWaScriptOpen] = useState(false)
+  const [outreachOpen, setOutreachOpen] = useState(false)
   const [listNameDraft, setListNameDraft] = useState('')
   const fileInputRef = useRef(null)
   const boardRef = useRef(board)
@@ -1201,6 +1584,7 @@ export default function ColdCall() {
   return (
     <div className="p-6 h-full flex flex-col">
       {waScriptOpen && <WhatsappScriptModal onClose={() => setWaScriptOpen(false)} />}
+      {outreachOpen && <OutreachModal listName={listFilter} onClose={() => setOutreachOpen(false)} onChanged={loadBoard} />}
       <div className="flex items-center justify-between mb-4 gap-4">
         <div>
           <h2 className="text-lg font-bold text-slate-800">Cold Call</h2>
@@ -1251,6 +1635,12 @@ export default function ColdCall() {
             className="flex items-center gap-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-3.5 py-2 rounded-lg transition"
           >
             <MessageCircle className="w-4 h-4" /> Mensagem WhatsApp
+          </button>
+          <button
+            onClick={() => setOutreachOpen(true)}
+            className="flex items-center gap-1.5 text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-700 px-3.5 py-2 rounded-lg transition"
+          >
+            <Send className="w-4 h-4" /> Disparos
           </button>
           {importResult && !importResult.error && (
             <span className="text-xs text-emerald-600 font-medium">

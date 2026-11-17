@@ -132,6 +132,26 @@ export class ColdCallLead {
   @Column({ name: 'next_contact_at', type: 'timestamp', nullable: true })
   nextContactAt?: Date | null;
 
+  // Disparo de WhatsApp em lote (ColdCallOutreachService). null = nunca entrou
+  // num lote; 'queued' na fila; 'sending' reservado pelo worker; 'sent';
+  // 'failed' (erro no envio); 'skipped' (número sem WhatsApp). Um prospect
+  // com status não-nulo nunca entra num lote novo — evita mandar duas vezes.
+  @Column({ name: 'outreach_status', type: 'varchar', nullable: true })
+  outreachStatus?: string | null;
+
+  @Column({ name: 'outreach_queued_at', type: 'timestamptz', nullable: true })
+  outreachQueuedAt?: Date | null;
+
+  @Column({ name: 'outreach_sent_at', type: 'timestamptz', nullable: true })
+  outreachSentAt?: Date | null;
+
+  // Texto exatamente como saiu (variáveis já trocadas).
+  @Column({ name: 'outreach_message', type: 'text', nullable: true })
+  outreachMessage?: string | null;
+
+  @Column({ name: 'outreach_error', type: 'varchar', nullable: true })
+  outreachError?: string | null;
+
   @Column({ name: 'notes', type: 'text', nullable: true })
   notes?: string | null;
 
