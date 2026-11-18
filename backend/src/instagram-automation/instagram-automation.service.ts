@@ -244,7 +244,7 @@ export class InstagramAutomationService {
 
   async handleWebhookEvent(body: any) {
     this.logger.log(`Webhook recebido: ${JSON.stringify(body)}`);
-    const entries: any[] = body.entry || [];
+    const entries: any[] = await this.keepOwnEntries(body);
 
     for (const entry of entries) {
       // Mensagens DM (respostas do lead)
@@ -261,6 +261,39 @@ export class InstagramAutomationService {
           this.logger.error(`Erro ao processar comentário: ${err.message}`),
         );
       }
+    }
+  }
+
+  /**
+   * O app CRM-IA da Meta tem UM webhook só (este). Desde 18/11/2026 ele também atende contas
+   * de clientes do fisio-secretary (piloto: @dalucabelos), conectadas como testadoras do mesmo
+   * app. Cada `entry` traz o id da conta que recebeu o evento: as da própria conta (IG_USER_ID)
+   * seguem aqui; as outras são repassadas ao fisio-secretary e NUNCA processadas aqui — senão o
+   * catch-all de DM responderia o Direct de um cliente com a IA da Convert Hair.
+   */
+  private async keepOwnEntries(body: any): Promise<any[]> {
+    const all: any[] = body?.entry || [];
+    if (!all.length) return all;
+    const ownId = String(await this.getIgUserId());
+    const own = all.filter((e) => String(e?.id) === ownId);
+    const others = all.filter((e) => String(e?.id) !== ownId);
+    if (others.length) await this.forwardToFisio(body?.object, others);
+    return own;
+  }
+
+  private async forwardToFisio(object: string, entries: any[]) {
+    const url = this.config.get<string>('FISIO_IG_FORWARD_URL');
+    const secret = this.config.get<string>('IG_FORWARD_SECRET');
+    const ids = entries.map((e) => e?.id).join(',');
+    if (!url || !secret) {
+      this.logger.warn(`Evento de outra conta do Instagram (${ids}) descartado: FISIO_IG_FORWARD_URL/IG_FORWARD_SECRET não configurados`);
+      return;
+    }
+    try {
+      await axios.post(url, { object, entry: entries }, { headers: { 'x-forward-secret': secret }, timeout: 10000 });
+      this.logger.log(`Evento de outra conta do Instagram (${ids}) repassado ao fisio-secretary`);
+    } catch (err: any) {
+      this.logger.error(`Falha ao repassar evento do Instagram (${ids}) ao fisio-secretary [HTTP ${err?.response?.status ?? 'N/A'}]: ${err.message}`);
     }
   }
 
