@@ -16,9 +16,28 @@ const HOURS = Array.from({ length: 15 }, (_, i) => i + 7) // 7h às 21h
 
 const emptyWeek = () => Object.fromEntries(WEEKDAYS.map((d) => [d.value, []]))
 
+const ymdOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+const ddmm = (d) => `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`
+
+// As próximas 8 semanas (segunda a domingo), começando pela atual.
+function upcomingWeeks(count = 8) {
+  const monday = new Date()
+  monday.setHours(12, 0, 0, 0)
+  monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7))
+  return Array.from({ length: count }, (_, i) => {
+    const start = new Date(monday)
+    start.setDate(monday.getDate() + i * 7)
+    const end = new Date(start)
+    end.setDate(start.getDate() + 6)
+    const tag = i === 0 ? 'esta semana' : i === 1 ? 'próxima' : ''
+    return { ymd: ymdOf(start), label: `${ddmm(start)} – ${ddmm(end)}`, tag }
+  })
+}
+
 export default function AgendaAvailability() {
   const [week, setWeek] = useState(emptyWeek)
-  const [config, setConfig] = useState({ noticeHours: 3, maxDaysAhead: 14 })
+  const [config, setConfig] = useState({ noticeHours: 3, maxDaysAhead: 14, openWeeks: [] })
+  const weeks = upcomingWeeks()
   const [blocks, setBlocks] = useState([])
   const [preview, setPreview] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -52,7 +71,7 @@ export default function AgendaAvailability() {
         const next = emptyWeek()
         for (const row of data.availability || []) next[row.weekday] = row.hours || []
         setWeek(next)
-        if (data.config) setConfig(data.config)
+        if (data.config) setConfig({ openWeeks: [], ...data.config })
       } catch {
         setError('Não foi possível carregar a disponibilidade.')
       } finally {
@@ -68,6 +87,14 @@ export default function AgendaAvailability() {
       const hours = prev[weekday] || []
       const next = hours.includes(hour) ? hours.filter((h) => h !== hour) : [...hours, hour].sort((a, b) => a - b)
       return { ...prev, [weekday]: next }
+    })
+    setSavedAt(null)
+  }
+
+  const toggleWeek = (ymd) => {
+    setConfig((c) => {
+      const open = c.openWeeks || []
+      return { ...c, openWeeks: open.includes(ymd) ? open.filter((w) => w !== ymd) : [...open, ymd].sort() }
     })
     setSavedAt(null)
   }
@@ -93,6 +120,7 @@ export default function AgendaAvailability() {
           availability: WEEKDAYS.map((d) => ({ weekday: d.value, hours: week[d.value] || [] })),
           noticeHours: Number(config.noticeHours),
           maxDaysAhead: Number(config.maxDaysAhead),
+          openWeeks: config.openWeeks || [],
         }),
       })
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).message || 'Erro ao salvar')
@@ -175,6 +203,26 @@ export default function AgendaAvailability() {
             ))}
           </div>
 
+          <div className="px-4 py-3 border-t border-slate-200">
+            <p className="text-sm font-medium text-slate-700">Semanas abertas pra agendamento</p>
+            <p className="text-xs text-slate-500 mt-0.5 mb-2">
+              Marque as semanas em que o lead pode marcar. Sem nenhuma marcada, vale o “oferecer até N dias”.
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {weeks.map((w) => {
+                const on = (config.openWeeks || []).includes(w.ymd)
+                return (
+                  <button key={w.ymd} type="button" onClick={() => toggleWeek(w.ymd)} aria-pressed={on}
+                    className={`px-2.5 py-1.5 text-xs rounded-lg border tabular-nums transition flex flex-col items-start leading-tight ${
+                      on ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-slate-600 border-slate-200 hover:border-violet-300'}`}>
+                    <span className="font-medium">{w.label}</span>
+                    {w.tag && <span className={`text-[10px] ${on ? 'text-violet-100' : 'text-slate-400'}`}>{w.tag}</span>}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
           <div className="px-4 py-3 border-t border-slate-200 flex flex-wrap items-end gap-4">
             <label className="text-sm text-slate-600">
               <span className="block text-xs text-slate-500 mb-1">Antecedência mínima</span>
@@ -185,15 +233,19 @@ export default function AgendaAvailability() {
                 horas
               </span>
             </label>
-            <label className="text-sm text-slate-600">
-              <span className="block text-xs text-slate-500 mb-1">Oferecer até</span>
-              <span className="flex items-center gap-1.5">
-                <input type="number" min="1" max="60" value={config.maxDaysAhead}
-                  onChange={(e) => { setConfig((c) => ({ ...c, maxDaysAhead: e.target.value })); setSavedAt(null) }}
-                  className="w-16 px-2 py-1.5 border border-slate-200 rounded-lg text-sm tabular-nums" />
-                dias à frente
-              </span>
-            </label>
+            {(config.openWeeks || []).length === 0 ? (
+              <label className="text-sm text-slate-600">
+                <span className="block text-xs text-slate-500 mb-1">Oferecer até</span>
+                <span className="flex items-center gap-1.5">
+                  <input type="number" min="1" max="60" value={config.maxDaysAhead}
+                    onChange={(e) => { setConfig((c) => ({ ...c, maxDaysAhead: e.target.value })); setSavedAt(null) }}
+                    className="w-16 px-2 py-1.5 border border-slate-200 rounded-lg text-sm tabular-nums" />
+                  dias à frente
+                </span>
+              </label>
+            ) : (
+              <p className="text-xs text-slate-500 self-center">Janela: só as semanas marcadas abaixo.</p>
+            )}
             <div className="ml-auto flex items-center gap-3">
               {savedAt && <span className="text-xs text-emerald-600 flex items-center gap-1"><Check className="w-3.5 h-3.5" /> Salvo</span>}
               <button onClick={save} disabled={saving}

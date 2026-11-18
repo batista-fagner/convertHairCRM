@@ -9,6 +9,18 @@ import { addDays, brt, brtAt, formatDayHuman, hourHuman } from '../common/brt.ut
 
 export const AGENDA_NOTICE_HOURS_KEY = 'agenda_min_notice_hours';
 export const AGENDA_MAX_DAYS_KEY = 'agenda_max_days_ahead';
+/** Semanas liberadas (segunda-feira de cada uma, YYYY-MM-DD). Vazio = vale o "até N dias". */
+export const AGENDA_OPEN_WEEKS_KEY = 'agenda_open_weeks';
+/** Teto de quão longe a agenda olha, mesmo com semana escolhida lá na frente. */
+const MAX_HORIZON_DAYS = 60;
+
+/** Segunda-feira da semana de um dia (YYYY-MM-DD → YYYY-MM-DD). */
+export function weekStartOf(ymd: string): string {
+  const d = new Date(`${ymd}T12:00:00Z`);
+  const back = (d.getUTCDay() + 6) % 7; // segunda = 0
+  d.setUTCDate(d.getUTCDate() - back);
+  return d.toISOString().slice(0, 10);
+}
 
 /** Antecedência mínima: nada é oferecido pra daqui menos que isso. */
 const DEFAULT_NOTICE_HOURS = 3;
@@ -43,20 +55,32 @@ export class AgendaService {
 
   // ─── Configuração (tela /agenda) ─────────────────────────────────────────
 
-  async getConfig(): Promise<{ noticeHours: number; maxDaysAhead: number }> {
-    const [notice, maxDays] = await Promise.all([
+  async getConfig(): Promise<{ noticeHours: number; maxDaysAhead: number; openWeeks: string[] }> {
+    const [notice, maxDays, weeksRaw] = await Promise.all([
       this.settings.get(AGENDA_NOTICE_HOURS_KEY),
       this.settings.get(AGENDA_MAX_DAYS_KEY),
+      this.settings.get(AGENDA_OPEN_WEEKS_KEY),
     ]);
     // `Number(null)` é 0, então a chave ausente precisa cair no padrão à mão.
     const num = (raw: string | null, fallback: number) => {
       const n = Number(raw);
       return raw != null && raw !== '' && Number.isFinite(n) && n >= 0 ? n : fallback;
     };
-    return { noticeHours: num(notice, DEFAULT_NOTICE_HOURS), maxDaysAhead: num(maxDays, DEFAULT_MAX_DAYS) || DEFAULT_MAX_DAYS };
+    // Semana que já terminou não conta mais (some sozinha da lista).
+    const thisWeek = weekStartOf(brt(new Date()).ymd);
+    let openWeeks: string[] = [];
+    try {
+      const parsed = JSON.parse(weeksRaw || '[]');
+      if (Array.isArray(parsed)) openWeeks = parsed.filter((w) => typeof w === 'string' && w >= thisWeek).sort();
+    } catch { /* lista inválida = nenhuma semana escolhida */ }
+    return {
+      noticeHours: num(notice, DEFAULT_NOTICE_HOURS),
+      maxDaysAhead: num(maxDays, DEFAULT_MAX_DAYS) || DEFAULT_MAX_DAYS,
+      openWeeks,
+    };
   }
 
-  async setConfig(body: { noticeHours?: number; maxDaysAhead?: number }) {
+  async setConfig(body: { noticeHours?: number; maxDaysAhead?: number; openWeeks?: string[] }) {
     if (body.noticeHours != null) {
       const n = Number(body.noticeHours);
       if (!Number.isFinite(n) || n < 0 || n > 72) throw new BadRequestException('Antecedência precisa ser entre 0 e 72 horas');
@@ -66,6 +90,15 @@ export class AgendaService {
       const n = Number(body.maxDaysAhead);
       if (!Number.isFinite(n) || n < 1 || n > 60) throw new BadRequestException('Janela precisa ser entre 1 e 60 dias');
       await this.settings.set(AGENDA_MAX_DAYS_KEY, String(Math.round(n)));
+    }
+    if (body.openWeeks != null) {
+      if (!Array.isArray(body.openWeeks)) throw new BadRequestException('Semanas inválidas');
+      const weeks = new Set<string>();
+      for (const w of body.openWeeks) {
+        if (typeof w !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(w)) throw new BadRequestException(`Semana inválida: ${w}`);
+        weeks.add(weekStartOf(w));
+      }
+      await this.settings.set(AGENDA_OPEN_WEEKS_KEY, JSON.stringify([...weeks].sort()));
     }
     return this.getConfig();
   }
@@ -132,7 +165,18 @@ export class AgendaService {
     const hoursByWeekday = new Map(availability.map((a) => [a.weekday, a.hours]));
     if (!availability.some((a) => a.hours.length)) return [];
 
-    const horizon = maxDays ?? config.maxDaysAhead;
+    // Com semanas escolhidas, só elas valem (e o "até N dias" fica de lado):
+    // a janela vai até o domingo da última semana liberada.
+    const openWeeks = new Set(config.openWeeks);
+    let horizon = maxDays ?? config.maxDaysAhead;
+    if (openWeeks.size) {
+      const lastSunday = new Date(`${config.openWeeks[config.openWeeks.length - 1]}T12:00:00Z`);
+      lastSunday.setUTCDate(lastSunday.getUTCDate() + 6);
+      const today = new Date(`${brt(now).ymd}T12:00:00Z`);
+      const untilLast = Math.round((lastSunday.getTime() - today.getTime()) / 86_400_000);
+      horizon = Math.max(horizon, untilLast);
+    }
+    horizon = Math.min(horizon, MAX_HORIZON_DAYS);
     const blockedWholeDay = new Set(blocks.filter((b) => !b.hours?.length).map((b) => b.date));
     const blockedHours = new Map<string, Set<number>>();
     for (const b of blocks) {
@@ -146,6 +190,7 @@ export class AgendaService {
     for (let i = 0; i <= horizon; i++) {
       const dayDate = addDays(now, i);
       const { ymd, weekday } = brt(dayDate);
+      if (openWeeks.size && !openWeeks.has(weekStartOf(ymd))) continue;
       if (blockedWholeDay.has(ymd)) continue;
       const hours = hoursByWeekday.get(weekday) ?? [];
       if (!hours.length) continue;
@@ -207,7 +252,7 @@ export class AgendaService {
 
   /** O horário pedido existe na agenda e está livre? (0 = sim; senão o motivo) */
   async checkSlot(at: Date, now = new Date()): Promise<string | null> {
-    const days = await this.availableDays(now, 60);
+    const days = await this.availableDays(now, MAX_HORIZON_DAYS);
     const target = at.getTime();
     for (const day of days) {
       if (day.slots.some((s) => s.at.getTime() === target)) return null;

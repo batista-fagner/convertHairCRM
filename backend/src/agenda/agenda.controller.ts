@@ -14,10 +14,10 @@ export class AgendaController {
   }
 
   @Put('availability')
-  async setAvailability(@Body() body: { availability?: { weekday: number; hours: number[] }[]; noticeHours?: number; maxDaysAhead?: number }) {
+  async setAvailability(@Body() body: { availability?: { weekday: number; hours: number[] }[]; noticeHours?: number; maxDaysAhead?: number; openWeeks?: string[] }) {
     if (Array.isArray(body.availability)) await this.agenda.setAvailability(body.availability);
-    if (body.noticeHours != null || body.maxDaysAhead != null) {
-      await this.agenda.setConfig({ noticeHours: body.noticeHours, maxDaysAhead: body.maxDaysAhead });
+    if (body.noticeHours != null || body.maxDaysAhead != null || body.openWeeks != null) {
+      await this.agenda.setConfig({ noticeHours: body.noticeHours, maxDaysAhead: body.maxDaysAhead, openWeeks: body.openWeeks });
     }
     return this.getAvailability();
   }
