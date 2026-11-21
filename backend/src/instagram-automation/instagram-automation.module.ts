@@ -9,12 +9,14 @@ import { InstagramAutomationService } from './instagram-automation.service';
 import { InstagramAutomationController } from './instagram-automation.controller';
 import { SettingsModule } from '../settings/settings.module';
 import { RealtimeModule } from '../realtime/realtime.module';
+import { IgTokenModule } from '../ig-token/ig-token.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([InstagramAutomation, IgConversation, IgMessage, IgCommentEvent, Lead]),
     SettingsModule,
     RealtimeModule,
+    IgTokenModule,
   ],
   providers: [InstagramAutomationService],
   controllers: [InstagramAutomationController],

@@ -2,7 +2,7 @@ import { useLayoutEffect, useRef, useState } from 'react'
 import { Camera, PanelRightOpen, PanelRightClose, ArrowDown, Loader2, Sparkles, PauseCircle, RotateCcw } from 'lucide-react'
 import MessageBubble from './MessageBubble'
 import Composer from './Composer'
-import { getAvatarColor, getInitials, formatDayLabel } from '../../../lib/format'
+import { getAvatarColor, getInitials, formatDayLabel, igDisplayName, igHandle } from '../../../lib/format'
 
 function DaySeparator({ label }) {
   return (
@@ -68,7 +68,8 @@ export default function MessageThread({
     setNewBelow(false)
   }
 
-  const name = contact.igUsername ? `@${contact.igUsername}` : `ig_${contact.senderIgId?.slice(-6) || '?'}`
+  const name = igDisplayName(contact)
+  const handle = igHandle(contact)
 
   return (
     <section className="flex-1 min-w-0 flex flex-col bg-slate-50">
@@ -83,7 +84,7 @@ export default function MessageThread({
         <div className="min-w-0">
           <p className="text-sm font-semibold text-slate-800 truncate">{name}</p>
           <p className="text-[11px] text-slate-400 truncate">
-            {contact.originType === 'comment' ? 'Veio de um comentário' : 'DM direta'}
+            {handle ? `${handle} · ` : ''}{contact.originType === 'comment' ? 'Veio de um comentário' : 'DM direta'}
           </p>
         </div>
 

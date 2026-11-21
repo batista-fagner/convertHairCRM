@@ -5,6 +5,7 @@ import { Repository } from 'typeorm';
 import { Cron } from '@nestjs/schedule';
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { randomUUID } from 'crypto';
+import { IgTokenService } from '../ig-token/ig-token.service';
 import axios from 'axios';
 import { IgPost, IgPostMediaType } from './ig-post.entity';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
@@ -67,6 +68,7 @@ export class IgPostsService implements OnModuleInit {
     private readonly config: ConfigService,
     private readonly realtime: RealtimeGateway,
     private readonly queue: IgPostQueueService,
+    private readonly igTokens: IgTokenService,
   ) {
     this.s3 = new S3Client({
       region: 'auto',
@@ -86,7 +88,7 @@ export class IgPostsService implements OnModuleInit {
   }
 
   private get igToken() {
-    return this.config.get<string>('IG_TOKEN');
+    return this.igTokens.current();
   }
 
   private async getIgUserId(): Promise<string> {

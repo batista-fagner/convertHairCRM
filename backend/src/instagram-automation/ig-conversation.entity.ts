@@ -13,6 +13,11 @@ export class IgConversation {
   @Column({ name: 'ig_username', type: 'varchar', nullable: true })
   igUsername?: string;
 
+  // Nome de exibição do perfil (o "nome" do Instagram, não o @). Vem da API
+  // do Instagram pelo IGSID — o webhook de DM não traz.
+  @Column({ name: 'ig_name', type: 'varchar', nullable: true })
+  igName?: string;
+
   // null = conversa "catch-all" (DM direta sem vir de comentário/automação
   // específica) — ver getCatchallConfig() em instagram-automation.service.ts.
   @Column({ name: 'automation_id', type: 'uuid', nullable: true })

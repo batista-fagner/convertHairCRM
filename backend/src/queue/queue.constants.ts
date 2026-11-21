@@ -43,3 +43,10 @@ export const JOB_RENDER = 'render';
 export const GREENN_PIX_PENDING_QUEUE = 'greenn-pix-pending';
 export const JOB_CHECK_PIX_PENDING = 'check-pix-pending';
 export const GREENN_PIX_PENDING_DELAY_MS = 8 * 60 * 1000;
+
+// --- ig-token (renovação do token do Instagram) ---
+// 1 job só, com atraso até (vencimento - 10 dias). Ao rodar, renova o token e agenda o
+// próximo pro novo vencimento — não há varredura periódica.
+export const IG_TOKEN_QUEUE_NAME = 'ig-token-refresh';
+export const JOB_REFRESH_IG_TOKEN = 'refresh';
+export const IG_TOKEN_JOB_ID = 'ig-token-refresh-next';

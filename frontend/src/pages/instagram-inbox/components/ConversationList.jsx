@@ -1,5 +1,5 @@
 import { Search, PauseCircle, Camera, Loader2 } from 'lucide-react'
-import { getInitials, getAvatarColor, timeAgo } from '../../../lib/format'
+import { getInitials, getAvatarColor, timeAgo, igDisplayName } from '../../../lib/format'
 
 const FILTERS = [
   { key: 'all', label: 'Todas' },
@@ -8,7 +8,7 @@ const FILTERS = [
 ]
 
 function handleName(conv) {
-  return conv.igUsername ? `@${conv.igUsername}` : `ig_${conv.senderIgId?.slice(-6) || '?'}`
+  return igDisplayName(conv)
 }
 
 function ConversationRow({ conv, active, onSelect }) {

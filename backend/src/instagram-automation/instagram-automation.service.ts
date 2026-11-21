@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException, HttpException, HttpStatus } from
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
+import { IgTokenService } from '../ig-token/ig-token.service';
 import axios from 'axios';
 import OpenAI from 'openai';
 import { InstagramAutomation } from './instagram-automation.entity';
@@ -68,6 +69,7 @@ export class InstagramAutomationService {
     private config: ConfigService,
     private settings: SettingsService,
     private realtime: RealtimeGateway,
+    private igTokens: IgTokenService,
   ) {
     this.openai = new OpenAI({ apiKey: config.get('OPENAI_API_KEY') });
   }
@@ -98,7 +100,7 @@ export class InstagramAutomationService {
   }
 
   private get igToken() {
-    return this.config.get<string>('IG_TOKEN');
+    return this.igTokens.current();
   }
 
   private get aiModel() {
@@ -220,16 +222,46 @@ export class InstagramAutomationService {
    * webhook — só o IGSID. A API do Instagram permite resolver o perfil de
    * quem já trocou mensagem com a conta via este endpoint.
    */
-  private async fetchIgUsername(igsid: string): Promise<string | undefined> {
+  private async fetchIgProfile(igsid: string): Promise<{ igUsername?: string; igName?: string }> {
     try {
       const res = await axios.get(`${IG_API}/${igsid}`, {
-        params: { fields: 'username', access_token: this.igToken },
+        params: { fields: 'name,username', access_token: this.igToken },
       });
-      return res.data?.username || undefined;
+      return { igUsername: res.data?.username || undefined, igName: res.data?.name || undefined };
     } catch (err: any) {
-      this.logger.warn(`Não consegui buscar username de ${igsid}: ${err.message}`);
-      return undefined;
+      const detail = err.response?.data?.error?.message || err.message;
+      this.logger.warn(`Não consegui buscar o perfil de ${igsid}: ${detail}`);
+      return {};
     }
+  }
+
+  /** Quando cada IGSID foi tentado por último (evita martelar a API a cada abertura da inbox). */
+  private readonly profileTriedAt = new Map<string, number>();
+
+  /**
+   * Conversas sem nome na inbox (DM antiga, ou a busca falhou na hora):
+   * resolve em segundo plano e avisa a tela pelo socket. Cada contato é
+   * tentado no máximo 1x a cada 30 min.
+   */
+  private fillMissingProfiles(convs: IgConversation[]) {
+    const now = Date.now();
+    const pending = convs
+      .filter((c) => !c.igName || !c.igUsername)
+      .filter((c) => now - (this.profileTriedAt.get(c.senderIgId) ?? 0) > 30 * 60_000)
+      .slice(0, 15);
+    if (!pending.length || !this.igToken) return;
+    for (const c of pending) this.profileTriedAt.set(c.senderIgId, now);
+    void (async () => {
+      for (const conv of pending) {
+        const profile = await this.fetchIgProfile(conv.senderIgId);
+        const patch: Partial<IgConversation> = {};
+        if (profile.igUsername && !conv.igUsername) patch.igUsername = profile.igUsername;
+        if (profile.igName && !conv.igName) patch.igName = profile.igName;
+        if (!Object.keys(patch).length) continue;
+        await this.convRepo.update(conv.id, patch);
+        this.realtime.emitIgConversationUpdated({ ...conv, ...patch } as IgConversation);
+      }
+    })().catch((err) => this.logger.warn(`Falha ao preencher nomes do Instagram: ${err.message}`));
   }
 
   private normalize(text: string): string {
@@ -484,9 +516,9 @@ export class InstagramAutomationService {
       if (!catchall.enabled) return;
       this.logger.log(`DM catch-all: nova conversa com ${senderIgId}`);
 
-      const igUsername = await this.fetchIgUsername(senderIgId);
+      const { igUsername, igName } = await this.fetchIgProfile(senderIgId);
       const newConv = await this.convRepo.save(
-        this.convRepo.create({ senderIgId, igUsername, automationId: null, step: 'ai_chat', originType: 'direct' }),
+        this.convRepo.create({ senderIgId, igUsername, igName, automationId: null, step: 'ai_chat', originType: 'direct' }),
       );
       this.realtime.emitIgConversationCreated(newConv);
       await this.recordMessage(newConv.id, 'inbound', text, 'contact');
@@ -504,11 +536,14 @@ export class InstagramAutomationService {
 
     // Conversas antigas/DM não têm username salvo (só comentário traz isso no
     // payload) — busca uma vez e preenche, pra parar de aparecer só o ID.
-    if (!conv.igUsername) {
-      const igUsername = await this.fetchIgUsername(senderIgId);
-      if (igUsername) {
-        conv.igUsername = igUsername;
-        await this.convRepo.update(conv.id, { igUsername });
+    if (!conv.igUsername || !conv.igName) {
+      const profile = await this.fetchIgProfile(senderIgId);
+      const patch: Partial<IgConversation> = {};
+      if (profile.igUsername && !conv.igUsername) patch.igUsername = profile.igUsername;
+      if (profile.igName && !conv.igName) patch.igName = profile.igName;
+      if (Object.keys(patch).length) {
+        Object.assign(conv, patch);
+        await this.convRepo.update(conv.id, patch);
       }
     }
 
@@ -669,7 +704,7 @@ export class InstagramAutomationService {
 
     const qb = this.convRepo.createQueryBuilder('c');
     if (opts.search) {
-      qb.andWhere('c.ig_username ILIKE :s', { s: `%${opts.search}%` });
+      qb.andWhere('(c.ig_username ILIKE :s OR c.ig_name ILIKE :s)', { s: `%${opts.search}%` });
     }
     switch (opts.filter) {
       case 'unread':
@@ -689,6 +724,7 @@ export class InstagramAutomationService {
       .getMany();
 
     const unreadTotal = await this.convRepo.createQueryBuilder('c').where('c.unread_count > 0').getCount();
+    this.fillMissingProfiles(data);
 
     return { data, total, page, totalPages: Math.ceil(total / limit) || 1, unreadTotal };
   }
@@ -909,7 +945,7 @@ export class InstagramAutomationService {
       if (!existing) {
         await this.leadRepo.save(
           this.leadRepo.create({
-            name: conv.igUsername || `ig_${conv.senderIgId}`,
+            name: conv.igName || conv.igUsername || `ig_${conv.senderIgId}`,
             email,
             phone: `ig_${conv.senderIgId}`,
             instagram: conv.igUsername,

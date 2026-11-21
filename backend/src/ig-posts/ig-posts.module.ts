@@ -9,6 +9,7 @@ import { IgPostQueueProcessor } from './ig-post-queue.processor';
 import { IG_POST_QUEUE_NAME } from '../queue/queue.constants';
 import { queueEngineEnabled } from '../queue/queue.enabled';
 import { RealtimeModule } from '../realtime/realtime.module';
+import { IgTokenModule } from '../ig-token/ig-token.module';
 
 // Fila e worker só existem no modo bullmq — no legado não há conexão Redis
 // registrada (ver queue.module.ts), e declarar a fila aqui faria o boot
@@ -17,7 +18,7 @@ const queueParts = queueEngineEnabled ? [BullModule.registerQueue({ name: IG_POS
 const queueProviders = queueEngineEnabled ? [IgPostQueueProcessor] : [];
 
 @Module({
-  imports: [TypeOrmModule.forFeature([IgPost]), RealtimeModule, ...queueParts],
+  imports: [TypeOrmModule.forFeature([IgPost]), RealtimeModule, IgTokenModule, ...queueParts],
   controllers: [IgPostsController],
   providers: [IgPostsService, IgPostQueueService, ...queueProviders],
 })

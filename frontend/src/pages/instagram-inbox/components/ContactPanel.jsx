@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Sparkles, PauseCircle, RotateCcw, MessageCircle, ExternalLink, Mail, Clock } from 'lucide-react'
-import { getAvatarColor, getInitials, formatDuration, timeAgo } from '../../../lib/format'
+import { getAvatarColor, getInitials, formatDuration, timeAgo, igDisplayName, igHandle } from '../../../lib/format'
 import { igInboxApi } from '../../../lib/igInboxApi'
 
 function Field({ label, children }) {
@@ -69,7 +69,8 @@ function CommentTimeline({ events }) {
 }
 
 export default function ContactPanel({ contact, onToggleAi, onResetContext }) {
-  const name = contact.igUsername ? `@${contact.igUsername}` : `ig_${contact.senderIgId?.slice(-6) || '?'}`
+  const name = igDisplayName(contact)
+  const handle = igHandle(contact)
   const [events, setEvents] = useState(null)
 
   useEffect(() => {
@@ -105,6 +106,7 @@ export default function ContactPanel({ contact, onToggleAi, onResetContext }) {
             {getInitials(name.replace('@', ''))}
           </div>
           <p className="text-sm font-semibold text-slate-800">{name}</p>
+          {handle && <p className="-mt-1.5 text-xs text-slate-400">{handle}</p>}
         </div>
 
         {/* Origem */}

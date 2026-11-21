@@ -129,3 +129,15 @@ export function countSegments(text) {
   const capacity = segments === 1 ? 160 : segments * 153
   return { encoding: 'GSM-7', length, segments, remaining: capacity - length }
 }
+
+// Instagram: nome do perfil > @usuário > genérico. Nunca mostra o IGSID.
+export function igDisplayName(conv) {
+  if (conv?.igName) return conv.igName
+  if (conv?.igUsername) return `@${conv.igUsername}`
+  return 'Contato do Instagram'
+}
+
+// O @ só aparece como linha de apoio quando o nome já ocupa o título.
+export function igHandle(conv) {
+  return conv?.igName && conv?.igUsername ? `@${conv.igUsername}` : null
+}
