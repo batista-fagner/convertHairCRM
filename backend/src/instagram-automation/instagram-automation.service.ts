@@ -49,6 +49,18 @@ const DM_DEBOUNCE_MS = 20_000;
 
 export type IgConversationFilter = 'all' | 'unread' | 'ai_paused';
 
+/**
+ * Ganchos do Social Selling (módulo social-selling). Ficam aqui como callbacks,
+ * e não como injeção, porque o social-selling depende deste serviço pra mandar
+ * a DM — injetar nos dois sentidos seria dependência circular.
+ */
+export interface SocialSellingHooks {
+  onComment(e: { commentId: string; mediaId: string; senderIgId?: string; username?: string; text: string; matchedAutomation: boolean }): Promise<void>;
+  claimReply(p: { senderIgId: string; username?: string | null }): Promise<{ leadId: string; opening: string | null; aiReplies: boolean } | null>;
+  linkConversation(leadId: string, conversationId: string): Promise<void>;
+  markReplied(p: { senderIgId: string; username?: string | null }): Promise<void>;
+}
+
 @Injectable()
 export class InstagramAutomationService {
   private readonly logger = new Logger(InstagramAutomationService.name);
@@ -101,6 +113,12 @@ export class InstagramAutomationService {
 
   private get igToken() {
     return this.igTokens.current();
+  }
+
+  private socialHooks: SocialSellingHooks | null = null;
+
+  setSocialSellingHooks(hooks: SocialSellingHooks) {
+    this.socialHooks = hooks;
   }
 
   private get aiModel() {
@@ -376,6 +394,14 @@ export class InstagramAutomationService {
       if (err?.code !== '23505') this.logger.error(`Erro ao registrar comment event: ${err.message}`);
     }
 
+    // Social selling: todo comentário vira sinal (quente/morno/frio). Se a
+    // automação do post já vai responder, ele só registra, não manda DM.
+    if (this.socialHooks) {
+      await this.socialHooks
+        .onComment({ commentId, mediaId, senderIgId, username: igUsername, text: rawComment, matchedAutomation: !!matchedAuto })
+        .catch((err) => this.logger.error(`Social selling (comentário): ${err.message}`));
+    }
+
     for (const auto of automations) {
       const matches = auto.acceptAny || commentText.includes(this.normalize(auto.keyword || 'eu quero'));
       if (!matches) continue;
@@ -513,19 +539,34 @@ export class InstagramAutomationService {
     // agora mesmo; senão, mantém o comportamento antigo (ignora).
     if (!conv) {
       const catchall = await this.getCatchallConfig();
-      if (!catchall.enabled) return;
-      this.logger.log(`DM catch-all: nova conversa com ${senderIgId}`);
-
       const { igUsername, igName } = await this.fetchIgProfile(senderIgId);
+      // Respondeu a boas-vindas que a extensão mandou pelo navegador? Essa DM
+      // não passou pela API, então a inbox não tem a conversa — a IA precisa
+      // receber a mensagem de abertura como contexto.
+      const social = this.socialHooks
+        ? await this.socialHooks.claimReply({ senderIgId, username: igUsername }).catch(() => null)
+        : null;
+      if (!catchall.enabled && !social) return;
+      this.logger.log(`DM ${social ? 'de social selling' : 'catch-all'}: nova conversa com ${senderIgId}`);
+
       const newConv = await this.convRepo.save(
         this.convRepo.create({ senderIgId, igUsername, igName, automationId: null, step: 'ai_chat', originType: 'direct' }),
       );
       this.realtime.emitIgConversationCreated(newConv);
+      const history: { role: string; content: string }[] = [];
+      if (social) {
+        await this.socialHooks!.linkConversation(social.leadId, newConv.id).catch(() => undefined);
+        if (social.opening) {
+          await this.recordMessage(newConv.id, 'outbound', social.opening, 'operator', { socialSelling: true, sentBy: 'extensao' });
+          history.push({ role: 'assistant', content: social.opening });
+        }
+      }
       await this.recordMessage(newConv.id, 'inbound', text, 'contact');
+      if (social && !social.aiReplies) return;
 
       const { blocks, sendLink } = await this.generateAiReply(
         { aiPrompt: catchall.prompt, link: catchall.link },
-        [],
+        history,
         text,
       );
       if (!blocks.length) return;
@@ -545,6 +586,10 @@ export class InstagramAutomationService {
         Object.assign(conv, patch);
         await this.convRepo.update(conv.id, patch);
       }
+    }
+
+    if (this.socialHooks) {
+      await this.socialHooks.markReplied({ senderIgId, username: conv.igUsername }).catch(() => undefined);
     }
 
     if (conv.step === 'completed') {
@@ -1048,6 +1093,57 @@ export class InstagramAutomationService {
       this.logger.error(`Erro ao enviar DM: ${err.message}`);
       return false;
     }
+  }
+
+  /**
+   * Social selling: DM pra quem comentou, pela resposta privada oficial
+   * (recipient = comment_id; única forma de iniciar conversa com quem nunca
+   * mandou DM). Abre/atualiza a conversa na inbox com o comentário e a DM, pra
+   * IA continuar quando a pessoa responder.
+   */
+  async sendSocialCommentDm(p: {
+    commentId: string;
+    senderIgId?: string;
+    username?: string;
+    mediaId?: string;
+    commentText: string;
+    message: string;
+    aiReplies: boolean;
+  }): Promise<{ ok: boolean; conversationId?: string; error?: string }> {
+    try {
+      const igUserId = await this.getIgUserId();
+      await axios.post(
+        `${IG_API}/${igUserId}/messages`,
+        { recipient: { comment_id: p.commentId }, message: { text: p.message } },
+        { params: { access_token: this.igToken } },
+      );
+    } catch (err: any) {
+      const detail = err.response?.data?.error?.message || err.message;
+      this.logger.error(`Social selling: falha na resposta privada ao comentário ${p.commentId}: ${detail}`);
+      return { ok: false, error: detail };
+    }
+    if (!p.senderIgId) return { ok: true };
+
+    let conv = await this.convRepo.findOne({ where: { senderIgId: p.senderIgId }, order: { updatedAt: 'DESC' } });
+    if (!conv) {
+      conv = await this.convRepo.save(
+        this.convRepo.create({
+          senderIgId: p.senderIgId,
+          igUsername: p.username,
+          automationId: null,
+          step: 'ai_chat',
+          originType: 'comment',
+          originPostId: p.mediaId,
+          originCommentText: p.commentText,
+          aiPaused: !p.aiReplies,
+        }),
+      );
+      this.realtime.emitIgConversationCreated(conv);
+      await this.recordMessage(conv.id, 'inbound', p.commentText, 'contact', { kind: 'comment', commentId: p.commentId });
+    }
+    await this.recordMessage(conv.id, 'outbound', p.message, 'operator', { socialSelling: true, sentBy: 'comentario' });
+    await this.commentEventRepo.update({ commentId: p.commentId }, { conversationId: conv.id }).catch(() => undefined);
+    return { ok: true, conversationId: conv.id };
   }
 
   private async replyToComment(commentId: string, message: string) {

@@ -50,3 +50,9 @@ export const GREENN_PIX_PENDING_DELAY_MS = 8 * 60 * 1000;
 export const IG_TOKEN_QUEUE_NAME = 'ig-token-refresh';
 export const JOB_REFRESH_IG_TOKEN = 'refresh';
 export const IG_TOKEN_JOB_ID = 'ig-token-refresh-next';
+
+// --- social-selling (DM pra quem comentou, via resposta privada oficial) ---
+// Atraso curto e aleatório entre o comentário e a DM, pra não parecer robô;
+// fora do horário configurado o job espera até a janela abrir.
+export const SOCIAL_SELLING_QUEUE_NAME = 'social-selling';
+export const JOB_COMMENT_DM = 'comment-dm';

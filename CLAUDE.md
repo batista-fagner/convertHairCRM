@@ -324,6 +324,18 @@ Quando o lead tem Instagram, o CRM analisa o perfil e grava o resultado como not
 - **Controle** em `leads.enrichment_data` (`status` running/ok/private/not_found/error, `input` = o que a pessoa digitou, `attempts`): reserva atômica, então cron/Sofia/botão nunca rodam em dobro; erro tenta até 3x.
 - **Não manda mensagem nenhuma** (o fluxo antigo via Apify mandava a "msg 1 do Efraim" do funil antigo — removido). Usar a análise na abordagem é o próximo passo, estilo da mensagem ainda a definir.
 
+## 🤝 Social Selling (2026-11-21)
+
+Abordagem por DM de quem **comentou** nos posts/anúncios da `converthair` e de quem **começou a seguir**. Tela `/social-selling` (menu Funil). Módulo `backend/src/social-selling/`.
+
+- **Sinais → `social_leads`** (1 linha por @, com temperatura) + histórico em `social_signals`. Temperatura: seguiu = quente; comentário com intenção ("quero", "valor", "eu", "como funciona"…) = quente; comentário genérico = morno; emoji/1 palavra/spam "sigo de volta" = frio (`classifyComment`, regras sem IA); seguiu + comentou de verdade, ou respondeu a DM = muito quente.
+- **Comentário:** vem do webhook que já existe (`handleCommentEvent` chama o gancho `onComment`). DM sai pela **resposta privada oficial** (`recipient.comment_id`, só até 7 dias). Não abre se a automação do post já respondeu, se a pessoa já é lead (`leads.instagram`) ou já conversa na inbox. No modo automático vai por job BullMQ (`social-selling` / `comment-dm`) com 1–3 min de atraso e respeitando a janela de horário.
+- **Seguidor:** a extensão ConvertIQ acha os novos (lista-base no `chrome.storage`) e manda pro CRM (`POST /social-selling/ext/followers`, máx. 40 por varredura — mais que isso é tratado como leitura errada). Depois pede `GET /social-selling/ext/next-dm` (reserva 1 por vez, respeita modo/horário/limite diário) e devolve `POST ext/dm-result`. Rotas `ext/*` são `@Public` + `x-api-key` (mesma `PROSPECTING_API_KEY` da prospecção).
+- **Modos por canal:** desligado (só registra) / aprovar (botão Aprovar na tela — **padrão**) / automático. Sem mensagem escrita, nada é enviado.
+- **Respostas:** caem na DM Inbox. Comentário: a conversa já é criada no envio (comentário + DM gravados). Seguidor: a DM saiu pelo navegador, então quando ele responde `processMessagingEvent` chama `claimReply`, grava a boas-vindas como 1ª mensagem e a IA (prompt do catch-all) responde com esse contexto — mesmo com o catch-all desligado. `aiReplies=false` deixa a conversa pausada pro humano.
+- Ganchos ficam como callbacks em `InstagramAutomationService.setSocialSellingHooks` (o social-selling depende do serviço do Instagram pra mandar DM; injeção nos dois sentidos seria circular).
+- Status da extensão (última varredura/erro) em `settings.social_selling_ext_status`; config em `settings.social_selling_config`.
+
 ## 📊 Tracking
 
 - UTMs capturados na `ConvertHairPage` (click no botão)

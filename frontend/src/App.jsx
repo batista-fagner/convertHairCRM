@@ -21,6 +21,7 @@ import KanbanLeads from './pages/KanbanLeads'
 import Agenda from './pages/Agenda'
 import InstantFormLeads from './pages/InstantFormLeads'
 import Prospeccao from './pages/Prospeccao'
+import SocialSelling from './pages/SocialSelling'
 import ColdCall from './pages/ColdCall'
 import IgAudit from './pages/IgAudit'
 import ColdCallGate from './components/ColdCallGate'
@@ -76,6 +77,7 @@ export default function App() {
           <Route path="/agenda" element={<Agenda />} />
           <Route path="/instant-form-leads" element={<InstantFormLeads />} />
           <Route path="/prospeccao" element={<Prospeccao />} />
+          <Route path="/social-selling" element={<SocialSelling />} />
           <Route path="/cold-call" element={<ColdCallGate><ColdCall /></ColdCallGate>} />
           <Route path="/auditoria-instagram" element={<IgAudit />} />
           <Route path="/group-workshop" element={<GroupWorkshop />} />

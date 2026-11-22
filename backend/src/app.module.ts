@@ -33,6 +33,9 @@ import { EnrichmentModule } from './enrichment/enrichment.module';
 import { FormsModule } from './forms/forms.module';
 import { FacebookModule } from './facebook/facebook.module';
 import { InstagramAutomationModule } from './instagram-automation/instagram-automation.module';
+import { SocialSellingModule } from './social-selling/social-selling.module';
+import { SocialLead } from './social-selling/social-lead.entity';
+import { SocialSignal } from './social-selling/social-signal.entity';
 import { AgendaModule } from './agenda/agenda.module';
 import { BookingModule } from './booking/booking.module';
 import { EfraimModule } from './efraim/efraim.module';
@@ -70,7 +73,7 @@ import { IgAuditModule } from './ig-audit/ig-audit.module';
         // Supabase exige SSL; `DATABASE_SSL=false` permite apontar para um
         // Postgres local descartável ao testar sem tocar em produção.
         ssl: config.get('DATABASE_SSL') === 'false' ? false : { rejectUnauthorized: false },
-        entities: [Lead, KanbanCustomStage, AgendaAvailability, AgendaBlock, Campaign, Form, InstagramAutomation, IgConversation, IgMessage, IgCommentEvent, Setting, FollowupRule, FollowupVideo, SmsContact, SmsMessage, IgPost, Quiz, QuizSubmission, QuizProgress, Carousel, Prospect, AudioAsset, VideoEditJob, ColdCallLead, ColdCallStage, IgAudit, User],
+        entities: [Lead, KanbanCustomStage, AgendaAvailability, AgendaBlock, Campaign, Form, InstagramAutomation, IgConversation, IgMessage, IgCommentEvent, Setting, FollowupRule, FollowupVideo, SmsContact, SmsMessage, IgPost, Quiz, QuizSubmission, QuizProgress, Carousel, Prospect, AudioAsset, VideoEditJob, ColdCallLead, ColdCallStage, IgAudit, User, SocialLead, SocialSignal],
         synchronize: true,
         logging: false,
         timezone: 'Z',
@@ -84,6 +87,7 @@ import { IgAuditModule } from './ig-audit/ig-audit.module';
     FormsModule,
     FacebookModule,
     InstagramAutomationModule,
+    SocialSellingModule,
     EfraimModule,
     TrackingModule,
     RealtimeModule,

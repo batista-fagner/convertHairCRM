@@ -32,6 +32,7 @@ import {
   Clapperboard,
   PhoneCall,
   UserCog,
+  HeartHandshake,
 } from 'lucide-react'
 import { getUser, clearSession, socketOptions } from '../lib/auth'
 
@@ -54,6 +55,7 @@ const NAV_GROUPS = [
       { icon: CalendarDays, label: 'Agenda', path: '/agenda' },
       { icon: FileSpreadsheet, label: 'Formulário Instantâneo', path: '/instant-form-leads' },
       { icon: Radar, label: 'Prospecção', path: '/prospeccao' },
+      { icon: HeartHandshake, label: 'Social Selling', path: '/social-selling' },
       { icon: PhoneCall, label: 'Cold Call', path: '/cold-call' },
       { icon: ScanSearch, label: 'Auditoria de Instagram', path: '/auditoria-instagram' },
       { icon: Users, label: 'Grupo WhatsApp', path: '/group-workshop' },
@@ -131,6 +133,7 @@ const PAGE_TITLES = {
   '/kanban': 'Kanban de Leads',
   '/agenda': 'Agenda de Reuniões',
   '/prospeccao': 'Prospecção',
+  '/social-selling': 'Social Selling',
   '/cold-call': 'Cold Call',
   '/auditoria-instagram': 'Auditoria de Instagram',
   '/settings': 'Configurações',

@@ -20,5 +20,6 @@ import { IgTokenModule } from '../ig-token/ig-token.module';
   ],
   providers: [InstagramAutomationService],
   controllers: [InstagramAutomationController],
+  exports: [InstagramAutomationService],
 })
 export class InstagramAutomationModule {}
