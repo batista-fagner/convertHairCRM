@@ -54,8 +54,8 @@ export interface SocialSellingConfig {
   aiReplies: boolean;
   /** Prompt da IA nas conversas do social selling (o catch-all dos anúncios fica intacto). */
   aiPrompt: string;
-  /** 2ª mensagem (pela extensão) pra quem não respondeu a 1ª em `afterHours`. */
-  followup: { enabled: boolean; afterHours: number; message: string };
+  /** 2ª mensagem (pela extensão) pra quem não respondeu a 1ª em `afterMinutes`. */
+  followup: { enabled: boolean; afterMinutes: number; message: string };
 }
 
 export interface ExtensionStatus {
@@ -75,7 +75,7 @@ const DEFAULT_CONFIG: SocialSellingConfig = {
   endHour: 19,
   aiReplies: true,
   aiPrompt: DEFAULT_SOCIAL_AI_PROMPT,
-  followup: { enabled: false, afterHours: 24, message: '' },
+  followup: { enabled: false, afterMinutes: 1440, message: '' },
 };
 
 /** Resposta privada a comentário só é aceita pelo Instagram até 7 dias depois. */
@@ -127,7 +127,14 @@ export class SocialSellingService implements OnModuleInit {
         comment: { ...DEFAULT_CONFIG.comment, ...(saved.comment || {}) },
         follow: { ...DEFAULT_CONFIG.follow, ...(saved.follow || {}) },
         scan: { ...DEFAULT_CONFIG.scan, ...(saved.scan || {}) },
-        followup: { ...DEFAULT_CONFIG.followup, ...(saved.followup || {}) },
+        followup: {
+          ...DEFAULT_CONFIG.followup,
+          ...(saved.followup || {}),
+          // Config salva quando o campo era em horas
+          ...(saved.followup?.afterMinutes == null && saved.followup?.afterHours != null
+            ? { afterMinutes: Number(saved.followup.afterHours) * 60 }
+            : {}),
+        },
       };
     } catch {
       return DEFAULT_CONFIG;
@@ -169,7 +176,8 @@ export class SocialSellingService implements OnModuleInit {
     next.aiReplies = !!next.aiReplies;
     next.aiPrompt = String(next.aiPrompt || '').slice(0, 8000).trim() || DEFAULT_SOCIAL_AI_PROMPT;
     next.followup.enabled = !!next.followup.enabled;
-    next.followup.afterHours = int(next.followup.afterHours, 1, 168, 'Follow-up depois de (horas)');
+    next.followup.afterMinutes = int(next.followup.afterMinutes, 1, 10080, 'Follow-up depois de (minutos)');
+    delete (next.followup as any).afterHours;
     next.followup.message = String(next.followup.message || '').slice(0, 1000);
     await this.settings.set(SOCIAL_SELLING_CONFIG_KEY, JSON.stringify(next));
     return next;
@@ -536,7 +544,7 @@ export class SocialSellingService implements OnModuleInit {
   /**
    * Próxima mensagem pra extensão mandar — reserva 1 por vez. Primeiro as
    * boas-vindas liberadas; se não houver, um follow-up vencido (quem recebeu a
-   * 1ª DM há `followup.afterHours` e não respondeu). O follow-up vai pela
+   * 1ª DM há `followup.afterMinutes` e não respondeu). O follow-up vai pela
    * extensão também pra quem comentou: a API oficial só deixa mandar UMA
    * mensagem por comentário até a pessoa responder.
    */
@@ -586,7 +594,7 @@ export class SocialSellingService implements OnModuleInit {
                ORDER BY score DESC, dm_sent_at ASC
                LIMIT 1 FOR UPDATE SKIP LOCKED)
             RETURNING id`,
-          [new Date(Date.now() - cfg.followup.afterHours * 3_600_000), stale],
+          [new Date(Date.now() - cfg.followup.afterMinutes * 60_000), stale],
         ),
       );
       if (id) {

@@ -480,10 +480,10 @@ export default function SocialSelling() {
               <label className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
                 <input id="ss-followup-enabled" type="checkbox" checked={!!config.followup?.enabled} onChange={(e) => patch('followup.enabled', e.target.checked)} />
                 Mandar follow-up depois de
-                <input id="ss-followup-hours" type="number" min="1" max="168" value={config.followup?.afterHours ?? 24}
-                  onChange={(e) => patch('followup.afterHours', Number(e.target.value))}
-                  className="w-20 px-2 py-1 border border-slate-200 rounded-lg tabular-nums" />
-                horas sem resposta
+                <input id="ss-followup-minutes" type="number" min="1" max="10080" value={config.followup?.afterMinutes ?? 1440}
+                  onChange={(e) => patch('followup.afterMinutes', Number(e.target.value))}
+                  className="w-24 px-2 py-1 border border-slate-200 rounded-lg tabular-nums" />
+                minutos sem resposta
               </label>
               <label className="block">
                 <span className="text-xs text-slate-500">Mensagem do follow-up</span>
