@@ -300,6 +300,11 @@ export class Lead {
   @Column({ name: 'quiz_slug', type: 'varchar', nullable: true })
   quizSlug?: string | null;
 
+  // Variação de título do quiz (?v=, ver Quiz.titleVariants) que a pessoa viu
+  // — null = título padrão. Diz de qual criativo/página o lead veio.
+  @Column({ name: 'quiz_variant', type: 'varchar', nullable: true })
+  quizVariant?: string | null;
+
   // Respostas do quiz, na ordem em que foram dadas — exibido no card do lead
   // pra dar contexto sem precisar abrir o quiz builder.
   @Column({ name: 'quiz_responses', type: 'jsonb', nullable: true })

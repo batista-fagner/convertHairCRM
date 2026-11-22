@@ -172,6 +172,7 @@ interface SubmitDto {
   fbc?: string;
   fbp?: string;
   clickId?: string;
+  variant?: string;
   userAgent?: string;
   clientIp?: string;
 }
@@ -640,8 +641,29 @@ export class QuizService {
    * pausada (abordagem humana). Não dispara evento nenhum pro Meta (os
    * eventos continuam só no submit final).
    */
+  /**
+   * Variação de título (?v=) que a pessoa viu: vem da sessão de progresso
+   * (gravada no 1º ping) ou, na falta dela, do próprio body. Só aceita chave
+   * que existe no quiz.
+   */
+  private async resolveVariant(quiz: Quiz, dto: SubmitDto): Promise<string | null> {
+    const valid = (k?: string | null) => {
+      const key = String(k || '').trim().toLowerCase();
+      return key && (quiz.titleVariants || []).some((v) => (v.key || '').trim().toLowerCase() === key) ? key : null;
+    };
+    if (dto.clickId) {
+      const progress = await this.progressRepo
+        .findOne({ where: { quizId: quiz.id, clickId: dto.clickId }, select: ['id', 'variant'] })
+        .catch(() => null);
+      const fromSession = valid(progress?.variant);
+      if (fromSession) return fromSession;
+    }
+    return valid(dto.variant);
+  }
+
   async captureLead(slug: string, dto: SubmitDto): Promise<{ ok: true; leadId?: string }> {
     const quiz = await this.findBySlug(slug);
+    dto.variant = (await this.resolveVariant(quiz, dto)) ?? undefined;
     const parsed = this.parseAnswers(quiz, dto.answers);
     if (!parsed.capturedPhone) return { ok: true };
     const lead = await this.upsertQuizLead(quiz, parsed, dto);
@@ -701,7 +723,7 @@ export class QuizService {
     if (phone.length < 12) return null;
     try {
       const existing = await this.leadsRepo.findOne({ where: { phone } });
-      const notes = `[Quiz ${quiz.name}]\n${parsed.answeredResponses.map((a) => `${a.question}: ${a.answer}`).join('\n')}`;
+      const notes = `[Quiz ${quiz.name}${dto.variant ? ` · título ${dto.variant}` : ''}]\n${parsed.answeredResponses.map((a) => `${a.question}: ${a.answer}`).join('\n')}`;
       const tags = Array.from(new Set([...(existing?.tags || []), QUIZ_LEAD_TAG]));
       const mqlEvents = Array.from(parsed.mqlEvents);
       let saved: Lead;
@@ -718,6 +740,7 @@ export class QuizService {
           fbp: existing.fbp || dto.fbp,
           tags,
           quizSlug: quiz.slug,
+          quizVariant: dto.variant || existing.quizVariant || null,
           quizResponses: parsed.answeredResponses,
           quizMqlEvents: mqlEvents.length ? mqlEvents : existing.quizMqlEvents,
           ...(existing.agentMode === 'sdr' ? {} : { agentMode: 'sdr' as const, kanbanStage: 'novo' as const, aiPaused: true }),
@@ -745,6 +768,7 @@ export class QuizService {
             fbc: dto.fbc,
             fbp: dto.fbp,
             quizSlug: quiz.slug,
+            quizVariant: dto.variant || null,
             quizResponses: parsed.answeredResponses,
             quizMqlEvents: mqlEvents,
             notes,
@@ -790,6 +814,7 @@ export class QuizService {
   async submit(slug: string, dto: SubmitDto): Promise<{ ok: true; redirectUrl: string; mqlEvents: string[]; leadId?: string }> {
     let submittedLeadId: string | undefined;
     const quiz = await this.findBySlug(slug);
+    dto.variant = (await this.resolveVariant(quiz, dto)) ?? undefined;
     // Bug corrigido em 2026-08-30: antes mandava só `https://${slug}` (não é
     // uma URL real) — sem isso, uma regra de Conversão Personalizada no Meta
     // baseada em "URL contém" nunca bateria com nada de verdade.
@@ -889,6 +914,7 @@ export class QuizService {
         fbclid: dto.fbclid,
         fbc: dto.fbc,
         fbp: dto.fbp,
+        variant: dto.variant || null,
         clickId: dto.clickId,
         userAgent: dto.userAgent,
         clientIp: dto.clientIp,

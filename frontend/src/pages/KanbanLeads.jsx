@@ -272,9 +272,9 @@ function CardContent({ lead, overlay = false }) {
         {lead.tags?.includes('quiz_contato') && (
           <span
             className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-medium flex items-center gap-0.5"
-            title={`Deixou o contato no quiz${lead.quizSlug ? ` "${lead.quizSlug}"` : ''}`}
+            title={`Deixou o contato no quiz${lead.quizSlug ? ` "${lead.quizSlug}"` : ''}${lead.quizVariant ? ` (título ${lead.quizVariant})` : ''}`}
           >
-            <ListChecks className="w-3 h-3 shrink-0" /> Quiz
+            <ListChecks className="w-3 h-3 shrink-0" /> Quiz{lead.quizVariant ? ` · ${lead.quizVariant}` : ''}
           </span>
         )}
         {lead.aiAgent === 'efraim' && (
@@ -399,9 +399,9 @@ function LeadCard({ lead, onOpen, onEdit, onDelete }) {
         {lead.tags?.includes('quiz_contato') && (
           <span
             className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-medium flex items-center gap-0.5"
-            title={`Deixou o contato no quiz${lead.quizSlug ? ` "${lead.quizSlug}"` : ''}`}
+            title={`Deixou o contato no quiz${lead.quizSlug ? ` "${lead.quizSlug}"` : ''}${lead.quizVariant ? ` (título ${lead.quizVariant})` : ''}`}
           >
-            <ListChecks className="w-3 h-3 shrink-0" /> Quiz
+            <ListChecks className="w-3 h-3 shrink-0" /> Quiz{lead.quizVariant ? ` · ${lead.quizVariant}` : ''}
           </span>
         )}
         {lead.aiAgent === 'efraim' && (
@@ -928,7 +928,7 @@ function ConversationModal({ lead, onClose, onTogglePause, onAssign, onNoteReque
           <div className="flex items-center gap-1.5">
             {lead.tags?.includes('quiz_contato') && (
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-medium flex items-center gap-1">
-                <ListChecks className="w-3 h-3" /> Quiz{lead.quizSlug ? ` · ${lead.quizSlug}` : ''}
+                <ListChecks className="w-3 h-3" /> Quiz{lead.quizSlug ? ` · ${lead.quizSlug}` : ''}{lead.quizVariant ? ` · título ${lead.quizVariant}` : ''}
               </span>
             )}
             {lead.aiAgent === 'efraim' && (

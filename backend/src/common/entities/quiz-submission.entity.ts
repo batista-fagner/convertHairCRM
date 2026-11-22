@@ -67,6 +67,9 @@ export class QuizSubmission {
   @Column({ name: 'fbp', type: 'varchar', nullable: true })
   fbp?: string;
 
+  @Column({ name: 'variant', type: 'varchar', nullable: true })
+  variant?: string | null;
+
   @Column({ name: 'click_id', type: 'varchar', nullable: true })
   clickId?: string;
 
