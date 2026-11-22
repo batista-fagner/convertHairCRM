@@ -37,6 +37,10 @@ export class QuizProgress {
   @Column({ name: 'clicked_continue', type: 'boolean', default: false })
   clickedContinue: boolean;
 
+  // Chave da variação de título (?v=) que a pessoa viu — null = título padrão.
+  @Column({ name: 'variant', type: 'varchar', nullable: true })
+  variant?: string | null;
+
   @Column({ name: 'total_questions', type: 'int' })
   totalQuestions: number;
 

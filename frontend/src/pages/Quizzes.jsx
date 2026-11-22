@@ -49,6 +49,7 @@ function emptyQuiz() {
     fbAccessToken: '',
     welcomeMessageTemplate: '',
     welcomeMessageVariants: [],
+    titleVariants: [],
     presentation: {
       badgeTitle: 'Oficina de Vendas',
       badgeSubtitle: '',
@@ -742,6 +743,32 @@ function FunnelModal({ quiz, onClose }) {
               </div>
 
               <FunnelDailyChart daily={funnel.daily} />
+
+              {funnel.variants?.length > 0 && (
+                <div className="mt-4">
+                  <p className="text-sm font-medium text-slate-600 mb-1">Por título (?v=)</p>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-slate-400">
+                        <th className="font-normal py-1">Variação</th>
+                        <th className="font-normal py-1">Abriram</th>
+                        <th className="font-normal py-1">Avançaram</th>
+                        <th className="font-normal py-1">Terminaram</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {funnel.variants.map(v => (
+                        <tr key={v.variant} className="border-t border-slate-100">
+                          <td className="py-1 font-mono">{v.variant}</td>
+                          <td className="py-1">{v.started}</td>
+                          <td className="py-1">{v.advanced} ({v.started ? Math.round((v.advanced / v.started) * 100) : 0}%)</td>
+                          <td className="py-1">{v.completed} ({v.started ? Math.round((v.completed / v.started) * 100) : 0}%)</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -1440,6 +1467,69 @@ function QuizBuilder({ quiz, onChange, onSave, saving }) {
               onChange={e => set('presentation.subtitleBoxFontSize', Number(e.target.value))}
               className="w-full mt-1.5 accent-violet-600"
             />
+          </div>
+          <div className="rounded-lg border border-slate-200 p-3">
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-medium text-slate-600">Título por criativo (opcional)</label>
+              <button
+                type="button"
+                onClick={() => set('titleVariants', [...(quiz.titleVariants || []), { key: '', title: '', titleHighlight: '', subtitleBox: '' }])}
+                className="flex items-center gap-1 text-sm text-violet-600 hover:text-violet-700 font-medium"
+              >
+                <Plus className="w-3.5 h-3.5" /> Nova variação
+              </button>
+            </div>
+            <p className="text-sm text-slate-400 mt-0.5 mb-2">
+              Troca só o título e o subtítulo da 1ª tela quando o link tem <span className="font-mono">?v=chave</span>. Sem isso, vale o título acima. Só vale no visual Clean.
+            </p>
+            {(quiz.titleVariants || []).map((v, vi) => {
+              const upd = (field, value) => set('titleVariants', quiz.titleVariants.map((x, i) => i === vi ? { ...x, [field]: value } : x))
+              return (
+                <div key={vi} className="border border-slate-200 rounded-lg p-3 mb-2 flex flex-col gap-2">
+                  <div className="flex items-center gap-2">
+                    <input
+                      value={v.key}
+                      onChange={e => upd('key', e.target.value.replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase())}
+                      placeholder="chave (ex: brenda)"
+                      className="w-48 text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition font-mono"
+                    />
+                    {v.key && (
+                      <span className="text-sm text-slate-400 font-mono truncate">/q/{quiz.slug}?v={v.key}</span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => set('titleVariants', quiz.titleVariants.filter((_, i) => i !== vi))}
+                      className="ml-auto text-sm text-red-500 hover:text-red-600"
+                    >
+                      Remover
+                    </button>
+                  </div>
+                  <input
+                    value={v.title}
+                    onChange={e => upd('title', e.target.value)}
+                    placeholder="Título"
+                    className="w-full text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
+                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      value={v.titleHighlight || ''}
+                      onChange={e => upd('titleHighlight', e.target.value)}
+                      placeholder="Trecho em destaque"
+                      className="w-full text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
+                    />
+                    <input
+                      value={v.subtitleBox || ''}
+                      onChange={e => upd('subtitleBox', e.target.value)}
+                      placeholder="Subtítulo"
+                      className="w-full text-base border border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-violet-400 transition"
+                    />
+                  </div>
+                  {v.titleHighlight && !v.title.includes(v.titleHighlight) && (
+                    <p className="text-sm text-amber-600">O destaque precisa aparecer dentro do título.</p>
+                  )}
+                </div>
+              )
+            })}
           </div>
           <div>
             <label className="text-sm text-slate-500">Texto de apoio</label>

@@ -155,6 +155,7 @@ interface ProgressDto {
   fbclid?: string;
   fbc?: string;
   fbp?: string;
+  variant?: string;
   // Preenchidos pelo controller a partir do request — nunca vêm do body.
   clientIp?: string;
   userAgent?: string;
@@ -385,6 +386,7 @@ export class QuizService {
     // já tinha valor, e serve pra detectar se IP/UA mudou no meio da sessão.
     if (dto.clientIp) progress.ipAddress = dto.clientIp;
     if (dto.userAgent) progress.userAgent = dto.userAgent;
+    if (!progress.variant && dto.variant) progress.variant = String(dto.variant).slice(0, 40);
 
     // Clicou em "Continuar" na apresentação (dispara sendProgress(0) sem
     // questionId, ver Quiz.tsx) OU já respondeu P1+ (que implica ter clicado)
@@ -433,13 +435,14 @@ export class QuizService {
     previous: { totalStarted: number; totalCompleted: number } | null;
     steps: { questionIndex: number; question: string; reached: number }[];
     daily: { date: string; started: number; completed: number }[];
+    variants: { variant: string; started: number; advanced: number; completed: number }[];
   }> {
     const quiz = await this.findById(quizId);
     // Só as colunas que o funil usa — `answers` é jsonb e não entra em nada
     // aqui, não faz sentido trazer a conversa inteira de cada sessão.
     const sessions = await this.progressRepo.find({
       where: { quizId },
-      select: ['furthestQuestionIndex', 'clickedContinue', 'completed', 'startedAt'],
+      select: ['furthestQuestionIndex', 'clickedContinue', 'completed', 'startedAt', 'variant'],
     });
 
     const windowStart = from ? new Date(`${from}T00:00:00${BR_UTC_OFFSET}`) : null;
@@ -473,9 +476,24 @@ export class QuizService {
       })),
     ];
 
+    // Por variação de título (?v=) — só aparece se alguma sessão usou uma.
+    const byVariant = new Map<string, { started: number; advanced: number; completed: number }>();
+    for (const s of current) {
+      const key = s.variant || 'padrão';
+      const row = byVariant.get(key) || { started: 0, advanced: 0, completed: 0 };
+      row.started += 1;
+      if (s.clickedContinue) row.advanced += 1;
+      if (s.completed) row.completed += 1;
+      byVariant.set(key, row);
+    }
+    const variants = byVariant.size > 1 || (byVariant.size === 1 && !byVariant.has('padrão'))
+      ? [...byVariant.entries()].map(([variant, v]) => ({ variant, ...v })).sort((a, b) => b.started - a.started)
+      : [];
+
     return {
       totalStarted,
       totalCompleted: current.filter((s) => s.completed).length,
+      variants,
       previous,
       daily: buildDailySeries(current, windowStart, windowEnd),
       steps,
@@ -496,6 +514,7 @@ export class QuizService {
       fbAccessToken: dto.fbAccessToken || null,
       welcomeMessageTemplate: dto.welcomeMessageTemplate || null,
       welcomeMessageVariants: dto.welcomeMessageVariants || null,
+      titleVariants: dto.titleVariants || null,
       presentation: dto.presentation || {},
       questions: dto.questions || [],
       finalStep: dto.finalStep || {},

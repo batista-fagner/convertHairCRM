@@ -255,6 +255,13 @@ export class Quiz {
   @Column({ name: 'presentation', type: 'jsonb' })
   presentation: QuizPresentation;
 
+  // Variações do título/subtítulo da 1ª tela, escolhidas pelo link (?v=chave) —
+  // permite casar a página com a promessa de cada criativo. Só troca título,
+  // destaque e subtítulo; o resto da página é igual. Sem ?v= (ou chave
+  // desconhecida) vale o título de `presentation`.
+  @Column({ name: 'title_variants', type: 'jsonb', nullable: true })
+  titleVariants?: { key: string; title: string; titleHighlight?: string; subtitleBox?: string }[] | null;
+
   @Column({ name: 'questions', type: 'jsonb', default: '[]' })
   questions: QuizQuestion[];
 
