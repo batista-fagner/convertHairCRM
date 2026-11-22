@@ -396,6 +396,13 @@ export default function SocialSelling() {
                   placeholder="Ex.: {saudacao}! Vi seu comentário aqui no post 😊 …"
                   className="mt-1 w-full px-3 py-2 text-sm border border-slate-200 rounded-lg" />
               </label>
+              <label className="block">
+                <span className="text-xs text-slate-500">Resposta pública no comentário (opcional)</span>
+                <textarea id="ss-comment-public" rows={2} value={config.comment.publicReply || ''} onChange={(e) => patch('comment.publicReply', e.target.value)}
+                  placeholder="Ex.: {Te enviei|Acabei de te mandar} uma DM 😉"
+                  className="mt-1 w-full px-3 py-2 text-sm border border-slate-200 rounded-lg" />
+                <span className="text-[11px] text-slate-400">Aparece embaixo do comentário, depois que a DM sai. Use {'{a|b}'} pra variar o texto.</span>
+              </label>
               {config.comment.message && previews.comment.length > 0 && (
                 <div className="text-xs bg-slate-50 rounded-lg p-2.5 space-y-1.5">
                   {previews.comment.slice(0, 2).map((p, i) => (

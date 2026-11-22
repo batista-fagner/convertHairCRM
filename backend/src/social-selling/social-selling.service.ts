@@ -27,7 +27,7 @@ export type SocialMode = 'desligado' | 'aprovar' | 'automatico';
 export interface SocialSellingConfig {
   /** Conta de onde saem as DMs e cujos seguidores a extensão lê. */
   myProfile: string;
-  comment: { mode: SocialMode; message: string; intents: CommentIntent[]; dailyLimit: number };
+  comment: { mode: SocialMode; message: string; publicReply: string; intents: CommentIntent[]; dailyLimit: number };
   follow: { mode: SocialMode; message: string; dailyLimit: number; minDelaySec: number; maxDelaySec: number };
   scan: { enabled: boolean; intervalMin: number };
   /** Janela de envio (e de varredura), horário de Brasília. */
@@ -47,7 +47,7 @@ export interface ExtensionStatus {
 
 const DEFAULT_CONFIG: SocialSellingConfig = {
   myProfile: 'converthair',
-  comment: { mode: 'aprovar', message: '', intents: ['quente'], dailyLimit: 40 },
+  comment: { mode: 'aprovar', message: '', publicReply: '', intents: ['quente'], dailyLimit: 40 },
   follow: { mode: 'aprovar', message: '', dailyLimit: 15, minDelaySec: 60, maxDelaySec: 150 },
   scan: { enabled: true, intervalMin: 180 },
   startHour: 9,
@@ -129,6 +129,7 @@ export class SocialSellingService implements OnModuleInit {
     next.comment.intents = (next.comment.intents || []).filter((i) => INTENTS.includes(i));
     if (!next.comment.intents.length) next.comment.intents = ['quente'];
     next.comment.message = String(next.comment.message || '').slice(0, 1000);
+    next.comment.publicReply = String(next.comment.publicReply || '').slice(0, 300);
     next.follow.message = String(next.follow.message || '').slice(0, 1000);
     next.comment.dailyLimit = int(next.comment.dailyLimit, 1, 200, 'Limite diário (comentário)');
     next.follow.dailyLimit = int(next.follow.dailyLimit, 1, 60, 'Limite diário (seguidor)');
@@ -407,6 +408,12 @@ export class SocialSellingService implements OnModuleInit {
       return this.leads.findOneBy({ id: leadId });
     }
 
+    // Resposta pública no comentário ("te enviei uma DM 😉"): sai só depois da DM
+    // dar certo. Sem nome (comentário não traz) e sem {comentario} — fica genérica.
+    const publicReply = cfg.comment.publicReply.trim()
+      ? renderSocialTemplate(cfg.comment.publicReply, { fullName: lead.fullName })
+      : undefined;
+
     const res = await this.ig.sendSocialCommentDm({
       commentId: lead.lastCommentId!,
       senderIgId: lead.igUserId ?? undefined,
@@ -414,6 +421,7 @@ export class SocialSellingService implements OnModuleInit {
       mediaId: lead.lastCommentMediaId ?? undefined,
       commentText: lead.lastCommentText ?? '',
       message,
+      publicReply,
       aiReplies: cfg.aiReplies,
     });
     if (res.ok) {

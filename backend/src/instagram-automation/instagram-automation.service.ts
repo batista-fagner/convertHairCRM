@@ -1108,6 +1108,7 @@ export class InstagramAutomationService {
     mediaId?: string;
     commentText: string;
     message: string;
+    publicReply?: string;
     aiReplies: boolean;
   }): Promise<{ ok: boolean; conversationId?: string; error?: string }> {
     try {
@@ -1121,6 +1122,12 @@ export class InstagramAutomationService {
       const detail = err.response?.data?.error?.message || err.message;
       this.logger.error(`Social selling: falha na resposta privada ao comentário ${p.commentId}: ${detail}`);
       return { ok: false, error: detail };
+    }
+    // Resposta pública avisando da DM — só depois de a DM ter saído, pra nunca
+    // dizer "te enviei" sem ter enviado. Pausa curta pra não ser instantâneo.
+    if (p.publicReply) {
+      await new Promise((resolve) => setTimeout(resolve, 3000 + Math.floor(Math.random() * 5000)));
+      await this.replyToComment(p.commentId, p.publicReply);
     }
     if (!p.senderIgId) return { ok: true };
 
