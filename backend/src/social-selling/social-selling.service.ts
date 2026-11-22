@@ -357,8 +357,8 @@ export class SocialSellingService implements OnModuleInit {
       (await this.sentToday('comentario')) < cfg.comment.dailyLimit
     ) {
       await this.leads.update(lead.id, { status: 'na_fila', dmChannel: 'comentario' });
-      const humanDelay = (60 + Math.floor(Math.random() * 120)) * 1000;
-      await this.scheduleCommentDm(lead.id, humanDelay + this.msUntilWindow(cfg));
+      // Resposta privada é API oficial: sai na hora (só espera se estiver fora do horário).
+      await this.scheduleCommentDm(lead.id, this.msUntilWindow(cfg));
     }
   }
 
