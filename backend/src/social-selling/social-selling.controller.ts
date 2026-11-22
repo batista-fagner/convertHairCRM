@@ -26,7 +26,7 @@ export class SocialSellingExtController {
   }
 
   @Post('dm-result')
-  dmResult(@Body() body: { username?: string; ok?: boolean; message?: string; fullName?: string; error?: string }) {
+  dmResult(@Body() body: { username?: string; ok?: boolean; message?: string; fullName?: string; error?: string; kind?: 'dm' | 'followup' }) {
     return this.social.dmResult(body || {});
   }
 

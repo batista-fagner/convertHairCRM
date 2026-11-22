@@ -88,6 +88,19 @@ export class SocialLead {
   @Column({ name: 'reserved_at', type: 'timestamptz', nullable: true })
   reservedAt?: Date | null;
 
+  /** Follow-up (2ª mensagem, pela extensão) pra quem não respondeu a 1ª. Só um. */
+  @Column({ name: 'followup_sent_at', type: 'timestamptz', nullable: true })
+  followupSentAt?: Date | null;
+
+  @Column({ name: 'followup_message', type: 'text', nullable: true })
+  followupMessage?: string | null;
+
+  @Column({ name: 'followup_error', type: 'varchar', nullable: true })
+  followupError?: string | null;
+
+  @Column({ name: 'followup_reserved_at', type: 'timestamptz', nullable: true })
+  followupReservedAt?: Date | null;
+
   @Column({ name: 'replied_at', type: 'timestamptz', nullable: true })
   repliedAt?: Date | null;
 

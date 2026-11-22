@@ -56,9 +56,11 @@ export type IgConversationFilter = 'all' | 'unread' | 'ai_paused';
  */
 export interface SocialSellingHooks {
   onComment(e: { commentId: string; mediaId: string; senderIgId?: string; username?: string; text: string; matchedAutomation: boolean }): Promise<void>;
-  claimReply(p: { senderIgId: string; username?: string | null }): Promise<{ leadId: string; opening: string | null; aiReplies: boolean } | null>;
+  claimReply(p: { senderIgId: string; username?: string | null }): Promise<{ leadId: string; messages: string[]; aiReplies: boolean } | null>;
   linkConversation(leadId: string, conversationId: string): Promise<void>;
   markReplied(p: { senderIgId: string; username?: string | null }): Promise<void>;
+  /** Prompt da IA pras conversas abertas pelo social selling. */
+  aiPrompt(): Promise<string>;
 }
 
 @Injectable()
@@ -550,27 +552,27 @@ export class InstagramAutomationService {
       this.logger.log(`DM ${social ? 'de social selling' : 'catch-all'}: nova conversa com ${senderIgId}`);
 
       const newConv = await this.convRepo.save(
-        this.convRepo.create({ senderIgId, igUsername, igName, automationId: null, step: 'ai_chat', originType: 'direct' }),
+        this.convRepo.create({ senderIgId, igUsername, igName, automationId: null, step: 'ai_chat', originType: 'direct', socialSelling: !!social }),
       );
       this.realtime.emitIgConversationCreated(newConv);
       const history: { role: string; content: string }[] = [];
       if (social) {
         await this.socialHooks!.linkConversation(social.leadId, newConv.id).catch(() => undefined);
-        if (social.opening) {
-          await this.recordMessage(newConv.id, 'outbound', social.opening, 'operator', { socialSelling: true, sentBy: 'extensao' });
-          history.push({ role: 'assistant', content: social.opening });
+        for (const sent of social.messages) {
+          await this.recordMessage(newConv.id, 'outbound', sent, 'operator', { socialSelling: true, sentBy: 'extensao' });
+          history.push({ role: 'assistant', content: sent });
         }
       }
       await this.recordMessage(newConv.id, 'inbound', text, 'contact');
       if (social && !social.aiReplies) return;
 
-      const { blocks, sendLink } = await this.generateAiReply(
-        { aiPrompt: catchall.prompt, link: catchall.link },
-        history,
-        text,
-      );
+      const aiConfig: AiReplyConfig = social
+        ? { aiPrompt: await this.socialHooks!.aiPrompt(), link: null }
+        : { aiPrompt: catchall.prompt, link: catchall.link };
+      const { blocks, sendLink } = await this.generateAiReply(aiConfig, history, text);
       if (!blocks.length) return;
-      await this.sendBlocksToUser(senderIgId, blocks, sendLink ? catchall.buttonLabel : undefined, sendLink ? catchall.link : undefined);
+      const withLink = sendLink && !social;
+      await this.sendBlocksToUser(senderIgId, blocks, withLink ? catchall.buttonLabel : undefined, withLink ? catchall.link : undefined);
       for (const block of blocks) await this.recordMessage(newConv.id, 'outbound', block, 'ai');
       return;
     }
@@ -609,9 +611,12 @@ export class InstagramAutomationService {
 
     // ── Passo: conversa conduzida pela IA (automação específica OU catch-all) ──
     if (conv.step === 'ai_chat') {
-      const catchall = auto ? null : await this.getCatchallConfig();
-      const aiConfig: AiReplyConfig = auto ?? { aiPrompt: catchall!.prompt, link: catchall!.link };
-      const dmButtonLabel = auto ? auto.dmButtonLabel : catchall!.buttonLabel;
+      // Social selling tem prompt próprio (sem link/botão); anúncios seguem no catch-all.
+      const social = !auto && conv.socialSelling && this.socialHooks;
+      const catchall = auto || social ? null : await this.getCatchallConfig();
+      const aiConfig: AiReplyConfig = auto
+        ?? (social ? { aiPrompt: await this.socialHooks!.aiPrompt(), link: null } : { aiPrompt: catchall!.prompt, link: catchall!.link });
+      const dmButtonLabel = auto ? auto.dmButtonLabel : social ? undefined : catchall!.buttonLabel;
 
       const history = await this.buildAiHistory(conv.id, conv.contextResetAt);
       await this.recordMessage(conv.id, 'inbound', text, 'contact');
@@ -1143,14 +1148,21 @@ export class InstagramAutomationService {
           originPostId: p.mediaId,
           originCommentText: p.commentText,
           aiPaused: !p.aiReplies,
+          socialSelling: true,
         }),
       );
       this.realtime.emitIgConversationCreated(conv);
       await this.recordMessage(conv.id, 'inbound', p.commentText, 'contact', { kind: 'comment', commentId: p.commentId });
     }
+    if (!conv.socialSelling) await this.convRepo.update(conv.id, { socialSelling: true });
     await this.recordMessage(conv.id, 'outbound', p.message, 'operator', { socialSelling: true, sentBy: 'comentario' });
     await this.commentEventRepo.update({ commentId: p.commentId }, { conversationId: conv.id }).catch(() => undefined);
     return { ok: true, conversationId: conv.id };
+  }
+
+  /** Mensagem que saiu pelo navegador (extensão) numa conversa que já existe na inbox. */
+  async recordSocialOutbound(conversationId: string, text: string, sentBy: string) {
+    await this.recordMessage(conversationId, 'outbound', text, 'operator', { socialSelling: true, sentBy });
   }
 
   private async replyToComment(commentId: string, message: string) {

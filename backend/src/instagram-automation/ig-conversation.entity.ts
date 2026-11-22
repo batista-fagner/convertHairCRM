@@ -18,6 +18,10 @@ export class IgConversation {
   @Column({ name: 'ig_name', type: 'varchar', nullable: true })
   igName?: string;
 
+  /** Conversa aberta pelo Social Selling: a IA usa o prompt próprio dele, não o catch-all. */
+  @Column({ name: 'social_selling', type: 'boolean', default: false })
+  socialSelling: boolean;
+
   // null = conversa "catch-all" (DM direta sem vir de comentário/automação
   // específica) — ver getCatchallConfig() em instagram-automation.service.ts.
   @Column({ name: 'automation_id', type: 'uuid', nullable: true })

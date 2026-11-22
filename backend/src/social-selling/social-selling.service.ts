@@ -24,6 +24,23 @@ export const SOCIAL_SELLING_EXT_STATUS_KEY = 'social_selling_ext_status';
 
 export type SocialMode = 'desligado' | 'aprovar' | 'automatico';
 
+/** Ponto de partida do prompt — o sócio edita na tela (troque @PERFIL_DO_CEO). */
+export const DEFAULT_SOCIAL_AI_PROMPT = `Você é o Fagner, dono de loja de cabelo e fundador da Convert Hair, conversando por DM no Instagram com alguém que começou a seguir a Convert Hair ou comentou num post. A conversa começou com a sua mensagem de abertura (está no histórico) perguntando o que impede a pessoa de vender mais.
+
+Jeito de escrever: humano, curto, informal (pode usar "vc", "tbm"), no máximo 2 frases por mensagem e no máximo 1 emoji. Nada de textão nem cara de robô.
+
+Objetivo: entender o negócio da pessoa e levar pra uma conversa sobre aumentar o faturamento com tráfego pago e IA de atendimento.
+
+Como conduzir:
+1. Responda de verdade ao que a pessoa disse sobre o que trava as vendas dela.
+2. Na primeira resposta dela, mostre que vc entende porque também vende cabelo e mande o seu perfil pra ela ver como vc vende hoje: @PERFIL_DO_CEO. Ex.: "Te entendo, passei por isso na minha loja. Dá uma olhada no meu perfil @PERFIL_DO_CEO, é a minha loja de cabelo". Mande o perfil UMA vez só na conversa.
+3. Depois pergunte, uma coisa por vez: se ela vende cabelo, faz colocação ou os dois; se já investe em anúncio (tráfego pago); quantas mensagens recebe por dia no Direct e no WhatsApp.
+4. Se ela mostrar interesse (quer saber como funciona, quanto custa, quer ajuda), peça o WhatsApp dela pra vc chamar e explicar.
+5. Se perguntar quem vc é ou se funciona, diga que vc é dono de loja de cabelo e mande o perfil (se ainda não mandou).
+
+Nunca: prometer número de faturamento, inventar preço, falar mal de concorrente.
+Se a pessoa não trabalha com cabelo ou não tem interesse, agradeça com educação e encerre.`;
+
 export interface SocialSellingConfig {
   /** Conta de onde saem as DMs e cujos seguidores a extensão lê. */
   myProfile: string;
@@ -35,6 +52,10 @@ export interface SocialSellingConfig {
   endHour: number;
   /** A IA da inbox responde quando a pessoa responder a DM. */
   aiReplies: boolean;
+  /** Prompt da IA nas conversas do social selling (o catch-all dos anúncios fica intacto). */
+  aiPrompt: string;
+  /** 2ª mensagem (pela extensão) pra quem não respondeu a 1ª em `afterHours`. */
+  followup: { enabled: boolean; afterHours: number; message: string };
 }
 
 export interface ExtensionStatus {
@@ -53,6 +74,8 @@ const DEFAULT_CONFIG: SocialSellingConfig = {
   startHour: 9,
   endHour: 19,
   aiReplies: true,
+  aiPrompt: DEFAULT_SOCIAL_AI_PROMPT,
+  followup: { enabled: false, afterHours: 24, message: '' },
 };
 
 /** Resposta privada a comentário só é aceita pelo Instagram até 7 dias depois. */
@@ -84,6 +107,7 @@ export class SocialSellingService implements OnModuleInit {
       claimReply: (p) => this.claimReply(p),
       linkConversation: (leadId, conversationId) => this.leads.update(leadId, { conversationId }).then(() => undefined),
       markReplied: (p) => this.markReplied(p),
+      aiPrompt: () => this.aiPrompt(),
     });
   }
 
@@ -103,6 +127,7 @@ export class SocialSellingService implements OnModuleInit {
         comment: { ...DEFAULT_CONFIG.comment, ...(saved.comment || {}) },
         follow: { ...DEFAULT_CONFIG.follow, ...(saved.follow || {}) },
         scan: { ...DEFAULT_CONFIG.scan, ...(saved.scan || {}) },
+        followup: { ...DEFAULT_CONFIG.followup, ...(saved.followup || {}) },
       };
     } catch {
       return DEFAULT_CONFIG;
@@ -117,6 +142,7 @@ export class SocialSellingService implements OnModuleInit {
       comment: { ...cur.comment, ...(body.comment || {}) },
       follow: { ...cur.follow, ...(body.follow || {}) },
       scan: { ...cur.scan, ...(body.scan || {}) },
+      followup: { ...cur.followup, ...(body.followup || {}) },
     };
     const int = (v: unknown, min: number, max: number, label: string) => {
       const n = Number(v);
@@ -141,6 +167,10 @@ export class SocialSellingService implements OnModuleInit {
     next.endHour = int(next.endHour, 1, 24, 'Hora de fim');
     if (next.endHour <= next.startHour) throw new BadRequestException('O fim da janela precisa ser depois do início');
     next.aiReplies = !!next.aiReplies;
+    next.aiPrompt = String(next.aiPrompt || '').slice(0, 8000).trim() || DEFAULT_SOCIAL_AI_PROMPT;
+    next.followup.enabled = !!next.followup.enabled;
+    next.followup.afterHours = int(next.followup.afterHours, 1, 168, 'Follow-up depois de (horas)');
+    next.followup.message = String(next.followup.message || '').slice(0, 1000);
     await this.settings.set(SOCIAL_SELLING_CONFIG_KEY, JSON.stringify(next));
     return next;
   }
@@ -168,6 +198,16 @@ export class SocialSellingService implements OnModuleInit {
       .where('l.dm_channel = :channel', { channel })
       .andWhere('l.dm_sent_at >= :since', { since: this.startOfTodayBrt() })
       .getCount();
+  }
+
+  /** Tudo que a extensão mandou hoje (boas-vindas + follow-ups) — é o que conta pro limite diário dela. */
+  private async extensionSentToday(): Promise<number> {
+    const since = this.startOfTodayBrt();
+    const [dms, followups] = await Promise.all([
+      this.sentToday('extensao'),
+      this.leads.createQueryBuilder('l').where('l.followup_sent_at >= :since', { since }).getCount(),
+    ]);
+    return dms + followups;
   }
 
   // ─── Tela do CRM ─────────────────────────────────────────────────────────
@@ -493,45 +533,99 @@ export class SocialSellingService implements OnModuleInit {
     return { received: list.length, created, queued, skipped };
   }
 
-  /** Próxima DM pra extensão mandar — reserva 1 por vez. */
-  async nextDm(): Promise<{ username: string; message: string; leadId: string } | { wait: string }> {
+  /**
+   * Próxima mensagem pra extensão mandar — reserva 1 por vez. Primeiro as
+   * boas-vindas liberadas; se não houver, um follow-up vencido (quem recebeu a
+   * 1ª DM há `followup.afterHours` e não respondeu). O follow-up vai pela
+   * extensão também pra quem comentou: a API oficial só deixa mandar UMA
+   * mensagem por comentário até a pessoa responder.
+   */
+  async nextDm(): Promise<{ kind: 'dm' | 'followup'; username: string; message: string; leadId: string } | { wait: string }> {
     const cfg = await this.getConfig();
-    if (cfg.follow.mode === 'desligado') return { wait: 'DM de seguidor está desligada no CRM' };
-    if (!cfg.follow.message.trim()) return { wait: 'mensagem de boas-vindas ainda não escrita no CRM' };
+    const dmOn = cfg.follow.mode !== 'desligado' && !!cfg.follow.message.trim();
+    const followupOn = cfg.followup.enabled && !!cfg.followup.message.trim();
+    if (!dmOn && !followupOn) return { wait: 'boas-vindas e follow-up desligados ou sem mensagem no CRM' };
     if (!this.inWindow(cfg)) return { wait: `fora do horário (${cfg.startHour}h às ${cfg.endHour}h)` };
-    if ((await this.sentToday('extensao')) >= cfg.follow.dailyLimit) return { wait: `limite diário de ${cfg.follow.dailyLimit} DMs atingido` };
+    if ((await this.extensionSentToday()) >= cfg.follow.dailyLimit) return { wait: `limite diário de ${cfg.follow.dailyLimit} mensagens atingido` };
 
-    await this.leads.manager.query(
-      `UPDATE social_leads SET status = 'na_fila', reserved_at = NULL
-        WHERE status = 'enviando' AND reserved_at < $1`,
-      [new Date(Date.now() - STALE_RESERVATION_MS)],
-    );
-    const rows: { id: string }[] = await this.leads.manager.query(
-      `UPDATE social_leads SET status = 'enviando', reserved_at = now()
-        WHERE id = (
-          SELECT id FROM social_leads
-           WHERE status = 'na_fila' AND dm_channel = 'extensao' AND dm_sent_at IS NULL
-           ORDER BY score DESC, followed_at ASC NULLS LAST
-           LIMIT 1 FOR UPDATE SKIP LOCKED)
-        RETURNING id`,
-    );
-    const id = rows?.[0]?.id ?? (Array.isArray(rows?.[0]) ? (rows as any)[0][0]?.id : undefined);
-    if (!id) return { wait: 'fila vazia' };
-    const lead = await this.leads.findOneByOrFail({ id });
-    const message = renderSocialTemplate(cfg.follow.message, { fullName: lead.fullName, comment: lead.lastCommentText }, { keepName: true });
-    return { leadId: lead.id, username: lead.username, message };
+    const stale = new Date(Date.now() - STALE_RESERVATION_MS);
+    const firstId = (rows: any): string | undefined => rows?.[0]?.id ?? (Array.isArray(rows?.[0]) ? rows[0][0]?.id : undefined);
+
+    if (dmOn) {
+      await this.leads.manager.query(
+        `UPDATE social_leads SET status = 'na_fila', reserved_at = NULL WHERE status = 'enviando' AND reserved_at < $1`,
+        [stale],
+      );
+      const id = firstId(
+        await this.leads.manager.query(
+          `UPDATE social_leads SET status = 'enviando', reserved_at = now()
+            WHERE id = (
+              SELECT id FROM social_leads
+               WHERE status = 'na_fila' AND dm_channel = 'extensao' AND dm_sent_at IS NULL
+               ORDER BY score DESC, followed_at ASC NULLS LAST
+               LIMIT 1 FOR UPDATE SKIP LOCKED)
+            RETURNING id`,
+        ),
+      );
+      if (id) {
+        const lead = await this.leads.findOneByOrFail({ id });
+        const message = renderSocialTemplate(cfg.follow.message, { fullName: lead.fullName, comment: lead.lastCommentText }, { keepName: true });
+        return { kind: 'dm', leadId: lead.id, username: lead.username, message };
+      }
+    }
+
+    if (followupOn) {
+      const id = firstId(
+        await this.leads.manager.query(
+          `UPDATE social_leads SET followup_reserved_at = now()
+            WHERE id = (
+              SELECT id FROM social_leads
+               WHERE status = 'dm_enviada' AND replied_at IS NULL AND dm_sent_at <= $1
+                 AND followup_sent_at IS NULL AND followup_error IS NULL
+                 AND (followup_reserved_at IS NULL OR followup_reserved_at < $2)
+               ORDER BY score DESC, dm_sent_at ASC
+               LIMIT 1 FOR UPDATE SKIP LOCKED)
+            RETURNING id`,
+          [new Date(Date.now() - cfg.followup.afterHours * 3_600_000), stale],
+        ),
+      );
+      if (id) {
+        const lead = await this.leads.findOneByOrFail({ id });
+        const message = renderSocialTemplate(cfg.followup.message, { fullName: lead.fullName, comment: lead.lastCommentText }, { keepName: true });
+        return { kind: 'followup', leadId: lead.id, username: lead.username, message };
+      }
+    }
+    return { wait: 'fila vazia' };
   }
 
-  async dmResult(body: { username?: string; ok?: boolean; message?: string; fullName?: string; error?: string }) {
+  async dmResult(body: { username?: string; ok?: boolean; message?: string; fullName?: string; error?: string; kind?: 'dm' | 'followup' }) {
     const username = normalizeUsername(body.username);
     const lead = username ? await this.leads.findOneBy({ username }) : null;
     if (!lead) throw new NotFoundException('Lead não encontrado');
+    const message = String(body.message || '').slice(0, 2000);
+
+    if (body.kind === 'followup') {
+      if (body.ok) {
+        await this.leads.update(lead.id, { followupSentAt: new Date(), followupMessage: message, followupReservedAt: null, fullName: body.fullName || lead.fullName });
+        // Conversa já existe na inbox (quem comentou): grava o follow-up lá pra IA saber.
+        if (lead.conversationId && message) {
+          await this.ig.recordSocialOutbound(lead.conversationId, message, 'followup').catch(() => undefined);
+        }
+      } else {
+        await this.leads.update(lead.id, {
+          followupError: String(body.error || 'falha no follow-up').slice(0, 250),
+          followupReservedAt: null,
+        });
+      }
+      return { ok: true };
+    }
+
     if (body.ok) {
       await this.leads.update(lead.id, {
         status: 'dm_enviada',
         dmChannel: 'extensao',
         dmSentAt: new Date(),
-        dmMessage: String(body.message || '').slice(0, 2000) || lead.dmMessage,
+        dmMessage: message || lead.dmMessage,
         fullName: body.fullName || lead.fullName,
         dmError: null,
         reservedAt: null,
@@ -594,7 +688,14 @@ export class SocialSellingService implements OnModuleInit {
       status: 'respondeu',
     });
     const cfg = await this.getConfig();
-    return { leadId: lead.id, opening: lead.dmMessage ?? null, aiReplies: cfg.aiReplies };
+    // O que a pessoa recebeu pelo navegador, na ordem — vira o começo da conversa na inbox.
+    const messages = [lead.dmMessage, lead.followupMessage].filter((m): m is string => !!m && !!m.trim());
+    return { leadId: lead.id, messages, aiReplies: cfg.aiReplies };
+  }
+
+  /** Prompt da IA nas conversas do social selling. */
+  private async aiPrompt(): Promise<string> {
+    return (await this.getConfig()).aiPrompt;
   }
 
   private async markReplied(p: { senderIgId: string; username?: string | null }) {

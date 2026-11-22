@@ -132,6 +132,10 @@ function LeadRow({ lead, onAction, busy }) {
           {lead.dmMessage && (lead.status === 'dm_enviada' || lead.status === 'respondeu') && (
             <p className="mt-1 text-xs text-slate-500">DM {lead.dmChannel === 'comentario' ? 'pela resposta do comentário' : 'pela extensão'} {timeAgo(lead.dmSentAt)}: “{lead.dmMessage.slice(0, 120)}”</p>
           )}
+          {lead.followupSentAt && (
+            <p className="mt-1 text-xs text-slate-500">Follow-up {timeAgo(lead.followupSentAt)}: “{(lead.followupMessage || '').slice(0, 120)}”</p>
+          )}
+          {lead.followupError && <p className="mt-1 text-xs text-red-600">Follow-up falhou: {lead.followupError}</p>}
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
           {['novo', 'falhou', 'ignorado'].includes(lead.status) && !lead.dmSentAt && (
@@ -187,7 +191,7 @@ export default function SocialSelling() {
   const [list, setList] = useState({ data: [], total: 0 })
   const [loadingList, setLoadingList] = useState(true)
   const [busyId, setBusyId] = useState(null)
-  const [previews, setPreviews] = useState({ comment: [], follow: [] })
+  const [previews, setPreviews] = useState({ comment: [], follow: [], followup: [] })
   const dirtyRef = useRef(false)
   dirtyRef.current = dirty
 
@@ -231,15 +235,16 @@ export default function SocialSelling() {
     if (!config) return
     const t = setTimeout(async () => {
       try {
-        const [comment, follow] = await Promise.all([
+        const [comment, follow, followup] = await Promise.all([
           api('/preview', { method: 'POST', body: JSON.stringify({ template: config.comment.message }) }),
           api('/preview', { method: 'POST', body: JSON.stringify({ template: config.follow.message }) }),
+          api('/preview', { method: 'POST', body: JSON.stringify({ template: config.followup?.message || '' }) }),
         ])
-        setPreviews({ comment, follow })
+        setPreviews({ comment, follow, followup })
       } catch { /* prévia é opcional */ }
     }, 500)
     return () => clearTimeout(t)
-  }, [config?.comment?.message, config?.follow?.message]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [config?.comment?.message, config?.follow?.message, config?.followup?.message]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const patch = (path, value) => {
     setConfig((c) => {
@@ -464,6 +469,47 @@ export default function SocialSelling() {
                     className="w-20 px-2 py-1 border border-slate-200 rounded-lg tabular-nums" /> min
                 </span>
               </div>
+            </div>
+
+            <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
+              <h2 className="font-semibold text-slate-800 flex items-center gap-2"><RotateCcw className="w-4 h-4 text-violet-600" /> Follow-up (quem não respondeu)</h2>
+              <p className="text-xs text-slate-500">
+                Uma 2ª mensagem, só uma, pra quem recebeu a 1ª DM (boas-vindas ou comentário) e não respondeu. Sai pela extensão
+                — a API oficial não deixa mandar a 2ª pra quem comentou — e conta no limite diário de seguidores.
+              </p>
+              <label className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
+                <input id="ss-followup-enabled" type="checkbox" checked={!!config.followup?.enabled} onChange={(e) => patch('followup.enabled', e.target.checked)} />
+                Mandar follow-up depois de
+                <input id="ss-followup-hours" type="number" min="1" max="168" value={config.followup?.afterHours ?? 24}
+                  onChange={(e) => patch('followup.afterHours', Number(e.target.value))}
+                  className="w-20 px-2 py-1 border border-slate-200 rounded-lg tabular-nums" />
+                horas sem resposta
+              </label>
+              <label className="block">
+                <span className="text-xs text-slate-500">Mensagem do follow-up</span>
+                <textarea id="ss-followup-message" rows={3} value={config.followup?.message || ''} onChange={(e) => patch('followup.message', e.target.value)}
+                  placeholder="Ex.: {nome}, passando aqui de novo 😊 Dá uma olhada no meu perfil @seuperfil, é a minha loja de cabelo…"
+                  className="mt-1 w-full px-3 py-2 text-sm border border-slate-200 rounded-lg" />
+              </label>
+              {config.followup?.message && previews.followup.length > 0 && (
+                <div className="text-xs bg-slate-50 rounded-lg p-2.5 space-y-1.5">
+                  {previews.followup.slice(0, 2).map((p, i) => <p key={i} className="text-slate-700">{p.text}</p>)}
+                </div>
+              )}
+            </div>
+
+            <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
+              <h2 className="font-semibold text-slate-800 flex items-center gap-2"><HeartHandshake className="w-4 h-4 text-violet-600" /> IA da conversa</h2>
+              <p className="text-xs text-slate-500">
+                Como a IA responde quem respondeu a DM do social selling. Só vale pra essas conversas — o atendimento de quem vem dos anúncios continua com o prompt da IG Automação.
+              </p>
+              {config.aiPrompt?.includes('@PERFIL_DO_CEO') && (
+                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+                  Troque <strong>@PERFIL_DO_CEO</strong> pelo @ do seu perfil antes de salvar.
+                </p>
+              )}
+              <textarea id="ss-ai-prompt" rows={14} value={config.aiPrompt || ''} onChange={(e) => patch('aiPrompt', e.target.value)}
+                className="w-full px-3 py-2 text-xs leading-relaxed border border-slate-200 rounded-lg font-mono" />
             </div>
 
             <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
