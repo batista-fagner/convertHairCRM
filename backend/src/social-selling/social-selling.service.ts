@@ -337,6 +337,11 @@ export class SocialSellingService implements OnModuleInit {
       lastSignalAt: now,
     });
 
+    // Falhou antes (ex.: comentário apagado) e comentou de novo: tenta outra vez.
+    if (lead.status === 'falhou' && !lead.dmSentAt) {
+      await this.leads.update(lead.id, { status: 'novo', dmError: null });
+      lead = { ...lead, status: 'novo', dmError: null };
+    }
     if (lead.status !== 'novo' || lead.dmSentAt) return;
 
     const skip = e.matchedAutomation ? 'a automação do post já respondeu' : await this.existingRelationship(username, lead.igUserId);
