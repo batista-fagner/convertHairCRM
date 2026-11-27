@@ -946,7 +946,7 @@ export class InstagramAutomationService {
         model: this.aiModel,
         messages,
         temperature: 0.7,
-        max_completion_tokens: 300,
+        max_completion_tokens: 700,
         response_format: { type: 'json_object' },
       });
 

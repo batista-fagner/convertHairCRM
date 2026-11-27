@@ -1,3 +1,5 @@
+import { AgendaService } from '../agenda/agenda.service';
+import { BRT_TZ } from '../common/brt.util';
 import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { InjectQueue } from '@nestjs/bullmq';
@@ -96,6 +98,7 @@ export class SocialSellingService implements OnModuleInit {
     @InjectRepository(SocialLead) private readonly leads: Repository<SocialLead>,
     @InjectRepository(SocialSignal) private readonly signals: Repository<SocialSignal>,
     private readonly settings: SettingsService,
+    private readonly agenda: AgendaService,
     private readonly ig: InstagramAutomationService,
     private readonly config: ConfigService,
     @Optional() @InjectQueue(SOCIAL_SELLING_QUEUE_NAME) private readonly queue: Queue | null,
@@ -701,9 +704,16 @@ export class SocialSellingService implements OnModuleInit {
     return { leadId: lead.id, messages, aiReplies: cfg.aiReplies };
   }
 
-  /** Prompt da IA nas conversas do social selling. */
+  /** Prompt da IA nas conversas do social selling, com a data de hoje e os horários livres da agenda. */
   private async aiPrompt(): Promise<string> {
-    return (await this.getConfig()).aiPrompt;
+    const { aiPrompt } = await this.getConfig();
+    const now = new Date();
+    const today = new Intl.DateTimeFormat('pt-BR', { timeZone: BRT_TZ, weekday: 'long', day: '2-digit', month: '2-digit' }).format(now);
+    const agenda = await this.agenda.agendaSummary(now).catch((err) => {
+      this.logger.error(`Erro lendo a agenda: ${err.message}`);
+      return '';
+    });
+    return `${aiPrompt}\n\nHOJE: ${today} (horário de Brasília).\nAGENDA (únicos horários que existem): ${agenda || 'nenhum horário livre agora. Não cite dia nem hora; pergunte qual dia e turno são melhores pra ela.'}`;
   }
 
   private async markReplied(p: { senderIgId: string; username?: string | null }) {
