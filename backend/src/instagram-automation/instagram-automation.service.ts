@@ -39,7 +39,12 @@ interface AiReplyConfig {
   aiPrompt?: string | null;
   replyMessage?: string | null;
   link?: string | null;
+  /** Modelo próprio desta conversa; sem ele vale o IG_AI_MODEL. */
+  model?: string;
 }
+
+/** O prompt do social selling tem etapas e texto copiado à risca, por isso usa um modelo melhor que o das outras IAs do Instagram. */
+const SOCIAL_AI_MODEL = 'gpt-5.4-mini';
 
 /** Espera entre cada bloco de mensagem enviado em sequência, simulando alguém digitando. */
 const BLOCK_DELAY_MS = 2000;
@@ -567,7 +572,7 @@ export class InstagramAutomationService {
       if (social && !social.aiReplies) return;
 
       const aiConfig: AiReplyConfig = social
-        ? { aiPrompt: await this.socialHooks!.aiPrompt(), link: null }
+        ? { aiPrompt: await this.socialHooks!.aiPrompt(), link: null, model: SOCIAL_AI_MODEL }
         : { aiPrompt: catchall.prompt, link: catchall.link };
       const { blocks, sendLink } = await this.generateAiReply(aiConfig, history, text);
       if (!blocks.length) return;
@@ -615,7 +620,7 @@ export class InstagramAutomationService {
       const social = !auto && conv.socialSelling && this.socialHooks;
       const catchall = auto || social ? null : await this.getCatchallConfig();
       const aiConfig: AiReplyConfig = auto
-        ?? (social ? { aiPrompt: await this.socialHooks!.aiPrompt(), link: null } : { aiPrompt: catchall!.prompt, link: catchall!.link });
+        ?? (social ? { aiPrompt: await this.socialHooks!.aiPrompt(), link: null, model: SOCIAL_AI_MODEL } : { aiPrompt: catchall!.prompt, link: catchall!.link });
       const dmButtonLabel = auto ? auto.dmButtonLabel : social ? undefined : catchall!.buttonLabel;
 
       const history = await this.buildAiHistory(conv.id, conv.contextResetAt);
@@ -943,10 +948,11 @@ export class InstagramAutomationService {
       ];
 
       const response = await this.openai.chat.completions.create({
-        model: this.aiModel,
+        model: auto.model || this.aiModel,
         messages,
         temperature: 0.7,
-        max_completion_tokens: 700,
+        // Modelo de raciocínio gasta o mesmo limite "pensando"; curto demais, o JSON volta vazio.
+        max_completion_tokens: auto.model ? 1500 : 700,
         response_format: { type: 'json_object' },
       });
 
